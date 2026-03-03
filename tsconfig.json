@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/plugin-sdk" },
+    { "path": "./packages/plugins-fake" },
+    { "path": "./packages/plugins-ui-gateway" },
+    { "path": "./packages/client-runtime" },
+    { "path": "./apps/runtime" },
+    { "path": "./apps/desktop" },
+    { "path": "./apps/client" }
+  ]
+}

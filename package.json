@@ -1,0 +1,28 @@
+{
+  "name": "sensync2",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n CLIENT,DESKTOP \"npm run dev:client\" \"npm run dev:desktop\"",
+    "dev:runtime": "npm --workspace @sensync2/runtime run dev",
+    "dev:client": "npm --workspace @sensync2/client run dev",
+    "dev:desktop": "npm --workspace @sensync2/desktop run dev",
+    "build": "npm run -ws build",
+    "test": "npm run -ws test"
+  },
+  "devDependencies": {
+    "@esbuild/darwin-arm64": "^0.27.3",
+    "@types/node": "^24.6.0",
+    "concurrently": "^9.2.1",
+    "electron": "^37.4.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.5"
+  }
+}

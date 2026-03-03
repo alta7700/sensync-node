@@ -1,0 +1,17 @@
+{
+  "name": "@sensync2/plugins-fake",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sensync2/core": "0.1.0",
+    "@sensync2/plugin-sdk": "0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}
