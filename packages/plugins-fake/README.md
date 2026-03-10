@@ -20,4 +20,4 @@ Demo и replay-плагины для `v1`.
 
 Дополнительно:
 
-- Формат replay bundle описан в [REPLAY_FORMAT.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-fake/REPLAY_FORMAT.md).
+- Формат replay bundle описан в [packages/plugins-fake/REPLAY_FORMAT.md](REPLAY_FORMAT.md).

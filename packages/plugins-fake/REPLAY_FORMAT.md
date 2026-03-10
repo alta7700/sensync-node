@@ -125,5 +125,5 @@ test.replay/
 ## 8. Кто отвечает за формат
 
 - Нормативное описание — этот файл.
-- Конвертер — [convert_h5_to_replay.py](/Users/tascan/Documents/sirius/sensync2/scripts/convert_h5_to_replay.py).
-- Потребитель формата — [veloerg-h5-replay-adapter.ts](/Users/tascan/Documents/sirius/sensync2/packages/plugins-fake/src/veloerg-h5-replay-adapter.ts).
+- Конвертер — [scripts/convert_h5_to_replay.py](../../scripts/convert_h5_to_replay.py).
+- Потребитель формата — [packages/plugins-fake/src/veloerg-h5-replay-adapter.ts](src/veloerg-h5-replay-adapter.ts).

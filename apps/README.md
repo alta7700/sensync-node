@@ -17,5 +17,5 @@
 
 ## Взаимодействие
 
-- Использует общие пакеты из [packages/README.md](/Users/tascan/Documents/sirius/sensync2/packages/README.md).
-- Корневой сценарий запуска описан в [README.md](/Users/tascan/Documents/sirius/sensync2/README.md).
+- Использует общие пакеты из [packages/README.md](../packages/README.md).
+- Корневой сценарий запуска описан в [README.md](../README.md).

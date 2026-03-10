@@ -18,7 +18,7 @@
 
 ## 2. Runtime Event
 
-Базовый контракт описан в [events.ts](/Users/tascan/Documents/sirius/sensync2/packages/core/src/events.ts).
+Базовый контракт описан в [packages/core/src/events.ts](src/events.ts).
 
 Семантика:
 
@@ -60,7 +60,7 @@
 
 ## 4. Plugin Manifest
 
-Контракт описан в [plugin.ts](/Users/tascan/Documents/sirius/sensync2/packages/core/src/plugin.ts).
+Контракт описан в [packages/core/src/plugin.ts](src/plugin.ts).
 
 Семантика полей:
 
@@ -84,7 +84,7 @@
 
 ## 5. Worker Protocol
 
-Протокол описан в [worker-protocol.ts](/Users/tascan/Documents/sirius/sensync2/packages/core/src/worker-protocol.ts).
+Протокол описан в [packages/core/src/worker-protocol.ts](src/worker-protocol.ts).
 
 Жизненный цикл:
 
@@ -103,7 +103,7 @@
 
 ## 6. UI Schema
 
-Базовые типы описаны в [ui.ts](/Users/tascan/Documents/sirius/sensync2/packages/core/src/ui.ts).
+Базовые типы описаны в [packages/core/src/ui.ts](src/ui.ts).
 
 Смысл schema-слоя:
 
@@ -141,7 +141,7 @@
 
 ## 8. UI Wire
 
-Бинарный wire описан в [ui-wire.ts](/Users/tascan/Documents/sirius/sensync2/packages/core/src/ui-wire.ts).
+Бинарный wire описан в [packages/core/src/ui-wire.ts](src/ui-wire.ts).
 
 Текущая версия:
 
@@ -163,5 +163,5 @@
 ## 9. Что документировать отдельно
 
 - Общие контракты системы — в этом файле.
-- Конкретную demo-схему `ui-gateway` — в [SCHEMA.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-ui-gateway/SCHEMA.md).
-- Формат replay bundle — в [REPLAY_FORMAT.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-fake/REPLAY_FORMAT.md).
+- Конкретную demo-схему `ui-gateway` — в [packages/plugins-ui-gateway/SCHEMA.md](../plugins-ui-gateway/SCHEMA.md).
+- Формат replay bundle — в [packages/plugins-fake/REPLAY_FORMAT.md](../plugins-fake/REPLAY_FORMAT.md).

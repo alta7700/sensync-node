@@ -20,4 +20,4 @@ UI gateway plugin.
 
 Дополнительно:
 
-- Текущая concrete-схема UI описана в [SCHEMA.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-ui-gateway/SCHEMA.md).
+- Текущая concrete-схема UI описана в [packages/plugins-ui-gateway/SCHEMA.md](SCHEMA.md).

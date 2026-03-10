@@ -15,4 +15,4 @@
 
 - Используется вместе с `packages/plugins-fake`.
 - Результат работы скрипта потребляет `apps/runtime` через дефолтный набор плагинов.
-- Формат результата описан в [REPLAY_FORMAT.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-fake/REPLAY_FORMAT.md).
+- Формат результата описан в [packages/plugins-fake/REPLAY_FORMAT.md](../packages/plugins-fake/REPLAY_FORMAT.md).

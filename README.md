@@ -35,15 +35,15 @@ npm run dev
 
 Индекс модулей:
 
-- [apps/README.md](/Users/tascan/Documents/sirius/sensync2/apps/README.md)
-- [packages/README.md](/Users/tascan/Documents/sirius/sensync2/packages/README.md)
-- [scripts/README.md](/Users/tascan/Documents/sirius/sensync2/scripts/README.md)
+- [apps/README.md](apps/README.md)
+- [packages/README.md](packages/README.md)
+- [scripts/README.md](scripts/README.md)
 
 Ключевые спецификации:
 
-- [packages/core/CONTRACTS.md](/Users/tascan/Documents/sirius/sensync2/packages/core/CONTRACTS.md)
-- [packages/plugins-ui-gateway/SCHEMA.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-ui-gateway/SCHEMA.md)
-- [packages/plugins-fake/REPLAY_FORMAT.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-fake/REPLAY_FORMAT.md)
+- [packages/core/CONTRACTS.md](packages/core/CONTRACTS.md)
+- [packages/plugins-ui-gateway/SCHEMA.md](packages/plugins-ui-gateway/SCHEMA.md)
+- [packages/plugins-fake/REPLAY_FORMAT.md](packages/plugins-fake/REPLAY_FORMAT.md)
 
 ## Текущий статус `v1`
 

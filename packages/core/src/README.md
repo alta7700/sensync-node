@@ -18,4 +18,4 @@
 ## Взаимодействие
 
 - На эти файлы опираются `apps/runtime`, `apps/desktop`, `apps/client`, `packages/plugin-sdk`, `packages/client-runtime` и все плагины.
-- Текстовое описание семантики находится в [../CONTRACTS.md](/Users/tascan/Documents/sirius/sensync2/packages/core/CONTRACTS.md).
+- Текстовое описание семантики находится в [packages/core/CONTRACTS.md](../CONTRACTS.md).

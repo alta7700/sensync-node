@@ -20,4 +20,4 @@
 
 - Все плагины описываются через `definePlugin`.
 - Сигналы этих плагинов дальше материализуются в UI через `packages/plugins-ui-gateway`.
-- Формат replay bundle для `veloerg-h5-replay-adapter.ts` описан в [../REPLAY_FORMAT.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-fake/REPLAY_FORMAT.md).
+- Формат replay bundle для `veloerg-h5-replay-adapter.ts` описан в [packages/plugins-fake/REPLAY_FORMAT.md](../REPLAY_FORMAT.md).

@@ -5,7 +5,7 @@
 Важно:
 
 - Это не общая спецификация `UiSchema`.
-- Это описание именно текущего demo/replay UI, собранного в [ui-gateway-plugin.ts](/Users/tascan/Documents/sirius/sensync2/packages/plugins-ui-gateway/src/ui-gateway-plugin.ts).
+- Это описание именно текущего demo/replay UI, собранного в [packages/plugins-ui-gateway/src/ui-gateway-plugin.ts](src/ui-gateway-plugin.ts).
 
 ## 1. Страница
 

@@ -53,9 +53,9 @@
   - `apps/runtime`
   - `apps/client`
   - `apps/desktop`
-- При изменении контрактов в `packages/core` обновлять [packages/core/CONTRACTS.md](/Users/tascan/Documents/sirius/sensync2/packages/core/CONTRACTS.md).
-- При изменении materialized UI-схемы `ui-gateway` обновлять [packages/plugins-ui-gateway/SCHEMA.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-ui-gateway/SCHEMA.md).
-- При изменении replay bundle формата или конвертера обновлять [packages/plugins-fake/REPLAY_FORMAT.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-fake/REPLAY_FORMAT.md).
+- При изменении контрактов в `packages/core` обновлять [packages/core/CONTRACTS.md](packages/core/CONTRACTS.md).
+- При изменении materialized UI-схемы `ui-gateway` обновлять [packages/plugins-ui-gateway/SCHEMA.md](packages/plugins-ui-gateway/SCHEMA.md).
+- При изменении replay bundle формата или конвертера обновлять [packages/plugins-fake/REPLAY_FORMAT.md](packages/plugins-fake/REPLAY_FORMAT.md).
 - Если меняется способ запуска, обновлять корневой `README.md` и README затронутого `app`.
 - Если меняется дефолтная demo-конфигурация или replay-источник, обновлять:
   - `apps/runtime/README.md`

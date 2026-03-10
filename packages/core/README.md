@@ -19,4 +19,4 @@
 
 Дополнительно:
 
-- Семантика контрактов описана в [CONTRACTS.md](/Users/tascan/Documents/sirius/sensync2/packages/core/CONTRACTS.md).
+- Семантика контрактов описана в [packages/core/CONTRACTS.md](CONTRACTS.md).

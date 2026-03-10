@@ -19,4 +19,4 @@
 
 - Получает события из runtime как обычный плагин.
 - Отдаёт наружу только UI-формат, а не внутренние runtime-события.
-- Concrete-схема текущего demo UI описана в [../SCHEMA.md](/Users/tascan/Documents/sirius/sensync2/packages/plugins-ui-gateway/SCHEMA.md).
+- Concrete-схема текущего demo UI описана в [packages/plugins-ui-gateway/SCHEMA.md](../SCHEMA.md).
