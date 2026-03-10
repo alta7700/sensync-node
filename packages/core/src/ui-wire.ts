@@ -2,7 +2,8 @@ import type { EventSeq, SampleFormat, SignalBatchEvent } from './events.ts';
 
 export const UI_WIRE_VERSION = 1;
 export const UI_FRAME_TYPE_SIGNAL_BATCH = 1;
-export const UI_SIGNAL_BATCH_HEADER_BYTES = 36;
+// Заголовок выравниваем до 8 байт, чтобы `Float64Array` values можно было читать без RangeError.
+export const UI_SIGNAL_BATCH_HEADER_BYTES = 40;
 
 const UiWireFlags = {
   None: 0,

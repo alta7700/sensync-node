@@ -4,3 +4,5 @@ coverage
 .vite
 .DS_Store
 playwright-report
+/test.replay/
+.idea

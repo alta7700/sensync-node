@@ -298,11 +298,11 @@ function LineChartWidget({ widget }: { widget: UiLineChartWidget }) {
 
   return (
     <section style={panelStyle}>
-      <h3 style={titleStyle}>{widget.title}</h3>
+      <h3 style={chartTitleStyle}>{widget.title}</h3>
       <div style={{ position: 'relative' }}>
         <canvas ref={canvasRef} style={{ width: '100%', height: widget.height ?? 260, display: 'block', borderRadius: 10, border: '1px solid var(--border)' }} />
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, fontSize: 14, color: 'var(--muted)' }}>
         {streamIds.map((id) => <span key={id}>{id}</span>)}
       </div>
     </section>
@@ -564,11 +564,11 @@ function ChartWidgetCanvas({ widget }: { widget: UiChartWidget }) {
 
   return (
     <section style={panelStyle}>
-      <h3 style={titleStyle}>{widget.title}</h3>
+      <h3 style={chartTitleStyle}>{widget.title}</h3>
       <div style={{ position: 'relative' }}>
         <canvas ref={canvasRef} style={{ width: '100%', height: widget.height ?? 260, display: 'block', borderRadius: 10, border: '1px solid var(--border)' }} />
       </div>
-      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ marginTop: 8, fontSize: 14, color: 'var(--muted)', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {widget.series.map((series) => (
           <span key={chartSeriesKey(series)}>
             {chartSeriesLabel(series)} ({series.type})
@@ -692,9 +692,9 @@ function buildChartWindows(widget: UiChartWidget, timeWindowMs: number): Map<str
     if (!windowsByStream.has(series.streamId)) {
       const win = runtimeSingleton.getVisibleWindow(series.streamId, timeWindowMs);
       windowsByStream.set(series.streamId, win);
-      // Диагностику включаем только для "настоящих" графиковых серий, чтобы label-stream (interval overlay)
-      // не давал ложные срабатывания из-за своей специфики обновления.
-      if (series.type !== 'interval') {
+      // Диагностику монотонности проверяем только для line-серий.
+      // Для scatter/label потоков одинаковые timestamp могут быть валидным случаем.
+      if (series.type === 'line') {
         logMonotonicTimeArrayCheck(series.streamId, win.x, win.length);
       }
     }
@@ -850,7 +850,7 @@ function buildEchartsOption(widget: UiChartWidget, windowsByStream: Map<string, 
       ? {
           legend: {
             top: 8,
-            textStyle: { color: '#9aa4b2', fontSize: 11 },
+            textStyle: { color: '#9aa4b2', fontSize: 13 },
           },
         }
       : {}),
@@ -947,7 +947,7 @@ function ChartWidgetEcharts({ widget }: { widget: UiChartWidget }) {
 
   return (
     <section style={panelStyle}>
-      <h3 style={titleStyle}>{widget.title}</h3>
+      <h3 style={chartTitleStyle}>{widget.title}</h3>
       <div
         ref={containerRef}
         style={{
@@ -985,14 +985,20 @@ const panelStyle: React.CSSProperties = {
 };
 
 const titleStyle: React.CSSProperties = { margin: '0 0 10px', fontSize: 14, letterSpacing: 0.3 };
+const chartTitleStyle: React.CSSProperties = { ...titleStyle, fontSize: 16 };
 
 export function App() {
   const { snapshot, rev } = useRuntimeSnapshot();
   const page = useMemo(() => snapshot.schema?.pages[0], [snapshot.schema, rev]);
-  const widgets = useMemo(() => {
+  const widgetRows = useMemo(() => {
     if (!snapshot.schema || !page) return [];
     const byId = new Map(snapshot.schema.widgets.map((w) => [w.id, w]));
-    return page.widgetIds.map((id) => byId.get(id)).filter(Boolean) as UiWidget[];
+    const rows = page.widgetRows && page.widgetRows.length > 0
+      ? page.widgetRows
+      : page.widgetIds.map((id) => [id]);
+    return rows
+      .map((row) => row.map((id) => byId.get(id)).filter(Boolean) as UiWidget[])
+      .filter((row) => row.length > 0);
   }, [snapshot.schema, page, rev]);
 
   return (
@@ -1017,7 +1023,18 @@ export function App() {
           </div>
         </section>
       ) : (
-        widgets.map((widget) => renderWidget(widget, snapshot.flags, snapshot.telemetry))
+        widgetRows.map((row, idx) => (
+          <div
+            key={`row-${idx}`}
+            style={{
+              display: 'grid',
+              gap: 12,
+              gridTemplateColumns: row.length > 1 ? 'repeat(auto-fit, minmax(420px, 1fr))' : 'minmax(0, 1fr)',
+            }}
+          >
+            {row.map((widget) => renderWidget(widget, snapshot.flags, snapshot.telemetry))}
+          </div>
+        ))
       )}
     </div>
   );

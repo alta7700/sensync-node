@@ -17,29 +17,15 @@ function moduleFileUrl(relativePathFromRepoRoot: string): string {
 export function makeDefaultPluginDescriptors(): PluginDescriptor[] {
   return [
     {
-      id: 'fake-signal-adapter',
-      modulePath: moduleFileUrl('packages/plugins-fake/src/fake-signal-adapter.ts'),
-      // `a1` нужен для сравнения "старых" параметров batching с текущими `a2`.
-      config: { sampleRateHz: 10_000, batchMs: 100, compareSampleRateHz: 10_000, compareBatchMs: 50 },
-    },
-    {
-      id: 'shape-generator-adapter',
-      modulePath: moduleFileUrl('packages/plugins-fake/src/shape-generator-adapter.ts'),
-      config: { sampleRateHz: 200, batchMs: 50 },
-    },
-    {
-      id: 'interval-label-adapter',
-      modulePath: moduleFileUrl('packages/plugins-fake/src/interval-label-adapter.ts'),
-    },
-    {
-      id: 'rolling-min-processor',
-      modulePath: moduleFileUrl('packages/plugins-fake/src/rolling-min-processor.ts'),
-      config: { sourceChannelId: 'fake.a2', outputChannelId: 'metrics.fake.a2.rolling_min_1s' },
-    },
-    {
-      id: 'activity-detector-processor',
-      modulePath: moduleFileUrl('packages/plugins-fake/src/activity-detector-processor.ts'),
-      config: { sourceChannelId: 'shapes.signal', threshold: 0.6 },
+      id: 'veloerg-h5-replay-adapter',
+      modulePath: moduleFileUrl('packages/plugins-fake/src/veloerg-h5-replay-adapter.ts'),
+      config: {
+        adapterId: 'velo-replay',
+        bundlePath: path.join(repoRoot, 'test.replay/manifest.json'),
+        tickMs: 20,
+        speed: 1,
+        maxSamplesPerBatch: 3000,
+      },
     },
     {
       id: 'ui-gateway',

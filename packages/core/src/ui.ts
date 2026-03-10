@@ -10,6 +10,11 @@ export interface UiPage {
   id: string;
   title: string;
   widgetIds: string[];
+  /**
+   * Явная раскладка виджетов по строкам.
+   * Если задано, renderer использует этот порядок/группировку вместо "по одному виджету в строку".
+   */
+  widgetRows?: string[][];
 }
 
 export interface UiLineChartWidget {
