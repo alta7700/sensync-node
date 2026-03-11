@@ -16,3 +16,4 @@
 - Используется вместе с `packages/plugins-fake`.
 - Результат работы скрипта потребляет `apps/runtime` через дефолтный набор плагинов.
 - Формат результата описан в [packages/plugins-fake/REPLAY_FORMAT.md](../packages/plugins-fake/REPLAY_FORMAT.md).
+- `smoke_hdf5_recorder.ts` поднимает runtime без UI и прогоняет ручной smoke для `packages/plugins-hdf5`.

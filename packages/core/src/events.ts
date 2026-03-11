@@ -81,6 +81,53 @@ export interface AdapterStateChangedPayload {
   message?: string;
 }
 
+export type RecordingMetadataScalar = string | number | boolean;
+
+export interface RecordingChannelConfig {
+  channelId: string;
+  minSamples: number;
+  maxBufferedMs: number;
+}
+
+export interface RecordingStartPayload {
+  writer: string;
+  filenameTemplate: string;
+  channels: RecordingChannelConfig[];
+  metadata?: Record<string, RecordingMetadataScalar>;
+  requestId?: string;
+}
+
+export interface RecordingStopPayload {
+  writer: string;
+  requestId?: string;
+}
+
+export interface RecordingPausePayload {
+  writer: string;
+  requestId?: string;
+}
+
+export interface RecordingResumePayload {
+  writer: string;
+  requestId?: string;
+}
+
+export interface RecordingStateChangedPayload {
+  writer: string;
+  state: 'idle' | 'starting' | 'recording' | 'paused' | 'stopping' | 'failed';
+  requestId?: string;
+  filePath?: string;
+  message?: string;
+}
+
+export interface RecordingErrorPayload {
+  writer: string;
+  code: string;
+  message: string;
+  requestId?: string;
+  filePath?: string;
+}
+
 /**
  * Создает копию typed array с сохранением типа.
  * Это нужно при fan-out в несколько worker'ов в `v1`.

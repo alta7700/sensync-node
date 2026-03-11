@@ -12,6 +12,7 @@
     "dev:runtime": "npm --workspace @sensync2/runtime run dev",
     "dev:client": "npm --workspace @sensync2/client run dev",
     "dev:desktop": "npm --workspace @sensync2/desktop run dev",
+    "smoke:hdf5-recorder": "tsx ./scripts/smoke_hdf5_recorder.ts",
     "build": "npm run -ws build",
     "test": "npm run -ws test"
   },

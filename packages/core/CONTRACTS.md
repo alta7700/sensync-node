@@ -58,7 +58,45 @@
 - Если присутствует `timestampsMs`, его длина должна совпадать с `sampleCount`.
 - Для irregular потоков клиент и runtime обязаны доверять `timestampsMs`, а не реконструировать время из `t0Ms`.
 
-## 4. Plugin Manifest
+## 4. Recording Events
+
+Запись в `HDF5` управляется command/fact событиями recorder-слоя.
+
+Базовые payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
+
+Текущий `v1` контракт:
+
+- `recording.start`
+  - выбирает writer по `writer`;
+  - несёт `filenameTemplate`;
+  - несёт пользовательские file-level `metadata`;
+  - фиксирует набор `channels[]` на всю длительность записи.
+- `recording.pause`
+  - означает `flush` всех буферов и переход в `paused`;
+  - в `v1` не меняет runtime subscriptions, только внутреннее состояние плагина.
+- `recording.resume`
+  - продолжает запись в уже открытый файл.
+- `recording.stop`
+  - означает финальный `flush`, `close` и переход в `idle`.
+- `recording.state.changed`
+  - обязан содержать `writer`;
+  - нужен для UI и telemetry;
+  - отражает state machine recorder'а.
+- `recording.error`
+  - обязан содержать `writer` и `code`;
+  - ошибка записи не должна происходить "тихо".
+
+Ограничения `v1`:
+
+- `metadata` допускает только scalar-типы:
+  - `string`
+  - `number`
+  - `boolean`
+- запись выбирает каналы только по точному `channelId`;
+- `sampleFormat` одного `channelId` внутри одного файла менять нельзя;
+- динамические `subscribe/unsubscribe` на `pause/resume` пока не поддерживаются runtime и отложены на будущий этап.
+
+## 5. Plugin Manifest
 
 Контракт описан в [packages/core/src/plugin.ts](src/plugin.ts).
 
@@ -82,7 +120,7 @@
   - `coalesce-latest-per-stream`
     - допускается замена старого `signal.batch` более новым для того же stream.
 
-## 5. Worker Protocol
+## 6. Worker Protocol
 
 Протокол описан в [packages/core/src/worker-protocol.ts](src/worker-protocol.ts).
 
@@ -101,7 +139,7 @@
 - Таймеры плагина не выполняют бизнес-логику напрямую.
 - Таймеры только эмитят новые события обратно в ту же последовательную очередь.
 
-## 6. UI Schema
+## 7. UI Schema
 
 Базовые типы описаны в [packages/core/src/ui.ts](src/ui.ts).
 
@@ -121,7 +159,7 @@
   - `scatter` — точечная серия;
   - `interval` — интервальная overlay-серия поверх label-stream.
 
-## 7. Control Variants
+## 8. Control Variants
 
 `UiControlAction` и `UiControlVariant` описывают declarative-кнопки.
 
@@ -139,7 +177,7 @@
 - `or`
 - `not`
 
-## 8. UI Wire
+## 9. UI Wire
 
 Бинарный wire описан в [packages/core/src/ui-wire.ts](src/ui-wire.ts).
 
@@ -160,7 +198,7 @@
 - нужно проверять encoder и decoder одновременно;
 - нужно проверять `apps/client` и `packages/client-runtime`.
 
-## 9. Что документировать отдельно
+## 10. Что документировать отдельно
 
 - Общие контракты системы — в этом файле.
 - Конкретную demo-схему `ui-gateway` — в [packages/plugins-ui-gateway/SCHEMA.md](../plugins-ui-gateway/SCHEMA.md).

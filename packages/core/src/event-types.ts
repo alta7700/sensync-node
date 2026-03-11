@@ -8,6 +8,13 @@ export const EventTypes = {
   adapterDisconnectRequest: 'adapter.disconnect.request',
   adapterStateChanged: 'adapter.state.changed',
 
+  recordingStart: 'recording.start',
+  recordingStop: 'recording.stop',
+  recordingPause: 'recording.pause',
+  recordingResume: 'recording.resume',
+  recordingStateChanged: 'recording.state.changed',
+  recordingError: 'recording.error',
+
   shapeGenerateRequest: 'shape.generate.request',
   shapeGenerated: 'shape.generated',
 
