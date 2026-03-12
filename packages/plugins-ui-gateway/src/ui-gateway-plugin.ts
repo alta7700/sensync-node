@@ -1,12 +1,19 @@
 import {
   encodeUiSignalBatchFrameFromEvent,
   EventTypes,
+  type AdapterStateChangedPayload,
   type FactEvent,
+  type RecordingErrorPayload,
+  type RecordingStateChangedPayload,
   type RuntimeTelemetrySnapshotPayload,
   type SignalBatchEvent,
+  type SimulationStateChangedPayload,
   type UiBinaryOutPayload,
+  type UiControlAction,
   type UiControlMessage,
   type UiControlOutPayload,
+  type UiControlWhen,
+  type UiControlVariant,
   type UiFlagPatch,
   type UiFlagSnapshot,
   type UiSchema,
@@ -14,17 +21,179 @@ import {
 } from '@sensync2/core';
 import { definePlugin } from '@sensync2/plugin-sdk';
 
+type UiGatewayProfile = 'fake' | 'fake-hdf5-simulation';
+
 interface UiGatewayConfig {
   sessionId?: string;
+  profile?: UiGatewayProfile;
 }
 
+const FakeRecordingChannels = [
+  { channelId: 'fake.a1', minSamples: 200, maxBufferedMs: 1_000 },
+  { channelId: 'fake.a2', minSamples: 200, maxBufferedMs: 1_000 },
+  { channelId: 'fake.b', minSamples: 200, maxBufferedMs: 1_000 },
+  { channelId: 'shapes.signal', minSamples: 200, maxBufferedMs: 1_000 },
+  { channelId: 'interval.label', minSamples: 1, maxBufferedMs: 500 },
+  { channelId: 'activity.label', minSamples: 1, maxBufferedMs: 500 },
+] as const;
+const SimulationSpeedOptions = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 6, 8] as const;
+
 let sessionId = 'sensync2-local';
+let profile: UiGatewayProfile = 'fake';
 let flags: UiFlagSnapshot = {};
 let flagVersion = 0;
 let nextStreamNumericId = 1;
 const streamsById = new Map<string, UiStreamDeclaration>();
 
-function baseSchema(): UiSchema {
+function makeFakeRecordingStartPayload(): Record<string, unknown> {
+  return {
+    writer: 'local',
+    filenameTemplate: '{testie}-{startDateTime}',
+    // Пока UI умеет только кнопки, поэтому metadata в demo-профиле фиксированные.
+    metadata: {
+      testie: 'fake-demo',
+      profile: 'fake',
+    },
+    channels: FakeRecordingChannels.map((item) => ({ ...item })),
+  };
+}
+
+function makeSimulationSpeedControl(adapterId: string, speed: number): UiControlAction {
+  const label = `${speed}x`;
+  const activeLabel = `${speed}x ✓`;
+  const pausedOrDisconnected: UiControlWhen = {
+    or: [
+      { flag: `adapter.${adapterId}.state`, eq: 'disconnected' },
+      { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+      { flag: `adapter.${adapterId}.state`, eq: 'paused' },
+    ],
+  };
+
+  const variants: UiControlVariant[] = [
+    {
+      when: {
+        and: [
+          pausedOrDisconnected,
+          { flag: `simulation.${adapterId}.speed`, eq: speed },
+        ],
+      },
+      label: activeLabel,
+      commandType: EventTypes.simulationSpeedSetRequest,
+      payload: { adapterId, speed },
+      disabled: true,
+    },
+    {
+      when: pausedOrDisconnected,
+      label,
+      commandType: EventTypes.simulationSpeedSetRequest,
+      payload: { adapterId, speed },
+      disabled: false,
+    },
+    {
+      when: {
+        or: [
+          { flag: `adapter.${adapterId}.state`, eq: 'connecting' },
+          { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+        ],
+      },
+      label,
+      disabled: true,
+    },
+  ];
+
+  return {
+    id: `speed-${String(speed).replace('.', '_')}`,
+    kind: 'button',
+    label,
+    disabled: true,
+    variants,
+  };
+}
+
+function makeSimulationControlsWidget(adapterId: string, title: string): UiSchema['widgets'][number] {
+  return {
+    kind: 'controls',
+    id: 'controls-main',
+    title,
+    controls: [
+      {
+        id: `toggle-${adapterId}`,
+        kind: 'button',
+        label: 'Подключить simulation',
+        commandType: EventTypes.adapterConnectRequest,
+        payload: { adapterId },
+        variants: [
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+            label: 'Пауза simulation',
+            commandType: EventTypes.simulationPauseRequest,
+            payload: { adapterId },
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'paused' },
+            label: 'Продолжить simulation',
+            commandType: EventTypes.simulationResumeRequest,
+            payload: { adapterId },
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'connecting' },
+            label: 'Подключение simulation...',
+            disabled: true,
+            isLoading: true,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+            label: 'Отключение simulation...',
+            disabled: true,
+            isLoading: true,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnected' },
+            label: 'Подключить simulation',
+            commandType: EventTypes.adapterConnectRequest,
+            payload: { adapterId },
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'failed' },
+            label: 'Simulation недоступна',
+            disabled: true,
+          },
+        ],
+      },
+      {
+        id: `disconnect-${adapterId}`,
+        kind: 'button',
+        label: 'Отключить simulation',
+        hidden: true,
+        variants: [
+          {
+            when: {
+              or: [
+                { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+                { flag: `adapter.${adapterId}.state`, eq: 'paused' },
+              ],
+            },
+            label: 'Отключить simulation',
+            commandType: EventTypes.adapterDisconnectRequest,
+            payload: { adapterId },
+            hidden: false,
+            disabled: false,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+            label: 'Отключение simulation...',
+            hidden: false,
+            disabled: true,
+            isLoading: true,
+          },
+        ],
+      },
+      ...SimulationSpeedOptions.map((speed) => makeSimulationSpeedControl(adapterId, speed)),
+    ],
+  };
+}
+
+function fakeSchema(): UiSchema {
   return {
     version: 1,
     pages: [
@@ -34,19 +203,16 @@ function baseSchema(): UiSchema {
         widgetIds: [
           'controls-main',
           'status-main',
-          'chart-emg',
-          'chart-rr',
-          'chart-moxy-smo2',
-          'chart-moxy-thb',
-          'chart-power',
-          'chart-lactate',
+          'chart-fake-a1',
+          'chart-fake-a2',
+          'chart-fake-b',
           'telemetry-main',
         ],
         widgetRows: [
           ['controls-main', 'status-main'],
-          ['chart-emg', 'chart-rr'],
-          ['chart-moxy-smo2', 'chart-moxy-thb'],
-          ['chart-power', 'chart-lactate'],
+          ['chart-fake-a1'],
+          ['chart-fake-a2'],
+          ['chart-fake-b'],
           ['telemetry-main'],
         ],
       },
@@ -55,38 +221,227 @@ function baseSchema(): UiSchema {
       {
         kind: 'controls',
         id: 'controls-main',
-        title: 'Управление Replay',
+        title: 'Управление Fake',
         controls: [
           {
-            id: 'toggle-replay',
+            id: 'toggle-fake',
             kind: 'button',
-            label: 'Запустить replay',
+            label: 'Подключить fake',
             commandType: EventTypes.adapterConnectRequest,
-            payload: { adapterId: 'velo-replay' },
+            payload: { adapterId: 'fake' },
             variants: [
               {
-                when: { flag: 'adapter.velo-replay.state', eq: 'connected' },
-                label: 'Остановить replay',
+                when: { flag: 'adapter.fake.state', eq: 'connected' },
+                label: 'Отключить fake',
                 commandType: EventTypes.adapterDisconnectRequest,
-                payload: { adapterId: 'velo-replay' },
+                payload: { adapterId: 'fake' },
               },
               {
-                when: { flag: 'adapter.velo-replay.state', eq: 'connecting' },
-                label: 'Запуск replay...',
+                when: { flag: 'adapter.fake.state', eq: 'connecting' },
+                label: 'Подключение fake...',
                 disabled: true,
                 isLoading: true,
               },
               {
-                when: { flag: 'adapter.velo-replay.state', eq: 'disconnecting' },
-                label: 'Остановка replay...',
+                when: { flag: 'adapter.fake.state', eq: 'disconnecting' },
+                label: 'Отключение fake...',
                 disabled: true,
                 isLoading: true,
               },
               {
-                when: { flag: 'adapter.velo-replay.state', eq: 'disconnected' },
-                label: 'Запустить replay',
+                when: { flag: 'adapter.fake.state', eq: 'disconnected' },
+                label: 'Подключить fake',
                 commandType: EventTypes.adapterConnectRequest,
-                payload: { adapterId: 'velo-replay' },
+                payload: { adapterId: 'fake' },
+              },
+            ],
+          },
+          {
+            id: 'toggle-shapes',
+            kind: 'button',
+            label: 'Подключить shapes',
+            commandType: EventTypes.adapterConnectRequest,
+            payload: { adapterId: 'shapes' },
+            variants: [
+              {
+                when: { flag: 'adapter.shapes.state', eq: 'connected' },
+                label: 'Отключить shapes',
+                commandType: EventTypes.adapterDisconnectRequest,
+                payload: { adapterId: 'shapes' },
+              },
+              {
+                when: { flag: 'adapter.shapes.state', eq: 'connecting' },
+                label: 'Подключение shapes...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: 'adapter.shapes.state', eq: 'disconnecting' },
+                label: 'Отключение shapes...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: 'adapter.shapes.state', eq: 'disconnected' },
+                label: 'Подключить shapes',
+                commandType: EventTypes.adapterConnectRequest,
+                payload: { adapterId: 'shapes' },
+              },
+            ],
+          },
+          {
+            id: 'shape-sine',
+            kind: 'button',
+            label: 'Форма sine',
+            disabled: true,
+            variants: [
+              {
+                when: { flag: 'adapter.shapes.state', eq: 'connected' },
+                label: 'Форма sine',
+                commandType: EventTypes.shapeGenerateRequest,
+                payload: { shapeName: 'sine' },
+                disabled: false,
+              },
+            ],
+          },
+          {
+            id: 'shape-triangle',
+            kind: 'button',
+            label: 'Форма triangle',
+            disabled: true,
+            variants: [
+              {
+                when: { flag: 'adapter.shapes.state', eq: 'connected' },
+                label: 'Форма triangle',
+                commandType: EventTypes.shapeGenerateRequest,
+                payload: { shapeName: 'triangle' },
+                disabled: false,
+              },
+            ],
+          },
+          {
+            id: 'shape-pulse',
+            kind: 'button',
+            label: 'Форма pulse',
+            disabled: true,
+            variants: [
+              {
+                when: { flag: 'adapter.shapes.state', eq: 'connected' },
+                label: 'Форма pulse',
+                commandType: EventTypes.shapeGenerateRequest,
+                payload: { shapeName: 'pulse' },
+                disabled: false,
+              },
+            ],
+          },
+          {
+            id: 'toggle-interval',
+            kind: 'button',
+            label: 'Интервал недоступен',
+            disabled: true,
+            variants: [
+              {
+                when: {
+                  and: [
+                    { flag: 'adapter.fake.state', eq: 'connected' },
+                    { flag: 'interval.active', eq: false },
+                  ],
+                },
+                label: 'Старт интервала',
+                commandType: EventTypes.intervalStart,
+                payload: {},
+                disabled: false,
+              },
+              {
+                when: {
+                  and: [
+                    { flag: 'adapter.fake.state', eq: 'connected' },
+                    { flag: 'interval.active', eq: true },
+                  ],
+                },
+                label: 'Стоп интервала',
+                commandType: EventTypes.intervalStop,
+                payload: {},
+                disabled: false,
+              },
+            ],
+          },
+          {
+            id: 'toggle-recording',
+            kind: 'button',
+            label: 'Запись недоступна',
+            disabled: true,
+            variants: [
+              {
+                when: {
+                  and: [
+                    { flag: 'adapter.fake.state', eq: 'connected' },
+                    {
+                      or: [
+                        { flag: 'recording.local.state', eq: 'idle' },
+                        { flag: 'recording.local.state', eq: 'failed' },
+                      ],
+                    },
+                  ],
+                },
+                label: 'Начать запись',
+                commandType: EventTypes.recordingStart,
+                payload: makeFakeRecordingStartPayload(),
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'recording' },
+                label: 'Пауза записи',
+                commandType: EventTypes.recordingPause,
+                payload: { writer: 'local' },
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'paused' },
+                label: 'Продолжить запись',
+                commandType: EventTypes.recordingResume,
+                payload: { writer: 'local' },
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'starting' },
+                label: 'Открытие файла...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'stopping' },
+                label: 'Закрытие файла...',
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+          {
+            id: 'stop-recording',
+            kind: 'button',
+            label: 'Завершить запись',
+            hidden: true,
+            variants: [
+              {
+                when: {
+                  or: [
+                    { flag: 'recording.local.state', eq: 'recording' },
+                    { flag: 'recording.local.state', eq: 'paused' },
+                  ],
+                },
+                label: 'Завершить запись',
+                commandType: EventTypes.recordingStop,
+                payload: { writer: 'local' },
+                hidden: false,
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'stopping' },
+                label: 'Закрытие файла...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
               },
             ],
           },
@@ -97,130 +452,102 @@ function baseSchema(): UiSchema {
         id: 'status-main',
         title: 'Статусы',
         flagKeys: [
-          'adapter.velo-replay.state',
+          'adapter.fake.state',
+          'adapter.shapes.state',
+          'interval.active',
+          'activity.active',
+          'recording.local.state',
+          'recording.local.filePath',
         ],
       },
       {
         kind: 'chart',
-        id: 'chart-emg',
-        title: 'EMG + Activity',
+        id: 'chart-fake-a1',
+        title: 'Fake A1 + Shapes + Interval',
         renderer: 'echarts',
         height: 300,
         timeWindowMs: 20000,
         showLegend: true,
-        yAxis: { min: -0.00035, max: 0.00035, label: 'mV (raw)' },
+        yAxis: { min: -1.2, max: 1.2, label: 'a.u.' },
         series: [
           {
             type: 'line',
-            streamId: 'trigno.avanti',
-            label: 'trigno.avanti',
+            streamId: 'fake.a1',
+            label: 'fake.a1',
             color: '#58a6ff',
-            lineWidth: 1,
+            lineWidth: 2,
+          },
+          {
+            type: 'line',
+            streamId: 'shapes.signal',
+            label: 'shapes.signal',
+            color: '#2f9e44',
+            lineWidth: 2,
+            lineStyle: 'dashed',
           },
           {
             type: 'interval',
-            streamId: 'trigno.avanti.activity',
-            label: 'Activity',
+            streamId: 'interval.label',
+            label: 'interval',
             color: '#ff6b6b',
             alpha: 0.14,
-            // В исходном `test.h5` activity хранится маркерами 0/1, где 0 = start, 1 = end.
-            startLabel: 0,
-            endLabel: 1,
+            startLabel: 1,
+            endLabel: 0,
           },
         ],
       },
       {
         kind: 'chart',
-        id: 'chart-rr',
-        title: 'Zephyr RR',
+        id: 'chart-fake-a2',
+        title: 'Fake A2 + Shapes + Interval',
         renderer: 'echarts',
         height: 300,
         timeWindowMs: 20000,
         showLegend: true,
-        yAxis: { min: 0.2, max: 1.2, label: 'sec' },
+        yAxis: { min: -1.2, max: 1.2, label: 'a.u.' },
         series: [
           {
             type: 'line',
-            streamId: 'zephyr.rr',
-            label: 'zephyr.rr',
+            streamId: 'fake.a2',
+            label: 'fake.a2',
             color: '#58a6ff',
             lineWidth: 2,
           },
-        ],
-      },
-      {
-        kind: 'chart',
-        id: 'chart-moxy-smo2',
-        title: 'Moxy SmO2',
-        renderer: 'echarts',
-        height: 300,
-        timeWindowMs: 120000,
-        showLegend: true,
-        yAxis: { min: 30, max: 90, label: '%' },
-        series: [
           {
             type: 'line',
-            streamId: 'moxy.smo2',
-            label: 'moxy.smo2',
-            color: '#12b886',
+            streamId: 'shapes.signal',
+            label: 'shapes.signal',
+            color: '#2f9e44',
             lineWidth: 2,
+            lineStyle: 'dashed',
+          },
+          {
+            type: 'interval',
+            streamId: 'interval.label',
+            label: 'interval',
+            color: '#ff6b6b',
+            alpha: 0.14,
+            startLabel: 1,
+            endLabel: 0,
           },
         ],
       },
       {
         kind: 'chart',
-        id: 'chart-moxy-thb',
-        title: 'Moxy tHb',
+        id: 'chart-fake-b',
+        title: 'Fake B',
         renderer: 'echarts',
         height: 300,
-        timeWindowMs: 120000,
+        timeWindowMs: 20000,
         showLegend: true,
-        yAxis: { min: 11.2, max: 12.2, label: 'g/dL' },
+        yAxis: { min: -0.7, max: 0.7, label: 'a.u.' },
         series: [
           {
             type: 'line',
-            streamId: 'moxy.thb',
-            label: 'moxy.thb',
-            color: '#f08c00',
+            streamId: 'fake.b',
+            label: 'fake.b',
+            color: '#f59f00',
             lineWidth: 2,
-          },
-        ],
-      },
-      {
-        kind: 'chart',
-        id: 'chart-power',
-        title: 'Power',
-        renderer: 'echarts',
-        height: 300,
-        timeWindowMs: 120000,
-        showLegend: true,
-        yAxis: { min: 0, max: 180, label: 'W' },
-        series: [
-          {
-            type: 'line',
-            streamId: 'power.watts',
-            label: 'power.watts',
-            color: '#f03e3e',
-            lineWidth: 2,
-          },
-        ],
-      },
-      {
-        kind: 'chart',
-        id: 'chart-lactate',
-        title: 'Lactate',
-        renderer: 'echarts',
-        height: 300,
-        timeWindowMs: 120000,
-        showLegend: true,
-        yAxis: { min: 0, max: 6, label: 'mmol/L' },
-        series: [
-          {
-            type: 'scatter',
-            streamId: 'lactate.label',
-            label: 'lactate.label',
-            color: '#e64980',
-            size: 8,
           },
         ],
       },
@@ -231,6 +558,149 @@ function baseSchema(): UiSchema {
       },
     ],
   };
+}
+
+function fakeHdf5SimulationSchema(): UiSchema {
+  const adapterId = 'fake-hdf5-simulation';
+  return {
+    version: 1,
+    pages: [
+      {
+        id: 'main',
+        title: 'Main',
+        widgetIds: [
+          'controls-main',
+          'status-main',
+          'chart-fake-a1',
+          'chart-fake-a2',
+          'chart-fake-b',
+          'telemetry-main',
+        ],
+        widgetRows: [
+          ['controls-main', 'status-main'],
+          ['chart-fake-a1'],
+          ['chart-fake-a2'],
+          ['chart-fake-b'],
+          ['telemetry-main'],
+        ],
+      },
+    ],
+    widgets: [
+      makeSimulationControlsWidget(adapterId, 'Управление Fake HDF5 Simulation'),
+      {
+        kind: 'status',
+        id: 'status-main',
+        title: 'Статусы',
+        flagKeys: [
+          `adapter.${adapterId}.state`,
+          `simulation.${adapterId}.speed`,
+          `simulation.${adapterId}.filePath`,
+          `simulation.${adapterId}.message`,
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-fake-a1',
+        title: 'Fake A1 + Shapes + Interval',
+        renderer: 'echarts',
+        height: 300,
+        timeWindowMs: 20000,
+        showLegend: true,
+        yAxis: { min: -1.2, max: 1.2, label: 'a.u.' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'fake.a1',
+            label: 'fake.a1',
+            color: '#58a6ff',
+            lineWidth: 2,
+          },
+          {
+            type: 'line',
+            streamId: 'shapes.signal',
+            label: 'shapes.signal',
+            color: '#2f9e44',
+            lineWidth: 2,
+            lineStyle: 'dashed',
+          },
+          {
+            type: 'interval',
+            streamId: 'interval.label',
+            label: 'interval',
+            color: '#ff6b6b',
+            alpha: 0.14,
+            startLabel: 1,
+            endLabel: 0,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-fake-a2',
+        title: 'Fake A2 + Shapes + Interval',
+        renderer: 'echarts',
+        height: 300,
+        timeWindowMs: 20000,
+        showLegend: true,
+        yAxis: { min: -1.2, max: 1.2, label: 'a.u.' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'fake.a2',
+            label: 'fake.a2',
+            color: '#58a6ff',
+            lineWidth: 2,
+          },
+          {
+            type: 'line',
+            streamId: 'shapes.signal',
+            label: 'shapes.signal',
+            color: '#2f9e44',
+            lineWidth: 2,
+            lineStyle: 'dashed',
+          },
+          {
+            type: 'interval',
+            streamId: 'interval.label',
+            label: 'interval',
+            color: '#ff6b6b',
+            alpha: 0.14,
+            startLabel: 1,
+            endLabel: 0,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-fake-b',
+        title: 'Fake B',
+        renderer: 'echarts',
+        height: 300,
+        timeWindowMs: 20000,
+        showLegend: true,
+        yAxis: { min: -0.7, max: 0.7, label: 'a.u.' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'fake.b',
+            label: 'fake.b',
+            color: '#f59f00',
+            lineWidth: 2,
+          },
+        ],
+      },
+      {
+        kind: 'telemetry',
+        id: 'telemetry-main',
+        title: 'Telemetry',
+      },
+    ],
+  };
+}
+
+function schemaForProfile(currentProfile: UiGatewayProfile): UiSchema {
+  if (currentProfile === 'fake-hdf5-simulation') return fakeHdf5SimulationSchema();
+  return fakeSchema();
 }
 
 function emitControl(message: UiControlMessage, clientId?: string): Omit<FactEvent<UiControlOutPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
@@ -289,6 +759,11 @@ export default definePlugin({
     subscriptions: [
       { type: 'signal.batch', kind: 'data', priority: 'data' },
       { type: EventTypes.adapterStateChanged, kind: 'fact', priority: 'system' },
+      { type: EventTypes.intervalStateChanged, kind: 'fact', priority: 'system' },
+      { type: EventTypes.activityStateChanged, kind: 'fact', priority: 'system' },
+      { type: EventTypes.recordingStateChanged, kind: 'fact', priority: 'system' },
+      { type: EventTypes.recordingError, kind: 'fact', priority: 'system' },
+      { type: EventTypes.simulationStateChanged, kind: 'fact', priority: 'system' },
       { type: EventTypes.runtimeTelemetrySnapshot, kind: 'fact', priority: 'system' },
       { type: EventTypes.uiClientConnected, kind: 'fact', priority: 'system' },
     ],
@@ -303,6 +778,9 @@ export default definePlugin({
     if (cfg?.sessionId) {
       sessionId = cfg.sessionId;
     }
+    if (cfg?.profile === 'fake' || cfg?.profile === 'fake-hdf5-simulation') {
+      profile = cfg.profile;
+    }
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.uiClientConnected) {
@@ -310,7 +788,7 @@ export default definePlugin({
       const initMsg: UiControlMessage = {
         type: 'ui.init',
         sessionId,
-        schema: baseSchema(),
+        schema: schemaForProfile(profile),
         streams: [...streamsById.values()],
         flags,
         clock: {
@@ -323,8 +801,56 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.adapterStateChanged) {
-      const payload = (event as FactEvent<{ adapterId: string; state: string }>).payload;
+      const payload = (event as FactEvent<AdapterStateChangedPayload>).payload;
       const { patch, version } = patchFlags({ [`adapter.${payload.adapterId}.state`]: payload.state });
+      await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      return;
+    }
+
+    if (event.type === EventTypes.intervalStateChanged) {
+      const payload = (event as FactEvent<{ active: boolean }>).payload;
+      const { patch, version } = patchFlags({ 'interval.active': payload.active });
+      await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      return;
+    }
+
+    if (event.type === EventTypes.activityStateChanged) {
+      const payload = (event as FactEvent<{ active: boolean }>).payload;
+      const { patch, version } = patchFlags({ 'activity.active': payload.active });
+      await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      return;
+    }
+
+    if (event.type === EventTypes.recordingStateChanged) {
+      const payload = (event as FactEvent<RecordingStateChangedPayload>).payload;
+      const { patch, version } = patchFlags({
+        [`recording.${payload.writer}.state`]: payload.state,
+        [`recording.${payload.writer}.filePath`]: payload.filePath ?? null,
+        [`recording.${payload.writer}.message`]: payload.message ?? null,
+      });
+      await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      return;
+    }
+
+    if (event.type === EventTypes.recordingError) {
+      const payload = (event as FactEvent<RecordingErrorPayload>).payload;
+      await ctx.emit(emitControl({
+        type: 'ui.error',
+        code: payload.code,
+        message: payload.message,
+        pluginId: 'hdf5-recorder',
+      }));
+      return;
+    }
+
+    if (event.type === EventTypes.simulationStateChanged) {
+      const payload = (event as FactEvent<SimulationStateChangedPayload>).payload;
+      const { patch, version } = patchFlags({
+        [`simulation.${payload.adapterId}.speed`]: payload.speed,
+        [`simulation.${payload.adapterId}.batchMs`]: payload.batchMs,
+        [`simulation.${payload.adapterId}.filePath`]: payload.filePath,
+        [`simulation.${payload.adapterId}.message`]: payload.message ?? null,
+      });
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
       return;
     }
@@ -341,7 +867,6 @@ export default definePlugin({
       if (declared) {
         await ctx.emit(emitControl({ type: 'ui.stream.declare', stream: declared }));
       }
-      // В `v1` не храним replay для новых клиентов, только live-stream. Историю добавим позже в `v2`.
       const frame = encodeUiSignalBatchFrameFromEvent(signalEvent, stream.numericId);
       await ctx.emit(emitBinary(frame));
     }
@@ -351,5 +876,7 @@ export default definePlugin({
     flags = {};
     flagVersion = 0;
     nextStreamNumericId = 1;
+    sessionId = 'sensync2-local';
+    profile = 'fake';
   },
 });

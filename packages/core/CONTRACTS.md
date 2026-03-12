@@ -96,7 +96,35 @@
 - `sampleFormat` одного `channelId` внутри одного файла менять нельзя;
 - динамические `subscribe/unsubscribe` на `pause/resume` пока не поддерживаются runtime и отложены на будущий этап.
 
-## 5. Plugin Manifest
+## 5. Simulation Events
+
+Симуляция из записанного `HDF5` управляется отдельным command/fact слоем.
+
+Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
+
+Текущий `v1` контракт:
+
+- `simulation.pause.request`
+  - останавливает цикл симуляции;
+  - не меняет файл-источник и не сбрасывает курсоры.
+- `simulation.resume.request`
+  - продолжает симуляцию из текущего окна.
+- `simulation.speed.set.request`
+  - меняет speed только на одно из разрешённых значений;
+  - при активной симуляции должен пересобрать внутренний timer cadence.
+- `simulation.state.changed`
+  - несёт `adapterId`, `state`, `speed`, `batchMs` и `filePath`;
+  - нужен для UI и отладки профиля симуляции.
+
+Ограничения `v1`:
+
+- источник данных только новый on-disk формат recorder'а;
+- старый replay bundle больше не поддерживается;
+- `connect` всегда начинает чтение файла с начала;
+- `disconnect` сбрасывает курсоры;
+- `seek` и `loop` не реализованы.
+
+## 6. Plugin Manifest
 
 Контракт описан в [packages/core/src/plugin.ts](src/plugin.ts).
 
@@ -120,7 +148,7 @@
   - `coalesce-latest-per-stream`
     - допускается замена старого `signal.batch` более новым для того же stream.
 
-## 6. Worker Protocol
+## 7. Worker Protocol
 
 Протокол описан в [packages/core/src/worker-protocol.ts](src/worker-protocol.ts).
 
@@ -139,7 +167,7 @@
 - Таймеры плагина не выполняют бизнес-логику напрямую.
 - Таймеры только эмитят новые события обратно в ту же последовательную очередь.
 
-## 7. UI Schema
+## 8. UI Schema
 
 Базовые типы описаны в [packages/core/src/ui.ts](src/ui.ts).
 
@@ -159,7 +187,7 @@
   - `scatter` — точечная серия;
   - `interval` — интервальная overlay-серия поверх label-stream.
 
-## 8. Control Variants
+## 9. Control Variants
 
 `UiControlAction` и `UiControlVariant` описывают declarative-кнопки.
 
@@ -177,7 +205,7 @@
 - `or`
 - `not`
 
-## 9. UI Wire
+## 10. UI Wire
 
 Бинарный wire описан в [packages/core/src/ui-wire.ts](src/ui-wire.ts).
 
@@ -198,8 +226,8 @@
 - нужно проверять encoder и decoder одновременно;
 - нужно проверять `apps/client` и `packages/client-runtime`.
 
-## 10. Что документировать отдельно
+## 11. Что документировать отдельно
 
 - Общие контракты системы — в этом файле.
 - Конкретную demo-схему `ui-gateway` — в [packages/plugins-ui-gateway/SCHEMA.md](../plugins-ui-gateway/SCHEMA.md).
-- Формат replay bundle — в [packages/plugins-fake/REPLAY_FORMAT.md](../plugins-fake/REPLAY_FORMAT.md).
+- On-disk формат `HDF5` recorder'а и ожидания симулятора — в [packages/plugins-hdf5/HDF5_FORMAT.md](../plugins-hdf5/HDF5_FORMAT.md).

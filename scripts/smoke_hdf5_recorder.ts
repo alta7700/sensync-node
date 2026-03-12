@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync } from 'node:fs';
 import os from 'node:os';
-import path from 'node:path';
+import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import h5wasm from 'h5wasm/node';
-import { RuntimeHost } from '../apps/runtime/src/runtime-host.ts';
-import { EventTypes } from '../packages/core/src/event-types.ts';
+import { RuntimeHost } from '../apps/runtime/src/runtime-host';
+import { EventTypes, type UiCommandMessage } from '../packages/core/src/index';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -16,6 +16,14 @@ function wait(ms: number): Promise<void> {
 function repoModuleUrl(relativePathFromRepoRoot: string): string {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   return pathToFileURL(path.join(repoRoot, relativePathFromRepoRoot)).href;
+}
+
+function uiCommand(eventType: string, payload: Record<string, unknown>): UiCommandMessage {
+  return {
+    type: 'ui.command',
+    eventType,
+    payload,
+  };
 }
 
 function assertMonotonic(values: Float64Array, label: string): void {
@@ -53,17 +61,17 @@ async function main(): Promise<void> {
   await runtime.start();
 
   try {
-    await runtime.sendUiCommand({
-      eventType: EventTypes.adapterConnectRequest,
-      payload: {
+    await runtime.sendUiCommand(uiCommand(
+      EventTypes.adapterConnectRequest,
+      {
         adapterId: 'fake',
         requestId: 'connect-1',
       },
-    }, 'smoke');
+    ), 'smoke');
 
-    await runtime.sendUiCommand({
-      eventType: EventTypes.recordingStart,
-      payload: {
+    await runtime.sendUiCommand(uiCommand(
+      EventTypes.recordingStart,
+      {
         writer: 'local',
         requestId: 'recording-1',
         filenameTemplate: '{fio}-{startDateTime}',
@@ -77,45 +85,45 @@ async function main(): Promise<void> {
           { channelId: 'fake.b', minSamples: 40, maxBufferedMs: 300 },
         ],
       },
-    }, 'smoke');
+    ), 'smoke');
 
     await wait(400);
 
-    await runtime.sendUiCommand({
-      eventType: EventTypes.recordingPause,
-      payload: {
+    await runtime.sendUiCommand(uiCommand(
+      EventTypes.recordingPause,
+      {
         writer: 'local',
         requestId: 'pause-1',
       },
-    }, 'smoke');
+    ), 'smoke');
 
     await wait(200);
 
-    await runtime.sendUiCommand({
-      eventType: EventTypes.recordingResume,
-      payload: {
+    await runtime.sendUiCommand(uiCommand(
+      EventTypes.recordingResume,
+      {
         writer: 'local',
         requestId: 'resume-1',
       },
-    }, 'smoke');
+    ), 'smoke');
 
     await wait(400);
 
-    await runtime.sendUiCommand({
-      eventType: EventTypes.recordingStop,
-      payload: {
+    await runtime.sendUiCommand(uiCommand(
+      EventTypes.recordingStop,
+      {
         writer: 'local',
         requestId: 'stop-1',
       },
-    }, 'smoke');
+    ), 'smoke');
 
-    await runtime.sendUiCommand({
-      eventType: EventTypes.adapterDisconnectRequest,
-      payload: {
+    await runtime.sendUiCommand(uiCommand(
+      EventTypes.adapterDisconnectRequest,
+      {
         adapterId: 'fake',
         requestId: 'disconnect-1',
       },
-    }, 'smoke');
+    ), 'smoke');
   } finally {
     await runtime.stop();
   }
@@ -158,6 +166,11 @@ async function main(): Promise<void> {
     assert(a1TimestampsValue.length > 0, 'fake.a1/timestamps пуст');
     assert.equal(a1TimestampsValue.length, a1ValuesValue.length, 'fake.a1 timestamps/values mismatch');
     assert.equal(bTimestampsValue.length, bValuesValue.length, 'fake.b timestamps/values mismatch');
+
+    assert.equal(fakeA1.get_attribute('streamId', true), 'fake.a1', 'attr streamId для fake.a1 некорректен');
+    assert.equal(fakeA1.get_attribute('sampleFormat', true), 'f32', 'attr sampleFormat для fake.a1 некорректен');
+    assert.equal(fakeA1.get_attribute('frameKind', true), 'uniform-signal-batch', 'attr frameKind для fake.a1 некорректен');
+    assert.equal(fakeA1.get_attribute('sampleRateHz', true), 200, 'attr sampleRateHz для fake.a1 некорректен');
 
     assertMonotonic(a1TimestampsValue, 'fake.a1');
     assertMonotonic(bTimestampsValue, 'fake.b');

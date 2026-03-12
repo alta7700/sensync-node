@@ -1,9 +1,10 @@
-import path from 'node:path';
+import * as path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import h5wasm from 'h5wasm/node';
 import {
   EventTypes,
   type CommandEvent,
+  type FrameKind,
   type FactEvent,
   type RecordingChannelConfig,
   type RecordingErrorPayload,
@@ -36,6 +37,8 @@ type H5Dataset = InstanceType<typeof h5wasm.Dataset>;
 interface ChannelRuntimeState {
   config: RecordingChannelConfig;
   sampleFormat: SampleFormat | null;
+  frameKind: FrameKind | null;
+  sampleRateHz: number | null;
   streamId: string | null;
   units: string | null;
   timestampsChunks: Float64Array[];
@@ -252,6 +255,8 @@ function validateChannels(channels: RecordingChannelConfig[]): Map<string, Chann
     result.set(item.channelId, {
       config: item,
       sampleFormat: null,
+      frameKind: null,
+      sampleRateHz: null,
       streamId: null,
       units: null,
       timestampsChunks: [],
@@ -305,6 +310,18 @@ function appendChunk(channel: ChannelRuntimeState, payload: SignalBatchEvent['pa
     );
   }
 
+  if (channel.frameKind === null) {
+    channel.frameKind = payload.frameKind;
+  } else if (channel.frameKind !== payload.frameKind) {
+    throw new Error(
+      `frameKind для ${payload.channelId} изменился с ${channel.frameKind} на ${payload.frameKind}`,
+    );
+  }
+
+  if (channel.sampleRateHz === null && payload.sampleRateHz !== undefined) {
+    channel.sampleRateHz = payload.sampleRateHz;
+  }
+
   if (channel.streamId === null) {
     channel.streamId = payload.streamId;
   }
@@ -349,7 +366,7 @@ function ensureChannelArtifacts(
   activeSession: RecordingSessionState,
   channel: ChannelRuntimeState,
 ): void {
-  if (channel.sampleFormat === null || channel.streamId === null) {
+  if (channel.sampleFormat === null || channel.frameKind === null || channel.streamId === null) {
     throw new Error(`Канал ${channel.config.channelId} ещё не инициализирован данными`);
   }
   if (channel.group && channel.timestampsDataset && channel.valuesDataset) {
@@ -361,8 +378,12 @@ function ensureChannelArtifacts(
   createScalarAttribute(group, 'channelId', channel.config.channelId);
   createScalarAttribute(group, 'streamId', channel.streamId);
   createScalarAttribute(group, 'sampleFormat', channel.sampleFormat);
+  createScalarAttribute(group, 'frameKind', channel.frameKind);
   createScalarAttribute(group, 'minSamples', channel.config.minSamples);
   createScalarAttribute(group, 'maxBufferedMs', channel.config.maxBufferedMs);
+  if (channel.sampleRateHz !== null) {
+    createScalarAttribute(group, 'sampleRateHz', channel.sampleRateHz);
+  }
   if (channel.units !== null) {
     createScalarAttribute(group, 'units', channel.units);
   }

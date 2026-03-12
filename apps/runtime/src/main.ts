@@ -1,9 +1,10 @@
 import { RuntimeHost } from './runtime-host.ts';
-import { makeDefaultPluginDescriptors } from './default-plugins.ts';
+import { makePluginDescriptors, resolveLaunchProfile } from './default-plugins.ts';
 
 async function main(): Promise<void> {
+  const profile = resolveLaunchProfile(process.env.SENSYNC2_PROFILE);
   const runtime = new RuntimeHost({
-    plugins: makeDefaultPluginDescriptors(),
+    plugins: makePluginDescriptors(profile),
     uiSinks: {
       onControl(payload) {
         console.log('[UI control]', payload.message.type);
@@ -15,7 +16,7 @@ async function main(): Promise<void> {
   });
 
   await runtime.start();
-  console.log('Runtime started. Press Ctrl+C to stop.');
+  console.log(`Runtime started with profile "${profile}". Press Ctrl+C to stop.`);
 
   process.on('SIGINT', async () => {
     await runtime.stop();

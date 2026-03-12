@@ -1,8 +1,8 @@
-import path from 'node:path';
+import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import type { UiCommandMessage } from '@sensync2/core';
-import { RuntimeHost, makeDefaultPluginDescriptors } from '@sensync2/runtime';
+import { RuntimeHost, makePluginDescriptors, resolveLaunchProfile } from '@sensync2/runtime';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const preloadPath = path.join(__dirname, 'preload.cjs');
@@ -114,8 +114,11 @@ async function setupIpc(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
+  const profile = resolveLaunchProfile(process.env.SENSYNC2_PROFILE);
+  console.log(`[desktop] Стартуем профиль "${profile}"`);
+
   runtime = new RuntimeHost({
-    plugins: makeDefaultPluginDescriptors(),
+    plugins: makePluginDescriptors(profile),
     uiSinks: {
       onControl(payload) {
         broadcastControl(payload.message, payload.clientId);

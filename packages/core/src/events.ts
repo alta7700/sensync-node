@@ -76,7 +76,33 @@ export interface AdapterDisconnectRequestPayload {
 
 export interface AdapterStateChangedPayload {
   adapterId: string;
-  state: 'disconnected' | 'connecting' | 'connected' | 'disconnecting' | 'failed';
+  state: 'disconnected' | 'connecting' | 'connected' | 'paused' | 'disconnecting' | 'failed';
+  requestId?: string;
+  message?: string;
+}
+
+export interface SimulationPauseRequestPayload {
+  adapterId: string;
+  requestId?: string;
+}
+
+export interface SimulationResumeRequestPayload {
+  adapterId: string;
+  requestId?: string;
+}
+
+export interface SimulationSpeedSetRequestPayload {
+  adapterId: string;
+  speed: number;
+  requestId?: string;
+}
+
+export interface SimulationStateChangedPayload {
+  adapterId: string;
+  state: 'disconnected' | 'connecting' | 'connected' | 'paused' | 'disconnecting' | 'failed';
+  speed: number;
+  batchMs: number;
+  filePath: string;
   requestId?: string;
   message?: string;
 }

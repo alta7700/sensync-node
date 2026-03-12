@@ -20,7 +20,7 @@
 - Если папка содержит межмодульный контракт или схему, одного `README.md` недостаточно:
   - для контрактов добавлять `CONTRACTS.md`;
   - для конкретных materialized схем добавлять `SCHEMA.md`;
-  - для форматов данных добавлять отдельный файл вроде `REPLAY_FORMAT.md`.
+  - для форматов данных добавлять отдельный файл вроде `HDF5_FORMAT.md`.
 
 ## Что не считать модулем
 
@@ -30,7 +30,7 @@
   - `.git/`
   - `.idea/`
   - build-артефакты и кэши (`*.tsbuildinfo`, временные JS/DTS артефакты рядом с TS-файлами)
-- `test.replay/` считать артефактом данных, а не исходным кодом. Его описание поддерживается отдельным `README.md`, но содержимое потоков не редактируется вручную.
+- `recordings/` считать артефактом данных, а не исходным кодом. Его содержимое не редактируется вручную и не должно использоваться как скрытая часть runtime-контракта.
 
 ## Архитектурный фокус
 
@@ -49,15 +49,17 @@
   - `packages/plugin-sdk`
   - `packages/client-runtime`
   - `packages/plugins-fake`
+  - `packages/plugins-hdf5`
   - `packages/plugins-ui-gateway`
   - `apps/runtime`
   - `apps/client`
   - `apps/desktop`
 - При изменении контрактов в `packages/core` обновлять [packages/core/CONTRACTS.md](packages/core/CONTRACTS.md).
 - При изменении materialized UI-схемы `ui-gateway` обновлять [packages/plugins-ui-gateway/SCHEMA.md](packages/plugins-ui-gateway/SCHEMA.md).
-- При изменении replay bundle формата или конвертера обновлять [packages/plugins-fake/REPLAY_FORMAT.md](packages/plugins-fake/REPLAY_FORMAT.md).
+- При изменении HDF5 on-disk формата или семантики симуляции обновлять [packages/plugins-hdf5/HDF5_FORMAT.md](packages/plugins-hdf5/HDF5_FORMAT.md).
 - Если меняется способ запуска, обновлять корневой `README.md` и README затронутого `app`.
-- Если меняется дефолтная demo-конфигурация или replay-источник, обновлять:
+- Если меняется дефолтная demo-конфигурация или источник данных профиля, обновлять:
   - `apps/runtime/README.md`
   - `packages/plugins-fake/README.md`
+  - `packages/plugins-hdf5/README.md`
   - `scripts/README.md`

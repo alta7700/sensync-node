@@ -4,16 +4,15 @@
 
 ## Для чего
 
-- Здесь лежат утилиты подготовки данных и вспомогательные преобразования, которые не должны попадать в runtime или UI.
+- Здесь лежат утилиты smoke/bench и вспомогательные преобразования, которые не должны попадать в runtime или UI.
 
 ## Как работает
 
-- `convert_h5_to_replay.py` конвертирует HDF5-файл в replay bundle с `manifest.json` и бинарными потоками для `veloerg-h5-replay-adapter`.
-- Скрипт не является источником истины для структуры runtime-событий: он только готовит входные данные под уже существующий replay-формат.
+- `smoke_hdf5_recorder.ts` поднимает runtime без UI и проверяет запись fake-данных в новый HDF5 формат.
+- `smoke_fake_hdf5_simulation.ts` проверяет переходный профиль `fake-hdf5-simulation`: fake-графики и simulation-источник из HDF5.
+- `tsconfig.json` закрепляет для IDE и локального `tsc` тот же TypeScript-контекст, что используют runtime-пакеты, чтобы smoke-скрипты не жили в inferred project с ложными ошибками по модульному резолвингу.
 
 ## Взаимодействие
 
-- Используется вместе с `packages/plugins-fake`.
-- Результат работы скрипта потребляет `apps/runtime` через дефолтный набор плагинов.
-- Формат результата описан в [packages/plugins-fake/REPLAY_FORMAT.md](../packages/plugins-fake/REPLAY_FORMAT.md).
-- `smoke_hdf5_recorder.ts` поднимает runtime без UI и прогоняет ручной smoke для `packages/plugins-hdf5`.
+- Скрипты используют `apps/runtime` и плагины из `packages/plugins-fake`, `packages/plugins-hdf5`, `packages/plugins-ui-gateway`.
+- Они не описывают runtime-контракты сами по себе, а только проверяют, что текущие контракты действительно работают вместе.

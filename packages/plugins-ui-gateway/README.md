@@ -9,9 +9,10 @@ UI gateway plugin.
 
 ## Как работает
 
-- Плагин подписывается на `signal.batch`, adapter state, telemetry и другие факты.
+- Плагин подписывается на `signal.batch`, adapter state, recorder state, simulation state, telemetry и другие факты.
 - Он собирает `UiSchema`, flags snapshot/patches и выдаёт binary batches с numeric stream IDs.
 - При подключении UI-клиента отправляет `ui.init` и текущий снимок состояния.
+- Concrete-схема зависит от launch profile (`fake` или `fake-hdf5-simulation`).
 
 ## Взаимодействие
 
@@ -20,4 +21,4 @@ UI gateway plugin.
 
 Дополнительно:
 
-- Текущая concrete-схема UI описана в [packages/plugins-ui-gateway/SCHEMA.md](SCHEMA.md).
+- Concrete-схемы профилей описаны в [packages/plugins-ui-gateway/SCHEMA.md](SCHEMA.md).

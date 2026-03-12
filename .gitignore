@@ -4,5 +4,6 @@ coverage
 .vite
 .DS_Store
 playwright-report
-/test.replay/
+/recordings/
 .idea
+*.tsbuildinfo

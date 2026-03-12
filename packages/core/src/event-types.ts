@@ -7,6 +7,10 @@ export const EventTypes = {
   adapterConnectRequest: 'adapter.connect.request',
   adapterDisconnectRequest: 'adapter.disconnect.request',
   adapterStateChanged: 'adapter.state.changed',
+  simulationPauseRequest: 'simulation.pause.request',
+  simulationResumeRequest: 'simulation.resume.request',
+  simulationSpeedSetRequest: 'simulation.speed.set.request',
+  simulationStateChanged: 'simulation.state.changed',
 
   recordingStart: 'recording.start',
   recordingStop: 'recording.stop',

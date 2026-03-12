@@ -1,23 +1,20 @@
 # packages/plugins-fake
 
-Demo и replay-плагины для `v1`.
+Synthetic demo-плагины для `v1`.
 
 ## Для чего
 
 - Дают тестовую среду для runtime без реального железа.
-- Покрывают адаптеры, процессоры и replay-сценарий для veloerg HDF5.
+- Покрывают synthetic fake-сценарий и базовые processor-примеры.
 
 ## Как работает
 
 - Плагины запускаются как обычные worker-плагины через `plugin-sdk`.
-- Часть плагинов генерирует синтетический поток (`fake`, `shapes`, `interval`), часть строит derived данные (`rolling-min`, `activity-detector`), а `veloerg-h5-replay-adapter` проигрывает подготовленный bundle.
+- Часть плагинов генерирует синтетический поток (`fake`, `shapes`, `interval`), часть строит derived данные (`rolling-min`, `activity-detector`).
+- В `fake` launch profile этот пакет даёт основной demo-runtime.
 
 ## Взаимодействие
 
-- Подключаются в `apps/runtime/src/default-plugins.ts`.
+- Подключаются через `apps/runtime/src/default-plugins.ts` как часть launch profiles.
 - Используют контракты из `packages/core` и `packages/plugin-sdk`.
-- Для replay зависят от результата `scripts/convert_h5_to_replay.py`.
-
-Дополнительно:
-
-- Формат replay bundle описан в [packages/plugins-fake/REPLAY_FORMAT.md](REPLAY_FORMAT.md).
+- Часто используются вместе с `packages/plugins-hdf5` для smoke и demo-записи.
