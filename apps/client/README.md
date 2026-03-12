@@ -5,7 +5,8 @@ React renderer для `sensync2`.
 ## Для чего
 
 - Отрисовывает UI по `UiSchema`, полученной от `ui-gateway`.
-- Показывает графики, статусные виджеты, control-кнопки и telemetry.
+- Показывает графики, статусные виджеты, control-кнопки, локальные modal forms, toast-уведомления и telemetry.
+- В telemetry-виджете отображает как runtime queue snapshot, так и latest plugin metrics.
 - Не содержит runtime-логики и не знает о plugin worker'ах напрямую.
 
 ## Как работает

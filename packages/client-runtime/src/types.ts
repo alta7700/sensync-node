@@ -1,4 +1,13 @@
-import type { DecodedUiSignalFrame, UiCommandMessage, UiControlMessage, UiFlagSnapshot, UiSchema, UiSessionClockInfo, UiStreamDeclaration } from '@sensync2/core';
+import type {
+  DecodedUiSignalFrame,
+  UiCommandMessage,
+  UiControlMessage,
+  UiFlagSnapshot,
+  UiFormOption,
+  UiSchema,
+  UiSessionClockInfo,
+  UiStreamDeclaration,
+} from '@sensync2/core';
 
 export interface ClientTransport {
   connect(): Promise<void>;
@@ -14,6 +23,15 @@ export interface StreamWindowData {
   length: number;
 }
 
+export interface ClientRuntimeNotification {
+  id: string;
+  level: 'error';
+  code: string;
+  message: string;
+  pluginId?: string;
+  createdAtMs: number;
+}
+
 export interface ClientRuntimeStateSnapshot {
   connected: boolean;
   sessionId?: string;
@@ -21,6 +39,8 @@ export interface ClientRuntimeStateSnapshot {
   schema?: UiSchema;
   flags: UiFlagSnapshot;
   streams: UiStreamDeclaration[];
+  formOptions: Record<string, UiFormOption[]>;
+  notifications: ClientRuntimeNotification[];
   telemetry?: Extract<UiControlMessage, { type: 'ui.telemetry' }>;
 }
 

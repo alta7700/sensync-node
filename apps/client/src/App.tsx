@@ -5,14 +5,18 @@ import type { EChartsOption, SeriesOption } from 'echarts';
 import { GridComponent, LegendComponent, MarkAreaComponent, TooltipComponent } from 'echarts/components';
 import { LineChart, ScatterChart } from 'echarts/charts';
 import { CanvasRenderer } from 'echarts/renderers';
-import { ClientRuntime, type StreamWindowData } from '@sensync2/client-runtime';
+import { ClientRuntime, type ClientRuntimeNotification, type StreamWindowData } from '@sensync2/client-runtime';
 import type {
   UiChartSeries,
   UiChartWidget,
   UiControlAction,
   UiControlWhen,
+  UiFormOption,
   UiControlsWidget,
   UiLineChartWidget,
+  UiModalForm,
+  UiModalFormNode,
+  UiModalFormSelect,
   UiStatusWidget,
   UiTelemetryWidget,
   UiWidget,
@@ -41,9 +45,16 @@ interface ResolvedControlAction {
   label: string;
   commandType: string | undefined;
   payload: Record<string, unknown> | undefined;
+  modalForm: UiModalForm | undefined;
   disabled: boolean;
   isLoading: boolean;
   hidden: boolean;
+}
+
+interface ModalState {
+  form: UiModalForm;
+  values: Record<string, string>;
+  error: string | null;
 }
 
 type UiFlagsMap = Record<string, unknown>;
@@ -90,6 +101,7 @@ function compileControlAction(control: UiControlAction): CompiledControlResolver
       label: control.label,
       commandType: control.commandType,
       payload: control.payload,
+      modalForm: control.modalForm,
       disabled: control.disabled,
       isLoading: control.isLoading,
       visible: control.visible,
@@ -98,14 +110,16 @@ function compileControlAction(control: UiControlAction): CompiledControlResolver
     };
 
     const hasCommand = typeof merged.commandType === 'string' && merged.commandType.length > 0;
+    const hasAction = hasCommand || merged.modalForm !== undefined;
     // `hidden` имеет приоритет над `visible`, чтобы конфликтующие схемы вели себя предсказуемо.
     const hidden = Boolean(merged.hidden) || merged.visible === false;
     return {
       label: merged.label ?? control.id,
       commandType: hasCommand ? merged.commandType : undefined,
       payload: merged.payload,
+      modalForm: merged.modalForm,
       // Если у варианта нет команды (например, состояние "подключение"), кнопку блокируем автоматически.
-      disabled: Boolean(merged.disabled) || !hasCommand,
+      disabled: Boolean(merged.disabled) || !hasAction,
       isLoading: Boolean(merged.isLoading),
       hidden,
     };
@@ -121,7 +135,110 @@ function resolveControlAction(control: UiControlAction, flags: UiFlagsMap): Reso
   return resolver(flags);
 }
 
-function ControlsWidget({ widget, flags }: { widget: UiControlsWidget; flags: Record<string, unknown> }) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function visitModalFormFields(nodes: UiModalFormNode[], visitor: (field: Exclude<UiModalFormNode, { kind: 'row' | 'column' }>) => void): void {
+  for (const node of nodes) {
+    if (node.kind === 'row' || node.kind === 'column') {
+      visitModalFormFields(node.children, visitor);
+      continue;
+    }
+    visitor(node);
+  }
+}
+
+function buildModalInitialValues(form: UiModalForm): Record<string, string> {
+  const values: Record<string, string> = {};
+  visitModalFormFields(form.fields, (field) => {
+    if (field.kind === 'textInput') {
+      values[field.fieldId] = field.defaultValue ?? '';
+      return;
+    }
+    if (field.kind === 'numberInput' || field.kind === 'decimalInput') {
+      values[field.fieldId] = field.defaultValue !== undefined ? String(field.defaultValue) : '';
+      return;
+    }
+    if (field.kind === 'fileInput' || field.kind === 'select') {
+      values[field.fieldId] = field.defaultValue ?? '';
+    }
+  });
+  return values;
+}
+
+function findSelectedOption(field: UiModalFormSelect, formOptions: Record<string, UiFormOption[]>, value: string): UiFormOption | undefined {
+  const options = formOptions[field.sourceId] ?? [];
+  return options.find((option) => option.value === value);
+}
+
+function buildModalSubmitPayload(
+  form: UiModalForm,
+  values: Record<string, string>,
+  formOptions: Record<string, UiFormOption[]>,
+): { ok: true; payload: Record<string, unknown> } | { ok: false; error: string } {
+  const fieldValues: Record<string, unknown> = {};
+  const mergedOptionPayloads: Record<string, unknown> = {};
+
+  let validationError: string | null = null;
+
+  visitModalFormFields(form.fields, (field) => {
+    if (validationError) return;
+
+    const rawValue = values[field.fieldId] ?? '';
+    const trimmed = rawValue.trim();
+    if (field.required && trimmed.length === 0) {
+      validationError = `Поле "${field.label}" обязательно`;
+      return;
+    }
+    if (trimmed.length === 0) {
+      return;
+    }
+
+    if (field.kind === 'textInput' || field.kind === 'fileInput') {
+      fieldValues[field.fieldId] = rawValue;
+      return;
+    }
+
+    if (field.kind === 'numberInput' || field.kind === 'decimalInput') {
+      const parsed = Number(rawValue);
+      if (!Number.isFinite(parsed)) {
+        validationError = `Поле "${field.label}" должно быть числом`;
+        return;
+      }
+      fieldValues[field.fieldId] = parsed;
+      return;
+    }
+
+    fieldValues[field.fieldId] = rawValue;
+    if (!field.mergeSelectedOptionPayload) return;
+    const selectedOption = findSelectedOption(field, formOptions, rawValue);
+    if (selectedOption?.payload) {
+      Object.assign(mergedOptionPayloads, selectedOption.payload);
+    }
+  });
+
+  if (validationError) {
+    return { ok: false, error: validationError };
+  }
+
+  const payload = { ...(form.submitPayload ?? {}) };
+  const baseFormData = isRecord(payload.formData) ? { ...payload.formData } : {};
+  const mergedFormData = {
+    ...baseFormData,
+    ...fieldValues,
+    ...mergedOptionPayloads,
+  };
+  if (Object.keys(mergedFormData).length > 0 || payload.formData !== undefined) {
+    payload.formData = mergedFormData;
+  }
+  return { ok: true, payload };
+}
+
+function ControlsWidget(
+  { widget, flags, onOpenModal }:
+  { widget: UiControlsWidget; flags: Record<string, unknown>; onOpenModal: (form: UiModalForm) => void },
+) {
   return (
     <section style={panelStyle}>
       <h3 style={titleStyle}>{widget.title}</h3>
@@ -138,8 +255,12 @@ function ControlsWidget({ widget, flags }: { widget: UiControlsWidget; flags: Re
               disabled={resolved.disabled}
               aria-busy={resolved.isLoading || undefined}
               onClick={() => {
-                if (!resolved.commandType) return;
-                void runtimeSingleton.sendCommand(resolved.commandType, resolved.payload);
+                if (resolved.commandType) {
+                  void runtimeSingleton.sendCommand(resolved.commandType, resolved.payload);
+                }
+                if (resolved.modalForm) {
+                  onOpenModal(resolved.modalForm);
+                }
               }}
               style={{
                 border: '1px solid var(--border)',
@@ -182,6 +303,7 @@ function StatusWidget({ widget, flags }: { widget: UiStatusWidget; flags: Record
 }
 
 function TelemetryWidget({ widget, telemetry }: { widget: UiTelemetryWidget; telemetry: ReturnType<typeof runtimeSingleton.getSnapshot>['telemetry'] }) {
+  const metrics = telemetry?.metrics ?? [];
   return (
     <section style={panelStyle}>
       <h3 style={titleStyle}>{widget.title}</h3>
@@ -198,7 +320,275 @@ function TelemetryWidget({ widget, telemetry }: { widget: UiTelemetryWidget; tel
           </div>
         ))}
       </div>
+      {metrics.length > 0 ? (
+        <>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 14, marginBottom: 8 }}>Plugin metrics</div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {metrics.map((metric) => {
+              const tags = metric.tags
+                ? Object.entries(metric.tags)
+                  .map(([key, value]) => `${key}=${value}`)
+                  .join(' ')
+                : '';
+              const value = Number.isInteger(metric.value) ? String(metric.value) : metric.value.toFixed(2);
+              return (
+                <div
+                  key={`${metric.pluginId}:${metric.name}:${tags}`}
+                  style={{ display: 'grid', gridTemplateColumns: '220px 1fr 110px 140px', gap: 8, fontSize: 12 }}
+                >
+                  <span>{metric.pluginId}</span>
+                  <span>{metric.name}</span>
+                  <span>{metric.unit ? `${value} ${metric.unit}` : value}</span>
+                  <span style={{ color: 'var(--muted)' }}>{tags || '—'}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
     </section>
+  );
+}
+
+function ToastStack({ notifications }: { notifications: ClientRuntimeNotification[] }) {
+  useEffect(() => {
+    if (notifications.length === 0) return;
+    const timers = notifications.map((notification) => setTimeout(() => {
+      runtimeSingleton.dismissNotification(notification.id);
+    }, 4500));
+    return () => {
+      for (const timer of timers) {
+        clearTimeout(timer);
+      }
+    };
+  }, [notifications]);
+
+  if (notifications.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: 16,
+        right: 16,
+        display: 'grid',
+        gap: 10,
+        width: 360,
+        zIndex: 1000,
+      }}
+    >
+      {notifications.map((notification) => (
+        <div
+          key={notification.id}
+          style={{
+            border: '1px solid rgba(248, 81, 73, 0.35)',
+            background: 'linear-gradient(180deg, rgba(76, 17, 19, 0.96) 0%, rgba(45, 13, 14, 0.96) 100%)',
+            color: '#ffd7d5',
+            borderRadius: 12,
+            padding: 12,
+            boxShadow: '0 12px 24px rgba(0,0,0,0.25)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.8 }}>{notification.code}</div>
+              <div style={{ fontWeight: 700, marginTop: 2 }}>{notification.message}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => runtimeSingleton.dismissNotification(notification.id)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#ffd7d5',
+                cursor: 'pointer',
+                fontSize: 18,
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          </div>
+          {notification.pluginId ? (
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.78 }}>
+              plugin: {notification.pluginId}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ModalFormDialog(
+  {
+    state,
+    formOptions,
+    onChange,
+    onClose,
+    onSubmit,
+    onSetError,
+  }:
+  {
+    state: ModalState;
+    formOptions: Record<string, UiFormOption[]>;
+    onChange: (fieldId: string, value: string) => void;
+    onClose: () => void;
+    onSubmit: () => void;
+    onSetError: (value: string | null) => void;
+  },
+) {
+  const { form, values, error } = state;
+
+  async function handlePickPath(fieldId: string, mode: 'existing-file' | 'existing-directory'): Promise<void> {
+    if (!window.sensyncBridge?.pickPath) {
+      onSetError('Выбор пути недоступен: desktop bridge не поддерживает pickPath');
+      return;
+    }
+    const picked = await window.sensyncBridge.pickPath({ mode });
+    if (picked) {
+      onChange(fieldId, picked);
+      onSetError(null);
+    }
+  }
+
+  function renderNode(node: UiModalFormNode): React.ReactNode {
+    if (node.kind === 'row') {
+      return (
+        <div key={`row-${node.children.map((child) => child.kind).join('-')}`} style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          {node.children.map((child) => renderNode(child))}
+        </div>
+      );
+    }
+
+    if (node.kind === 'column') {
+      return (
+        <div key={`column-${node.children.map((child) => child.kind).join('-')}`} style={{ display: 'grid', gap: 12 }}>
+          {node.children.map((child) => renderNode(child))}
+        </div>
+      );
+    }
+
+    if (node.kind === 'fileInput') {
+      return (
+        <label key={node.fieldId} style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>{node.label}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={values[node.fieldId] ?? ''}
+              readOnly
+              placeholder={node.required ? 'Обязательное поле' : 'Не выбрано'}
+              style={modalInputStyle}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                void handlePickPath(node.fieldId, node.mode);
+              }}
+              style={modalSecondaryButtonStyle}
+            >
+              Выбрать
+            </button>
+          </div>
+        </label>
+      );
+    }
+
+    if (node.kind === 'select') {
+      const options = formOptions[node.sourceId] ?? [];
+      return (
+        <label key={node.fieldId} style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>{node.label}</span>
+          <select
+            value={values[node.fieldId] ?? ''}
+            onChange={(event) => {
+              onChange(node.fieldId, event.target.value);
+              onSetError(null);
+            }}
+            style={modalInputStyle}
+          >
+            <option value="">{node.placeholder ?? 'Выберите значение'}</option>
+            {options.map((option) => (
+              <option key={option.value} value={option.value} disabled={option.disabled}>
+                {option.label}{option.description ? ` — ${option.description}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    const inputType = node.kind === 'textInput' ? 'text' : 'number';
+    return (
+      <label key={node.fieldId} style={{ display: 'grid', gap: 6 }}>
+        <span style={{ fontSize: 13, color: 'var(--muted)' }}>{node.label}</span>
+        <input
+          type={inputType}
+          value={values[node.fieldId] ?? ''}
+          onChange={(event) => {
+            onChange(node.fieldId, event.target.value);
+            onSetError(null);
+          }}
+          step={node.kind === 'numberInput' || node.kind === 'decimalInput' ? (node.step ?? (node.kind === 'numberInput' ? 1 : 'any')) : undefined}
+          min={node.kind === 'numberInput' || node.kind === 'decimalInput' ? node.min : undefined}
+          max={node.kind === 'numberInput' || node.kind === 'decimalInput' ? node.max : undefined}
+          placeholder={node.kind === 'textInput' ? node.placeholder : undefined}
+          style={modalInputStyle}
+        />
+      </label>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(2, 6, 12, 0.72)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
+        zIndex: 1100,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(640px, 100%)',
+          background: 'linear-gradient(180deg, rgba(22,27,34,0.98) 0%, rgba(13,17,23,0.98) 100%)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          boxShadow: '0 24px 48px rgba(0,0,0,0.28)',
+          padding: 16,
+          display: 'grid',
+          gap: 16,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18 }}>{form.title}</h3>
+            <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>
+              Значения формы собираются локально и отправляются только при submit.
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={modalSecondaryButtonStyle}>Закрыть</button>
+        </div>
+
+        <div style={{ display: 'grid', gap: 12 }}>
+          {form.fields.map((node) => renderNode(node))}
+        </div>
+
+        {error ? (
+          <div style={{ color: 'var(--bad)', fontSize: 13 }}>{error}</div>
+        ) : null}
+
+        <div style={{ display: 'flex', justifyContent: 'end', gap: 8 }}>
+          <button type="button" onClick={onClose} style={modalSecondaryButtonStyle}>Отмена</button>
+          <button type="button" onClick={onSubmit} style={modalPrimaryButtonStyle}>
+            {form.submitLabel ?? 'Отправить'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -963,8 +1353,15 @@ function ChartWidgetEcharts({ widget }: { widget: UiChartWidget }) {
   );
 }
 
-function renderWidget(widget: UiWidget, flags: Record<string, unknown>, telemetry: ReturnType<typeof runtimeSingleton.getSnapshot>['telemetry']) {
-  if (widget.kind === 'controls') return <ControlsWidget key={widget.id} widget={widget} flags={flags} />;
+function renderWidget(
+  widget: UiWidget,
+  flags: Record<string, unknown>,
+  telemetry: ReturnType<typeof runtimeSingleton.getSnapshot>['telemetry'],
+  onOpenModal: (form: UiModalForm) => void,
+) {
+  if (widget.kind === 'controls') {
+    return <ControlsWidget key={widget.id} widget={widget} flags={flags} onOpenModal={onOpenModal} />;
+  }
   if (widget.kind === 'status') return <StatusWidget key={widget.id} widget={widget} flags={flags} />;
   if (widget.kind === 'chart') {
     if (widget.renderer === 'echarts') {
@@ -986,9 +1383,34 @@ const panelStyle: React.CSSProperties = {
 
 const titleStyle: React.CSSProperties = { margin: '0 0 10px', fontSize: 14, letterSpacing: 0.3 };
 const chartTitleStyle: React.CSSProperties = { ...titleStyle, fontSize: 16 };
+const modalInputStyle: React.CSSProperties = {
+  width: '100%',
+  border: '1px solid var(--border)',
+  background: '#11161d',
+  color: 'var(--text)',
+  padding: '10px 12px',
+  borderRadius: 10,
+};
+const modalSecondaryButtonStyle: React.CSSProperties = {
+  border: '1px solid var(--border)',
+  background: '#11161d',
+  color: 'var(--text)',
+  padding: '8px 12px',
+  borderRadius: 10,
+  cursor: 'pointer',
+};
+const modalPrimaryButtonStyle: React.CSSProperties = {
+  border: '1px solid rgba(88, 166, 255, 0.35)',
+  background: 'linear-gradient(180deg, #234873 0%, #163a61 100%)',
+  color: '#e6edf3',
+  padding: '8px 12px',
+  borderRadius: 10,
+  cursor: 'pointer',
+};
 
 export function App() {
   const { snapshot, rev } = useRuntimeSnapshot();
+  const [modal, setModal] = useState<ModalState | null>(null);
   const page = useMemo(() => snapshot.schema?.pages[0], [snapshot.schema, rev]);
   const widgetRows = useMemo(() => {
     if (!snapshot.schema || !page) return [];
@@ -1001,8 +1423,48 @@ export function App() {
       .filter((row) => row.length > 0);
   }, [snapshot.schema, page, rev]);
 
+  function openModal(form: UiModalForm): void {
+    setModal({
+      form,
+      values: buildModalInitialValues(form),
+      error: null,
+    });
+  }
+
+  function updateModalValue(fieldId: string, value: string): void {
+    setModal((prev) => (prev ? { ...prev, values: { ...prev.values, [fieldId]: value } } : prev));
+  }
+
+  function setModalError(error: string | null): void {
+    setModal((prev) => (prev ? { ...prev, error } : prev));
+  }
+
+  async function submitModal(): Promise<void> {
+    if (!modal) return;
+    const built = buildModalSubmitPayload(modal.form, modal.values, snapshot.formOptions);
+    if (!built.ok) {
+      setModalError(built.error);
+      return;
+    }
+    await runtimeSingleton.sendCommand(modal.form.submitEventType, built.payload);
+    setModal(null);
+  }
+
   return (
     <div style={{ minHeight: '100%', padding: 16, display: 'grid', gap: 12, alignContent: 'start' }}>
+      <ToastStack notifications={snapshot.notifications} />
+      {modal ? (
+        <ModalFormDialog
+          state={modal}
+          formOptions={snapshot.formOptions}
+          onChange={updateModalValue}
+          onClose={() => setModal(null)}
+          onSubmit={() => {
+            void submitModal();
+          }}
+          onSetError={setModalError}
+        />
+      ) : null}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Sensync2</h1>
@@ -1010,9 +1472,6 @@ export function App() {
             {snapshot.connected ? `connected${snapshot.sessionId ? ` • ${snapshot.sessionId}` : ''}` : 'disconnected'}
           </div>
         </div>
-        {snapshot.flags.lastError ? (
-          <div style={{ color: 'var(--bad)', fontSize: 12, maxWidth: 420, textAlign: 'right' }}>{String(snapshot.flags.lastError)}</div>
-        ) : null}
       </header>
 
       {!snapshot.schema ? (
@@ -1032,7 +1491,7 @@ export function App() {
               gridTemplateColumns: row.length > 1 ? 'repeat(auto-fit, minmax(420px, 1fr))' : 'minmax(0, 1fr)',
             }}
           >
-            {row.map((widget) => renderWidget(widget, snapshot.flags, snapshot.telemetry))}
+            {row.map((widget) => renderWidget(widget, snapshot.flags, snapshot.telemetry, openModal))}
           </div>
         ))
       )}

@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import type { UiCommandMessage } from '@sensync2/core';
 import { RuntimeHost, makePluginDescriptors, resolveLaunchProfile } from '@sensync2/runtime';
 
@@ -110,6 +110,19 @@ async function setupIpc(): Promise<void> {
 
   ipcMain.handle('sensync:get-runtime-plugins', async () => {
     return runtime?.listPlugins() ?? [];
+  });
+
+  ipcMain.handle('sensync:pick-path', async (_event, options: { mode: 'existing-file' | 'existing-directory' }) => {
+    const properties: Array<'openDirectory' | 'openFile'> = options.mode === 'existing-directory'
+      ? ['openDirectory']
+      : ['openFile'];
+    const result = await dialog.showOpenDialog({
+      properties,
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0] ?? null;
   });
 }
 

@@ -5,7 +5,7 @@ Runtime слой для renderer/UI.
 ## Для чего
 
 - Материализует control и binary поток в удобное состояние для UI.
-- Хранит флаги, stream registry, telemetry и кольцевые буферы сигналов.
+- Хранит флаги, stream registry, dynamic form options, уведомления UI и кольцевые буферы сигналов.
 
 ## Как работает
 

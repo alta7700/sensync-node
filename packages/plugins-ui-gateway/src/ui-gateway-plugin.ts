@@ -1,6 +1,8 @@
 import {
   encodeUiSignalBatchFrameFromEvent,
   EventTypes,
+  type AdapterScanCandidatesPayload,
+  type AdapterScanStateChangedPayload,
   type AdapterStateChangedPayload,
   type FactEvent,
   type RecordingErrorPayload,
@@ -16,12 +18,14 @@ import {
   type UiControlVariant,
   type UiFlagPatch,
   type UiFlagSnapshot,
+  type UiFormOption,
+  type UiModalForm,
   type UiSchema,
   type UiStreamDeclaration,
 } from '@sensync2/core';
 import { definePlugin } from '@sensync2/plugin-sdk';
 
-type UiGatewayProfile = 'fake' | 'fake-hdf5-simulation';
+type UiGatewayProfile = 'fake' | 'fake-hdf5-simulation' | 'veloerg';
 
 interface UiGatewayConfig {
   sessionId?: string;
@@ -44,6 +48,7 @@ let flags: UiFlagSnapshot = {};
 let flagVersion = 0;
 let nextStreamNumericId = 1;
 const streamsById = new Map<string, UiStreamDeclaration>();
+const formOptionsBySourceId = new Map<string, UiFormOption[]>();
 
 function makeFakeRecordingStartPayload(): Record<string, unknown> {
   return {
@@ -189,6 +194,42 @@ function makeSimulationControlsWidget(adapterId: string, title: string): UiSchem
         ],
       },
       ...SimulationSpeedOptions.map((speed) => makeSimulationSpeedControl(adapterId, speed)),
+    ],
+  };
+}
+
+function makeMoxyScanPayload(adapterId: string): Record<string, unknown> {
+  return {
+    adapterId,
+    timeoutMs: 5_000,
+    formData: {
+      profile: 'muscle-oxygen',
+    },
+  };
+}
+
+function makeMoxyConnectModalForm(adapterId: string): UiModalForm {
+  return {
+    id: `connect-moxy-${adapterId}`,
+    title: 'Выбор Moxy',
+    submitLabel: 'Подключить',
+    submitEventType: EventTypes.adapterConnectRequest,
+    submitPayload: {
+      adapterId,
+      formData: {
+        profile: 'muscle-oxygen',
+      },
+    },
+    fields: [
+      {
+        kind: 'select',
+        fieldId: 'candidateId',
+        label: 'Устройство',
+        required: true,
+        sourceId: scanCandidatesSourceId(adapterId),
+        placeholder: 'Выберите Moxy из результатов scan',
+        mergeSelectedOptionPayload: true,
+      },
     ],
   };
 }
@@ -698,8 +739,165 @@ function fakeHdf5SimulationSchema(): UiSchema {
   };
 }
 
+function veloergSchema(): UiSchema {
+  const adapterId = 'ant-plus';
+  return {
+    version: 1,
+    pages: [
+      {
+        id: 'main',
+        title: 'Veloerg',
+        widgetIds: [
+          'controls-main',
+          'status-main',
+          'chart-moxy-smo2',
+          'chart-moxy-thb',
+          'telemetry-main',
+        ],
+        widgetRows: [
+          ['controls-main', 'status-main'],
+          ['chart-moxy-smo2'],
+          ['chart-moxy-thb'],
+          ['telemetry-main'],
+        ],
+      },
+    ],
+    widgets: [
+      {
+        kind: 'controls',
+        id: 'controls-main',
+        title: 'ANT+ / Moxy',
+        controls: [
+          {
+            id: 'scan-moxy',
+            kind: 'button',
+            label: 'Подключить Moxy',
+            commandType: EventTypes.adapterScanRequest,
+            payload: makeMoxyScanPayload(adapterId),
+            // Модалка живет полностью в renderer, а runtime только присылает варианты выбора.
+            modalForm: makeMoxyConnectModalForm(adapterId),
+            variants: [
+              {
+                when: { flag: `adapter.${adapterId}.scanning`, eq: true },
+                label: 'Ищем Moxy...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${adapterId}.state`, eq: 'connecting' },
+                label: 'Подключение Moxy...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+                label: 'Moxy подключен',
+                disabled: true,
+              },
+              {
+                when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+                label: 'Отключение Moxy...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${adapterId}.state`, eq: 'failed' },
+                label: 'Повторить поиск Moxy',
+              },
+            ],
+          },
+          {
+            id: 'disconnect-moxy',
+            kind: 'button',
+            label: 'Отключить Moxy',
+            hidden: true,
+            variants: [
+              {
+                when: { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+                label: 'Отключить Moxy',
+                commandType: EventTypes.adapterDisconnectRequest,
+                payload: { adapterId },
+                hidden: false,
+              },
+              {
+                when: { flag: `adapter.${adapterId}.state`, eq: 'failed' },
+                label: 'Сбросить ошибку Moxy',
+                commandType: EventTypes.adapterDisconnectRequest,
+                payload: { adapterId },
+                hidden: false,
+              },
+              {
+                when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+                label: 'Отключение Moxy...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        kind: 'status',
+        id: 'status-main',
+        title: 'Состояние',
+        flagKeys: [
+          `adapter.${adapterId}.state`,
+          `adapter.${adapterId}.scanning`,
+          `adapter.${adapterId}.scanMessage`,
+          `adapter.${adapterId}.message`,
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-moxy-smo2',
+        title: 'Moxy SmO2',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 40, max: 100, label: '%' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'moxy.smo2',
+            label: 'SmO2',
+            color: '#3fb950',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-moxy-thb',
+        title: 'Moxy tHb',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 8, max: 18, label: 'g/dL' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'moxy.thb',
+            label: 'tHb',
+            color: '#58a6ff',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'telemetry',
+        id: 'telemetry-main',
+        title: 'Telemetry',
+      },
+    ],
+  };
+}
+
 function schemaForProfile(currentProfile: UiGatewayProfile): UiSchema {
   if (currentProfile === 'fake-hdf5-simulation') return fakeHdf5SimulationSchema();
+  if (currentProfile === 'veloerg') return veloergSchema();
   return fakeSchema();
 }
 
@@ -751,6 +949,37 @@ function ensureStream(event: SignalBatchEvent): { declared?: UiStreamDeclaration
   return { declared, stream: declared };
 }
 
+function scanCandidatesSourceId(adapterId: string): string {
+  return `adapter.${adapterId}.scan.candidates`;
+}
+
+function candidateDetailsSummary(options: AdapterScanCandidatesPayload['candidates'][number]['details']): string | undefined {
+  if (!options) return undefined;
+  const parts = Object.entries(options).map(([key, value]) => `${key}: ${String(value)}`);
+  return parts.length > 0 ? parts.join(' • ') : undefined;
+}
+
+function makeUiFormOptions(payload: AdapterScanCandidatesPayload): UiFormOption[] {
+  return payload.candidates.map((candidate) => {
+    const description = candidate.subtitle ?? candidateDetailsSummary(candidate.details);
+    return {
+      value: candidate.candidateId,
+      label: candidate.title,
+      ...(description !== undefined ? { description } : {}),
+      payload: { ...candidate.connectFormData },
+    };
+  });
+}
+
+function setFormOptions(sourceId: string, options: UiFormOption[]): UiControlMessage {
+  formOptionsBySourceId.set(sourceId, options);
+  return {
+    type: 'ui.form.options.patch',
+    sourceId,
+    options,
+  };
+}
+
 export default definePlugin({
   manifest: {
     id: 'ui-gateway',
@@ -758,6 +987,8 @@ export default definePlugin({
     required: true,
     subscriptions: [
       { type: 'signal.batch', kind: 'data', priority: 'data' },
+      { type: EventTypes.adapterScanStateChanged, kind: 'fact', priority: 'system' },
+      { type: EventTypes.adapterScanCandidates, kind: 'fact', priority: 'system' },
       { type: EventTypes.adapterStateChanged, kind: 'fact', priority: 'system' },
       { type: EventTypes.intervalStateChanged, kind: 'fact', priority: 'system' },
       { type: EventTypes.activityStateChanged, kind: 'fact', priority: 'system' },
@@ -778,7 +1009,7 @@ export default definePlugin({
     if (cfg?.sessionId) {
       sessionId = cfg.sessionId;
     }
-    if (cfg?.profile === 'fake' || cfg?.profile === 'fake-hdf5-simulation') {
+    if (cfg?.profile === 'fake' || cfg?.profile === 'fake-hdf5-simulation' || cfg?.profile === 'veloerg') {
       profile = cfg.profile;
     }
   },
@@ -797,13 +1028,59 @@ export default definePlugin({
         },
       };
       await ctx.emit(emitControl(initMsg, clientId));
+      for (const [sourceId, options] of formOptionsBySourceId.entries()) {
+        await ctx.emit(emitControl({
+          type: 'ui.form.options.patch',
+          sourceId,
+          options,
+        }, clientId));
+      }
+      return;
+    }
+
+    if (event.type === EventTypes.adapterScanStateChanged) {
+      const payload = (event as FactEvent<AdapterScanStateChangedPayload>).payload;
+      const { patch, version } = patchFlags({
+        [`adapter.${payload.adapterId}.scanning`]: payload.scanning,
+        [`adapter.${payload.adapterId}.scanMessage`]: payload.message ?? null,
+      });
+      await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      if (payload.scanning) {
+        await ctx.emit(emitControl(setFormOptions(scanCandidatesSourceId(payload.adapterId), [])));
+      }
+      if (!payload.scanning && payload.message) {
+        await ctx.emit(emitControl({
+          type: 'ui.error',
+          code: 'adapter_scan_failed',
+          message: payload.message,
+          pluginId: payload.adapterId,
+        }));
+      }
+      return;
+    }
+
+    if (event.type === EventTypes.adapterScanCandidates) {
+      const payload = (event as FactEvent<AdapterScanCandidatesPayload>).payload;
+      const sourceId = scanCandidatesSourceId(payload.adapterId);
+      await ctx.emit(emitControl(setFormOptions(sourceId, makeUiFormOptions(payload))));
       return;
     }
 
     if (event.type === EventTypes.adapterStateChanged) {
       const payload = (event as FactEvent<AdapterStateChangedPayload>).payload;
-      const { patch, version } = patchFlags({ [`adapter.${payload.adapterId}.state`]: payload.state });
+      const { patch, version } = patchFlags({
+        [`adapter.${payload.adapterId}.state`]: payload.state,
+        [`adapter.${payload.adapterId}.message`]: payload.message ?? null,
+      });
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      if (payload.state === 'failed' && payload.message) {
+        await ctx.emit(emitControl({
+          type: 'ui.error',
+          code: 'adapter_connect_failed',
+          message: payload.message,
+          pluginId: payload.adapterId,
+        }));
+      }
       return;
     }
 
@@ -857,7 +1134,12 @@ export default definePlugin({
 
     if (event.type === EventTypes.runtimeTelemetrySnapshot) {
       const payload = (event as FactEvent<RuntimeTelemetrySnapshotPayload>).payload;
-      await ctx.emit(emitControl({ type: 'ui.telemetry', queues: payload.queues, dropped: payload.dropped }));
+      await ctx.emit(emitControl({
+        type: 'ui.telemetry',
+        queues: payload.queues,
+        dropped: payload.dropped,
+        metrics: payload.metrics,
+      }));
       return;
     }
 
@@ -873,6 +1155,7 @@ export default definePlugin({
   },
   async onShutdown() {
     streamsById.clear();
+    formOptionsBySourceId.clear();
     flags = {};
     flagVersion = 0;
     nextStreamNumericId = 1;

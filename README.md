@@ -9,6 +9,7 @@
 - `apps/client` — schema-driven React UI, который получает control-сообщения и binary batches.
 - `packages/core` — типы runtime-событий, plugin manifest, UI schema и binary UI wire.
 - `packages/plugin-sdk` — API для plugin worker'ов.
+- `packages/plugins-ant-plus` — ANT+ адаптеры и transport boundary для Moxy и будущих ANT+ профилей.
 - `packages/plugins-fake` — synthetic demo-плагины и процессоры.
 - `packages/plugins-hdf5` — recorder-плагин и прямой simulation-адаптер для нового HDF5 формата.
 - `packages/plugins-ui-gateway` — материализация runtime-событий в UI schema/control/binary поток.
@@ -26,8 +27,10 @@ npm run dev
 - `npm run dev` — запускает desktop c профилем `fake`.
 - `npm run dev:fake` — явный запуск fake-профиля.
 - `npm run dev:fake-hdf5-simulation` — переходный профиль: fake-UI поверх `hdf5-simulation` источника.
+- `npm run dev:veloerg` — минимальный ANT+/Moxy dev-профиль для `veloerg`.
 - `npm run dev:runtime` — runtime отдельно, по умолчанию в профиле `fake`.
 - `npm run dev:runtime:fake-hdf5-simulation` — standalone runtime для fake simulation из HDF5.
+- `npm run dev:runtime:veloerg` — standalone runtime для ANT+/Moxy профиля.
 - `npm run build` — сборка всех workspace-пакетов.
 - `npm run test` — тесты по workspace'ам.
 - `npm run smoke:hdf5-recorder` — smoke без UI для recorder-плагина.
@@ -35,7 +38,7 @@ npm run dev
 
 ## Launch profiles
 
-Сейчас есть два штатных профиля запуска:
+Сейчас есть три штатных профиля запуска:
 
 - `fake`
   - synthetic fake adapter;
@@ -47,6 +50,11 @@ npm run dev
 - `fake-hdf5-simulation`
   - `hdf5-simulation-adapter`, но только для fake-каналов;
   - `ui-gateway` с отдельной fake-oriented simulation-схемой.
+- `veloerg`
+  - `ant-plus-adapter` по умолчанию идёт через real transport поверх `ant-plus`;
+  - публикует `moxy.smo2` и `moxy.thb`;
+  - `ui-gateway` поднимает минимальную схему live-подключения Moxy;
+  - fake transport остаётся доступен для локальной отладки.
 
 Профиль выбирается через `SENSYNC2_PROFILE`, а npm-скрипты просто подставляют это значение явно.
 
@@ -59,6 +67,12 @@ SENSYNC2_HDF5_SIMULATION_FILE=/absolute/path/to/file.h5 npm run dev:fake-hdf5-si
 Допускается и относительный путь: он будет резолвиться от корня репозитория `sensync2`, а не от `apps/desktop`.
 
 Это осознанно: профиль не должен подменять реальный источник скрытым demo-файлом.
+
+Для `veloerg` можно отдельно включить fake transport и проверить UX ветку "stick не найден":
+
+```bash
+SENSYNC2_ANT_PLUS_MODE=fake SENSYNC2_ANT_PLUS_STICK_PRESENT=0 npm run dev:veloerg
+```
 
 ## Как устроена документация
 
@@ -82,5 +96,6 @@ SENSYNC2_HDF5_SIMULATION_FILE=/absolute/path/to/file.h5 npm run dev:fake-hdf5-si
 
 - Дефолтный dev-профиль — `fake`, потому что он быстрее проверяет runtime, UI и recorder без привязки к конкретному тестовому файлу.
 - Отдельный профиль `fake-hdf5-simulation` проигрывает уже записанные fake-каналы напрямую из нового HDF5 формата и не использует replay bundle.
+- Профиль `veloerg` уже пытается работать с реальным ANT+ stick, а fake mode остаётся только как диагностический fallback.
 - UI пока строится не из shared memory, а из `JSON control + binary frames` поверх Electron IPC.
 - Система уже опирается на относительное время сессии (`session time`), а не на wall-clock как источник истины для data-path.

@@ -14,7 +14,7 @@ Electron shell для локального desktop-запуска `sensync2`.
 - Профиль runtime выбирается через `SENSYNC2_PROFILE`.
 - Для `fake-hdf5-simulation` main process не подбирает файл автоматически: путь должен прийти через `SENSYNC2_HDF5_SIMULATION_FILE`.
 - Относительный путь для `SENSYNC2_HDF5_SIMULATION_FILE` интерпретируется от корня `sensync2`, а не от `apps/desktop`.
-- `preload.cjs` публикует минимальный безопасный bridge в renderer.
+- `preload.cjs` публикует минимальный безопасный bridge в renderer, включая transport-методы и path-picker для локальных форм.
 - В dev-режиме ждёт готовности Vite-сервера и только потом грузит renderer URL.
 
 ## Взаимодействие

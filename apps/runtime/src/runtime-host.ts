@@ -3,6 +3,7 @@ import {
   EventTypes,
   type CommandEvent,
   type PluginManifest,
+  type PluginMetric,
   type PluginRuntimeSnapshot,
   type QueueTelemetry,
   type RuntimeEvent,
@@ -13,6 +14,7 @@ import {
   type UiClientDisconnectedPayload,
   type UiCommandMessage,
   type UiControlOutPayload,
+  type UiPluginMetric,
 } from '@sensync2/core';
 import { SubscriptionIndex } from './subscription-index.ts';
 import { PluginHost } from './plugin-host.ts';
@@ -32,6 +34,7 @@ export class RuntimeHost implements RuntimeHostPublic {
   private stopped = false;
   private telemetryTimer: ReturnType<typeof setInterval> | null = null;
   private droppedCounter = 0;
+  private latestPluginMetrics = new Map<string, Map<string, UiPluginMetric>>();
   private runtimeState: 'starting' | 'running' | 'degraded_fatal' | 'stopping' | 'stopped' = 'starting';
   private sessionClock: SessionClock | null = null;
 
@@ -65,6 +68,7 @@ export class RuntimeHost implements RuntimeHostPublic {
     }
     await Promise.all([...this.pluginHosts.values()].map((host) => host.stop()));
     this.pluginHosts.clear();
+    this.latestPluginMetrics.clear();
     this.sessionClock = null;
     this.runtimeState = 'stopped';
   }
@@ -136,9 +140,7 @@ export class RuntimeHost implements RuntimeHostPublic {
       onReady: (pluginId, manifest) => this.onPluginReady(pluginId, manifest),
       onEmit: async (pluginId, event) => this.publish(event, pluginId),
       onError: (pluginId, error) => this.onPluginError(pluginId, error),
-      onMetric: (_pluginId, _metric) => {
-        // `v1`: метрики отдельных плагинов не агрегируем отдельно, достаточно queue telemetry.
-      },
+      onMetric: (pluginId, metric) => this.onPluginMetric(pluginId, metric),
     }, this.sessionClock.snapshot());
     this.pluginHosts.set(descriptor.id, host);
     return host;
@@ -146,6 +148,30 @@ export class RuntimeHost implements RuntimeHostPublic {
 
   private onPluginReady(_pluginId: string, manifest: PluginManifest): void {
     this.subscriptionIndex.setManifest(manifest);
+  }
+
+  private onPluginMetric(pluginId: string, metric: PluginMetric): void {
+    const metricKey = this.metricKey(metric);
+    const nextMetric: UiPluginMetric = {
+      pluginId,
+      name: metric.name,
+      value: metric.value,
+      ...(metric.unit !== undefined ? { unit: metric.unit } : {}),
+      ...(metric.tags !== undefined ? { tags: { ...metric.tags } } : {}),
+    };
+    const perPlugin = this.latestPluginMetrics.get(pluginId) ?? new Map<string, UiPluginMetric>();
+    perPlugin.set(metricKey, nextMetric);
+    this.latestPluginMetrics.set(pluginId, perPlugin);
+  }
+
+  private metricKey(metric: PluginMetric): string {
+    const tags = metric.tags
+      ? Object.entries(metric.tags)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `${key}=${value}`)
+        .join('|')
+      : '';
+    return `${metric.name}|${tags}`;
   }
 
   private onPluginError(pluginId: string, error: Error): void {
@@ -180,9 +206,17 @@ export class RuntimeHost implements RuntimeHostPublic {
 
   private async publishRuntimeTelemetry(): Promise<void> {
     const queues: QueueTelemetry[] = [...this.pluginHosts.values()].map((host) => host.getTelemetry());
+    const metrics: UiPluginMetric[] = [...this.latestPluginMetrics.values()]
+      .flatMap((perPlugin) => [...perPlugin.values()])
+      .sort((left, right) => {
+        const pluginOrder = left.pluginId.localeCompare(right.pluginId);
+        if (pluginOrder !== 0) return pluginOrder;
+        return left.name.localeCompare(right.name);
+      });
     const payload: RuntimeTelemetrySnapshotPayload = {
       queues,
       dropped: this.droppedCounter,
+      metrics,
     };
     await this.publish({
       type: EventTypes.runtimeTelemetrySnapshot,

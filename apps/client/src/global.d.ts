@@ -9,6 +9,7 @@ declare global {
       onControl(handler: (message: UiControlMessage) => void): () => void;
       onBinary(handler: (buffer: ArrayBuffer) => void): () => void;
       getRuntimePlugins(): Promise<unknown>;
+      pickPath(options: { mode: 'existing-file' | 'existing-directory' }): Promise<string | null>;
     };
   }
 }

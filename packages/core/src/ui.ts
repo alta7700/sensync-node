@@ -112,6 +112,7 @@ export interface UiControlAction {
   label?: string;
   commandType?: string;
   payload?: Record<string, unknown>;
+  modalForm?: UiModalForm;
   disabled?: boolean;
   isLoading?: boolean;
   visible?: boolean;
@@ -125,6 +126,7 @@ export interface UiControlVariant {
   label?: string;
   commandType?: string;
   payload?: Record<string, unknown>;
+  modalForm?: UiModalForm;
   disabled?: boolean;
   isLoading?: boolean;
   visible?: boolean;
@@ -148,6 +150,84 @@ export interface UiControlWhenOr {
 
 export interface UiControlWhenNot {
   not: UiControlWhen;
+}
+
+export interface UiModalForm {
+  id: string;
+  title: string;
+  submitLabel?: string;
+  submitEventType: string;
+  submitPayload?: Record<string, unknown>;
+  fields: UiModalFormNode[];
+}
+
+export type UiModalFormNode =
+  | UiModalFormRow
+  | UiModalFormColumn
+  | UiModalFormTextInput
+  | UiModalFormNumberInput
+  | UiModalFormDecimalInput
+  | UiModalFormFileInput
+  | UiModalFormSelect;
+
+export interface UiModalFormRow {
+  kind: 'row';
+  children: UiModalFormNode[];
+}
+
+export interface UiModalFormColumn {
+  kind: 'column';
+  children: UiModalFormNode[];
+}
+
+interface UiModalFormFieldBase {
+  fieldId: string;
+  label: string;
+  required?: boolean;
+}
+
+export interface UiModalFormTextInput extends UiModalFormFieldBase {
+  kind: 'textInput';
+  defaultValue?: string;
+  placeholder?: string;
+}
+
+export interface UiModalFormNumberInput extends UiModalFormFieldBase {
+  kind: 'numberInput';
+  defaultValue?: number;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+export interface UiModalFormDecimalInput extends UiModalFormFieldBase {
+  kind: 'decimalInput';
+  defaultValue?: number;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+export interface UiModalFormFileInput extends UiModalFormFieldBase {
+  kind: 'fileInput';
+  defaultValue?: string;
+  mode: 'existing-file' | 'existing-directory';
+}
+
+export interface UiModalFormSelect extends UiModalFormFieldBase {
+  kind: 'select';
+  sourceId: string;
+  defaultValue?: string;
+  placeholder?: string;
+  mergeSelectedOptionPayload?: boolean;
+}
+
+export interface UiFormOption {
+  value: string;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+  payload?: Record<string, unknown>;
 }
 
 export interface UiStreamDeclaration {
@@ -186,9 +266,10 @@ export type UiControlMessage =
   | { type: 'ui.init'; sessionId: string; schema: UiSchema; streams: UiStreamDeclaration[]; flags: UiFlagSnapshot; clock: UiSessionClockInfo }
   | { type: 'ui.schema.patch'; patch: UiSchemaPatch }
   | { type: 'ui.flags.patch'; patch: UiFlagPatch; version: number }
+  | { type: 'ui.form.options.patch'; sourceId: string; options: UiFormOption[] }
   | { type: 'ui.stream.declare'; stream: UiStreamDeclaration }
   | { type: 'ui.stream.drop'; streamId: string; reason: string }
-  | { type: 'ui.telemetry'; queues: QueueTelemetry[]; dropped: number }
+  | { type: 'ui.telemetry'; queues: QueueTelemetry[]; dropped: number; metrics: UiPluginMetric[] }
   | { type: 'ui.error'; code: string; message: string; pluginId?: string };
 
 export interface UiCommandMessage {
@@ -216,7 +297,16 @@ export interface UiBinaryOutPayload {
   data: ArrayBuffer;
 }
 
+export interface UiPluginMetric {
+  pluginId: string;
+  name: string;
+  value: number;
+  unit?: string;
+  tags?: Record<string, string>;
+}
+
 export interface RuntimeTelemetrySnapshotPayload {
   queues: QueueTelemetry[];
   dropped: number;
+  metrics: UiPluginMetric[];
 }

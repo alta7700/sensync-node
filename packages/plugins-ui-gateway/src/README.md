@@ -12,9 +12,11 @@
   - выбирает concrete `UiSchema` по профилю запуска;
   - следит за stream registry и numeric IDs;
   - обновляет flags;
+  - materialize'ит dynamic options для локальных форм;
   - кодирует `signal.batch` в binary UI frames;
   - отправляет `ui.init`, patch-сообщения и telemetry.
 - Для `fake-hdf5-simulation` схема отдельная: по графикам она совместима с fake-демо, но управляющие кнопки уже относятся к simulation-источнику.
+- Для `veloerg` схема минимальна: scan/connect/disconnect Moxy, live charts и toast/error flow.
 
 ## Взаимодействие
 

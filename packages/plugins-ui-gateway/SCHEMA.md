@@ -9,10 +9,11 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 ## 1. Launch profiles
 
-Сейчас `ui-gateway` поддерживает две concrete-схемы:
+Сейчас `ui-gateway` поддерживает три concrete-схемы:
 
 - `fake`
 - `fake-hdf5-simulation`
+- `veloerg`
 
 `fake` — дефолтный dev-профиль.
 
@@ -139,6 +140,7 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 Показывает:
 
 - queue telemetry runtime;
+- latest plugin metrics, если они публикуются плагинами;
 - общее число drops.
 
 ## 3. Профиль `fake-hdf5-simulation`
@@ -212,16 +214,81 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 ### Telemetry
 
 - `telemetry-main`
+- Показывает queue telemetry runtime и latest plugin metrics.
 
-## 4. Общие правила flags и stream declarations
+## 4. Профиль `veloerg`
+
+Назначение:
+
+- минимальный live-профиль для ANT+/Moxy сценария;
+- сейчас transport ещё fake, но UI, scan flow и data-path уже идут через те же runtime-контракты, что и будут использоваться дальше.
+
+### Страница
+
+- Одна страница: `main`.
+- Заголовок страницы: `Veloerg`.
+
+Раскладка строк:
+
+- `controls-main | status-main`
+- `chart-moxy-smo2`
+- `chart-moxy-thb`
+- `telemetry-main`
+
+### Controls
+
+Виджет:
+
+- `controls-main`
+
+Кнопки:
+
+- `scan-moxy`
+  - в базовом состоянии отправляет `adapter.scan.request` для `adapterId = ant-plus`
+  - одновременно открывает локальную modal form `connect-moxy-ant-plus`
+  - форма содержит `select`, который читает runtime-driven options из `adapter.ant-plus.scan.candidates`
+  - submit формы отправляет `adapter.connect.request`
+- `disconnect-moxy`
+  - видима только если `adapter.ant-plus.state ∈ { connected, failed, disconnecting }`
+  - в `connected` отправляет `adapter.disconnect.request`
+  - в `failed` тоже отправляет `adapter.disconnect.request`, чтобы сбросить состояние
+
+### Status
+
+Показываемые флаги:
+
+- `adapter.ant-plus.state`
+- `adapter.ant-plus.scanning`
+- `adapter.ant-plus.scanMessage`
+- `adapter.ant-plus.message`
+
+### Графики
+
+- `chart-moxy-smo2`
+  - окно: `20_000 ms`
+  - поток: `moxy.smo2`
+  - ось Y: `[40, 100] %`
+- `chart-moxy-thb`
+  - окно: `20_000 ms`
+  - поток: `moxy.thb`
+  - ось Y: `[8, 18] g/dL`
+
+### Telemetry
+
+- `telemetry-main`
+- Для `veloerg` сюда также попадают latest metrics качества ANT+ канала от `ant-plus-adapter`.
+
+## 5. Общие правила flags и stream declarations
 
 `ui-gateway` materialize'ит:
 
 - flags patch для adapter state;
+- flags patch для adapter scan state;
 - flags patch для interval/activity state;
 - flags patch для recorder state;
 - flags patch для simulation state;
-- `ui.error` для recorder error;
+- `ui.form.options.patch` для runtime-driven options локальных форм;
+- `ui.error` для recorder error, scan failure и adapter `failed`;
 - `ui.stream.declare` при первом появлении stream;
 - `ui.init` при подключении клиента.
 

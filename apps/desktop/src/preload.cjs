@@ -41,4 +41,7 @@ contextBridge.exposeInMainWorld('sensyncBridge', {
   async getRuntimePlugins() {
     return ipcRenderer.invoke('sensync:get-runtime-plugins');
   },
+  async pickPath(options) {
+    return ipcRenderer.invoke('sensync:pick-path', options);
+  },
 });

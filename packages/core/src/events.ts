@@ -66,12 +66,44 @@ export type RuntimeEvent = CommandEvent | FactEvent | SignalBatchEvent;
 export interface AdapterConnectRequestPayload {
   adapterId: string;
   formData?: Record<string, unknown>;
-  requestId: string;
+  requestId?: string;
 }
 
 export interface AdapterDisconnectRequestPayload {
   adapterId: string;
-  requestId: string;
+  requestId?: string;
+}
+
+export interface AdapterScanRequestPayload {
+  adapterId: string;
+  timeoutMs?: number;
+  formData?: Record<string, unknown>;
+  requestId?: string;
+}
+
+export interface AdapterScanStateChangedPayload {
+  adapterId: string;
+  scanning: boolean;
+  requestId?: string;
+  scanId?: string;
+  message?: string;
+}
+
+export type AdapterScanCandidateDetailValue = string | number | boolean | null;
+
+export interface AdapterScanCandidate {
+  candidateId: string;
+  title: string;
+  subtitle?: string;
+  details?: Record<string, AdapterScanCandidateDetailValue>;
+  connectFormData: Record<string, unknown>;
+}
+
+export interface AdapterScanCandidatesPayload {
+  adapterId: string;
+  requestId?: string;
+  scanId: string;
+  candidates: AdapterScanCandidate[];
 }
 
 export interface AdapterStateChangedPayload {

@@ -124,6 +124,34 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - `disconnect` сбрасывает курсоры;
 - `seek` и `loop` не реализованы.
 
+## 5.1 Adapter Scan Events
+
+Поиск устройств управляется отдельным command/fact слоем discovery.
+
+Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
+
+Текущий `v1` контракт:
+
+- `adapter.scan.request`
+  - запускает поиск устройств для конкретного `adapterId`;
+  - может нести adapter-specific `formData`;
+  - не означает подключение;
+  - может нести `timeoutMs`.
+- `adapter.scan.state.changed`
+  - отражает только факт активного поиска;
+  - `scanning=true` означает, что UI должен показать состояние поиска;
+  - `scanning=false` означает, что конкретный scan завершён или прерван.
+- `adapter.scan.candidates`
+  - несёт итоговый список найденных устройств;
+  - `scanId` живёт только в рамках одного scan;
+  - `connectFormData` внутри кандидата считается opaque payload-фрагментом для последующего `adapter.connect.request`.
+
+Ограничения `v1`:
+
+- отдельные `scan.cancel` и `scan.progress` не поддерживаются;
+- ошибки поиска могут materialize'иться в `ui.error`, а не в отдельную scan-state machine;
+- список кандидатов не должен сериализоваться через flags patch.
+
 ## 6. Plugin Manifest
 
 Контракт описан в [packages/core/src/plugin.ts](src/plugin.ts).
@@ -191,6 +219,18 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 
 `UiControlAction` и `UiControlVariant` описывают declarative-кнопки.
 
+## 10. Runtime Telemetry
+
+`runtime.telemetry.snapshot` и materialized `ui.telemetry` используются не только для очередей runtime, но и для latest plugin metrics.
+
+Правила `v1`:
+
+- `queues[]` и `dropped` остаются snapshot runtime-очередей;
+- `metrics[]` содержит последние известные значения plugin metrics, а не историю;
+- метрики идентифицируются парой `pluginId + name + tags`;
+- runtime может перезаписывать более старое значение метрики новым без накопления временного ряда;
+- UI не должен трактовать `metrics[]` как stream данных, это диагностический срез состояния.
+
 Семантика:
 
 - Базовая кнопка задаёт дефолтные поля.
@@ -204,6 +244,39 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - `and`
 - `or`
 - `not`
+
+## 9.1 Modal Forms и Dynamic Options
+
+`UiControlAction` может открывать локальный `modalForm`.
+
+Семантика:
+
+- `modalForm` описывается в общей `UiSchema`, но его open/close состояние живёт только в renderer;
+- runtime не знает, открыта форма или нет;
+- submit формы отправляет обычный `UiCommandMessage` в runtime;
+- поля формы по умолчанию собираются в `payload.formData`, если renderer не вводит более узкое поведение.
+
+Поддерживаемые node-виды `v1`:
+
+- `row`
+- `column`
+- `textInput`
+- `numberInput`
+- `decimalInput`
+- `fileInput`
+- `select`
+
+Для `select`:
+
+- options приходят отдельным control message `ui.form.options.patch`;
+- `sourceId` связывает конкретное поле формы с runtime-данными;
+- `payload` выбранной option может использоваться renderer'ом как дополнительный merge в `formData`.
+
+Ограничения `v1`:
+
+- формы не являются отдельной второй schema-системой;
+- flags snapshot/patch не предназначены для переноса массивов option'ов;
+- `fileInput` в desktop-режиме опирается на Electron bridge, а не на прямой доступ renderer к Node API.
 
 ## 10. UI Wire
 

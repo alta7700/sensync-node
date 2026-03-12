@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
 const FakeSimulationChannelIds = ['fake.a1', 'fake.a2', 'fake.b', 'shapes.signal', 'interval.label', 'activity.label'] as const;
 
-export const LaunchProfiles = ['fake', 'fake-hdf5-simulation'] as const;
+export const LaunchProfiles = ['fake', 'fake-hdf5-simulation', 'veloerg'] as const;
 export type LaunchProfile = (typeof LaunchProfiles)[number];
 
 const DefaultLaunchProfile: LaunchProfile = 'fake';
@@ -144,15 +144,40 @@ function makeFakeHdf5SimulationPluginDescriptors(): PluginDescriptor[] {
   ];
 }
 
+function makeVeloergPluginDescriptors(): PluginDescriptor[] {
+  return [
+    {
+      id: 'ant-plus-adapter',
+      modulePath: moduleFileUrl('packages/plugins-ant-plus/src/ant-plus-adapter.ts'),
+      config: {
+        adapterId: 'ant-plus',
+        mode: 'real',
+      },
+    },
+    {
+      id: 'ui-gateway',
+      modulePath: moduleFileUrl('packages/plugins-ui-gateway/src/ui-gateway-plugin.ts'),
+      config: {
+        sessionId: 'local-desktop',
+        profile: 'veloerg',
+      },
+    },
+  ];
+}
+
 /**
  * Возвращает композицию плагинов для выбранного launch profile.
  *
  * `fake` используем как дефолтный dev-профиль, а `fake-hdf5-simulation`
  * оставляем переходным сценарием проигрывания fake-каналов из записанного HDF5.
+ * `veloerg` нужен для live ANT+/Moxy сценария с реальным transport по умолчанию.
  */
 export function makePluginDescriptors(profile: LaunchProfile = DefaultLaunchProfile): PluginDescriptor[] {
   if (profile === 'fake-hdf5-simulation') {
     return makeFakeHdf5SimulationPluginDescriptors();
+  }
+  if (profile === 'veloerg') {
+    return makeVeloergPluginDescriptors();
   }
   return makeFakePluginDescriptors();
 }

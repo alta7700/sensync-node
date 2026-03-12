@@ -4,6 +4,9 @@
  * Здесь только те события, которые реально используются в runtime и fake-плагинах.
  */
 export const EventTypes = {
+  adapterScanRequest: 'adapter.scan.request',
+  adapterScanStateChanged: 'adapter.scan.state.changed',
+  adapterScanCandidates: 'adapter.scan.candidates',
   adapterConnectRequest: 'adapter.connect.request',
   adapterDisconnectRequest: 'adapter.disconnect.request',
   adapterStateChanged: 'adapter.state.changed',

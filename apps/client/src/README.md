@@ -13,6 +13,7 @@
 
 - `main.tsx` монтирует React-приложение.
 - `App.tsx` содержит runtime singleton, widget renderer и ECharts/canvas графики.
+- `App.tsx` содержит runtime singleton, widget renderer, локальные modal forms, toast-уведомления и ECharts/canvas графики.
 - `electronTransport.ts` адаптирует IPC bridge Electron к интерфейсу `ClientTransport`.
 - TS-файлы являются источником истины; соседние `.js` и `.d.ts` артефакты редактировать вручную не нужно.
 

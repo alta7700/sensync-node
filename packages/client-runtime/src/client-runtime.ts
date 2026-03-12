@@ -1,6 +1,18 @@
-import { decodeUiSignalBatchFrame, type UiControlMessage, type UiSessionClockInfo, type UiStreamDeclaration } from '@sensync2/core';
+import {
+  decodeUiSignalBatchFrame,
+  type UiControlMessage,
+  type UiFormOption,
+  type UiSessionClockInfo,
+  type UiStreamDeclaration,
+} from '@sensync2/core';
 import { TypedArrayRingBufferStore } from './ring-buffer-store.ts';
-import type { ClientRuntimeStateSnapshot, ClientTransport, StreamBufferStore, StreamWindowData } from './types.ts';
+import type {
+  ClientRuntimeNotification,
+  ClientRuntimeStateSnapshot,
+  ClientTransport,
+  StreamBufferStore,
+  StreamWindowData,
+} from './types.ts';
 
 type UpdateListener = () => void;
 type StreamListener = (streamId: string) => void;
@@ -19,6 +31,8 @@ export class ClientRuntime {
   private flags: ClientRuntimeStateSnapshot['flags'] = {};
   private streamsById = new Map<string, UiStreamDeclaration>();
   private streamsByNumericId = new Map<number, UiStreamDeclaration>();
+  private formOptionsBySourceId = new Map<string, UiFormOption[]>();
+  private notifications: ClientRuntimeNotification[] = [];
   private telemetry?: ClientRuntimeStateSnapshot['telemetry'];
 
   private updateListeners = new Set<UpdateListener>();
@@ -164,11 +178,20 @@ export class ClientRuntime {
     return () => this.streamListeners.delete(listener);
   }
 
+  dismissNotification(notificationId: string): void {
+    const next = this.notifications.filter((notification) => notification.id !== notificationId);
+    if (next.length === this.notifications.length) return;
+    this.notifications = next;
+    this.notifyUpdate();
+  }
+
   getSnapshot(): ClientRuntimeStateSnapshot {
     const snapshot: ClientRuntimeStateSnapshot = {
       connected: this.connected,
       flags: this.flags,
       streams: [...this.streamsById.values()],
+      formOptions: Object.fromEntries(this.formOptionsBySourceId.entries()),
+      notifications: [...this.notifications],
     };
     if (this.sessionId !== undefined) snapshot.sessionId = this.sessionId;
     if (this.clock !== undefined) snapshot.clock = this.clock;
@@ -190,6 +213,8 @@ export class ClientRuntime {
       this.latestSessionMs = 0;
       this.streamsById.clear();
       this.streamsByNumericId.clear();
+      this.formOptionsBySourceId.clear();
+      this.notifications = [];
       this.bufferStore.clear();
       for (const stream of message.streams) {
         this.registerStream(stream);
@@ -206,6 +231,12 @@ export class ClientRuntime {
 
     if (message.type === 'ui.flags.patch') {
       this.flags = { ...this.flags, ...message.patch };
+      this.notifyUpdate();
+      return;
+    }
+
+    if (message.type === 'ui.form.options.patch') {
+      this.formOptionsBySourceId.set(message.sourceId, [...message.options]);
       this.notifyUpdate();
       return;
     }
@@ -229,7 +260,18 @@ export class ClientRuntime {
     }
 
     if (message.type === 'ui.error') {
-      // Ошибки показываем через общий список флагов, чтобы UI оставался schema-driven.
+      // Ошибку сохраняем и как toast-уведомление, и как последний текстовый флаг для status/debug.
+      this.notifications = [
+        ...this.notifications.slice(-19),
+        {
+          id: crypto.randomUUID(),
+          level: 'error',
+          code: message.code,
+          message: message.message,
+          ...(message.pluginId !== undefined ? { pluginId: message.pluginId } : {}),
+          createdAtMs: Date.now(),
+        },
+      ];
       this.flags = { ...this.flags, lastError: message.message };
       this.notifyUpdate();
     }

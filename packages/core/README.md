@@ -6,6 +6,7 @@
 
 - Это источник истины для типов событий, UI schema, plugin manifest и бинарного UI wire.
 - Любой модуль, который говорит на языке runtime или UI, должен опираться на этот пакет.
+- Здесь же теперь живут shared-контракты для adapter scan flow и schema-driven modal forms.
 
 ## Как работает
 

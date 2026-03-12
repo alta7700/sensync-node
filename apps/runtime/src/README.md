@@ -20,4 +20,4 @@
 - Потребляет worker-протокол и event-контракты из `packages/core`.
 - Загружает plugin modules через `packages/plugin-sdk`.
 - Наружу отдаёт API класса `RuntimeHost`, который использует `apps/desktop`.
-- В `default-plugins.ts` зафиксированы базовый профиль `fake` и переходная композиция `fake-hdf5-simulation`.
+- В `default-plugins.ts` зафиксированы базовый профиль `fake`, переходная композиция `fake-hdf5-simulation` и минимальный ANT+/Moxy профиль `veloerg`.

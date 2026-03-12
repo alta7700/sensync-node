@@ -11,7 +11,7 @@
 - `events.ts` — runtime-события и payload signal batch.
 - `event-types.ts` — словарь фиксированных event type строк.
 - `plugin.ts` — manifest, subscriptions, telemetry и plugin snapshot.
-- `ui.ts` — schema-driven UI модель, control rules и stream declarations.
+- `ui.ts` — schema-driven UI модель, control rules, modal forms, dynamic form options и stream declarations.
 - `ui-wire.ts` — бинарный формат батчей для UI.
 - `worker-protocol.ts` — протокол сообщений между main runtime и plugin worker'ом.
 

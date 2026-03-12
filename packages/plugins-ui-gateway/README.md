@@ -10,9 +10,11 @@ UI gateway plugin.
 ## Как работает
 
 - Плагин подписывается на `signal.batch`, adapter state, recorder state, simulation state, telemetry и другие факты.
-- Он собирает `UiSchema`, flags snapshot/patches и выдаёт binary batches с numeric stream IDs.
+- Он собирает `UiSchema`, flags snapshot/patches, dynamic form options и выдаёт binary batches с numeric stream IDs.
 - При подключении UI-клиента отправляет `ui.init` и текущий снимок состояния.
-- Concrete-схема зависит от launch profile (`fake` или `fake-hdf5-simulation`).
+- Concrete-схема зависит от launch profile (`fake`, `fake-hdf5-simulation` или `veloerg`).
+- В `veloerg` live-графики держат короткое окно `20s`, чтобы Moxy-поток читался как live, а не как длинная историческая лента.
+- `ui.telemetry` теперь несёт не только runtime queue snapshot, но и latest plugin metrics, например качество ANT+ канала.
 
 ## Взаимодействие
 

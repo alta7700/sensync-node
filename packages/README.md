@@ -11,6 +11,7 @@
 - `core` задаёт типы и wire-контракты.
 - `plugin-sdk` задаёт модель worker-плагина.
 - `plugins-*` реализуют доменную логику поверх этих контрактов.
+- `plugins-ant-plus` отвечает за ANT+ scan/connect/data flow и transport boundary к stick.
 - `plugins-hdf5` отвечает за запись выбранных сигналов в `HDF5`.
 - `client-runtime` материализует UI-поток на стороне renderer.
 - `devtools` зарезервирован под bench и инспекторы.

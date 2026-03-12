@@ -8,7 +8,7 @@
 
 ## Как работает
 
-- `client-runtime.ts` — подключение, обработка control/binary сообщений, снапшоты и подписки.
+- `client-runtime.ts` — подключение, обработка control/binary сообщений, form options, UI-уведомления, снапшоты и подписки.
 - `ring-buffer-store.ts` — `TypedArray`-based хранение потоков и выборка видимого окна.
 - `types.ts` — transport/buffer store интерфейсы и shape снапшота.
 
