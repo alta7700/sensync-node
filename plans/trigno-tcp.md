@@ -98,6 +98,41 @@
 - собственная реализация оправдана;
 - риск проекта: средний, но управляемый при наличии устройства для тестирования.
 
+## UI flow подключения
+
+Хотя `Trigno TCP` не требует BLE/ANT discovery, пользовательский flow подключения всё равно лучше держать тем же, что уже есть у `ANT+`: кнопка действия, локальная форма, submit в `adapter.connect.request`.
+
+Практически это означает:
+
+1. Кнопка подключения не должна сразу слать "голый" `connect` без ввода параметров.
+2. UI открывает локальную `modalForm`.
+3. Форма собирает минимум нужных параметров подключения:
+   - host / IP;
+   - command port;
+   - data port или набор data sockets;
+   - при необходимости device-specific flags.
+4. Submit формы отправляет `adapter.connect.request` с `formData`.
+
+Если позже для Trigno появится отдельный шаг discovery или probe до подключения, его тоже нужно встраивать в тот же общий паттерн:
+
+- сначала `adapter.scan.request` или иной подготовительный command;
+- потом локальная форма с результатами и параметрами;
+- потом `adapter.connect.request`.
+
+Важно не откатываться к старому UI-стилю "кнопка сама знает все параметры". Для `sensync2` подключение должно быть schema-driven и идти через локальные формы.
+
+### Где смотреть в проекте
+
+За рабочим примером такого flow нужно смотреть не в старый Python-код, а в уже реализованный `ANT+` сценарий:
+
+- `packages/core/CONTRACTS.md` — scan flow и `modalForm`;
+- `packages/plugins-ui-gateway/SCHEMA.md` — профиль `veloerg` как пример declarative-кнопки, которая открывает форму;
+- `packages/plugins-ui-gateway/src/ui-gateway-plugin.ts` — как UI получает flags, messages и runtime-driven options;
+- `apps/client/src/App.tsx` — как renderer хранит открытие формы локально и как отправляет submit;
+- `packages/plugins-ant-plus/src/ant-plus-adapter.ts` — пример adapter-side connect/disconnect и scan lifecycle.
+
+Для `Trigno TCP` это не означает, что нужен буквальный scan BLE/ANT-стиля. Здесь важно повторить именно UX-контракт подключения и архитектурное разделение: форма и локальное состояние в renderer, а сам connect — через обычный runtime command.
+
 ## Источники
 
 - Поисковый запрос GitHub: [trigno node](https://github.com/search?q=trigno+node&type=repositories)

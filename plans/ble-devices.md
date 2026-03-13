@@ -98,6 +98,35 @@
 - перенос Zephyr-подобного устройства: средний риск;
 - главный риск: не кодовая сложность, а поведение BLE на разных ОС и стабильность reconnect.
 
+## UI flow подключения
+
+Для BLE-устройств не нужно придумывать отдельный UX-паттерн подключения. Здесь надо повторить уже реализованный flow из `ANT+`:
+
+1. Пользователь нажимает кнопку подключения.
+2. UI отправляет `adapter.scan.request`.
+3. Адаптер переводит себя в `scanning` и по завершении публикует `adapter.scan.candidates`.
+4. UI открывает локальную `modalForm` с выбором устройства и device-specific полями.
+5. Submit формы отправляет обычный `adapter.connect.request` с `formData`.
+
+Что важно зафиксировать для BLE:
+
+- подключение должно идти через тот же `scan -> form -> connect`, а не через прямой `connect` без выбора устройства;
+- форма должна жить локально в renderer и не требовать отдельного runtime-state "форма открыта";
+- список найденных устройств должен приходить как runtime-driven options, а не как захардкоженный список в схеме;
+- ошибки scan/connect должны materialize'иться через тот же `ui.error` / toast flow.
+
+### Где смотреть в проекте
+
+Если нужно быстро понять, как это уже устроено и что именно нужно повторить, смотреть сюда:
+
+- `packages/core/CONTRACTS.md` — разделы про `adapter.scan.*` и `modalForm`;
+- `packages/plugins-ui-gateway/SCHEMA.md` — профиль `veloerg` как concrete-пример кнопки scan и формы выбора устройства;
+- `packages/plugins-ant-plus/src/ant-plus-adapter.ts` — пример plugin-side scan/connect/disconnect lifecycle;
+- `packages/plugins-ui-gateway/src/ui-gateway-plugin.ts` — materialization scan-state, candidates и form options в UI;
+- `apps/client/src/App.tsx` — локальный рендер `modalForm`, submit формы и toast-ошибки.
+
+Для BLE-плана этого достаточно: детали конкретных полей формы и shape `formData` уже надо будет дописать при проектировании конкретного устройства.
+
 ## Источники
 
 - [abandonware/noble](https://github.com/abandonware/noble)
