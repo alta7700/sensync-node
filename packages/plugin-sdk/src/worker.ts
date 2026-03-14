@@ -1,11 +1,13 @@
 import { parentPort } from 'node:worker_threads';
 import type { TransferListItem } from 'node:worker_threads';
 import {
+  defineRuntimeEventInput,
   getSignalBatchTransferables,
+  isSignalBatchEventInput,
   type MainToPluginWorkerMessage,
   type PluginToMainWorkerMessage,
   type RuntimeEvent,
-  type SignalBatchEvent,
+  type RuntimeEventInput,
 } from '@sensync2/core';
 import type { PluginContext, PluginModule } from './index.ts';
 
@@ -23,7 +25,7 @@ interface WorkerState {
 interface TimerState {
   intervalMs: number;
   nextDueMs: number;
-  eventFactory: () => Omit<RuntimeEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>;
+  eventFactory: () => RuntimeEventInput;
   handle: ReturnType<typeof setTimeout> | null;
 }
 
@@ -105,14 +107,14 @@ function buildContext(pluginId: string): PluginContext {
         return state.sessionStartWallMs;
       },
     },
-    async emit(event) {
+    async emit<TEvent extends RuntimeEventInput>(event: TEvent) {
       const message: PluginToMainWorkerMessage = {
         kind: 'plugin.emit',
         event,
       };
 
-      if (event.type === 'signal.batch' && 'payload' in event) {
-        post(message, getSignalBatchTransferables((event as Omit<SignalBatchEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>).payload));
+      if (isSignalBatchEventInput(event)) {
+        post(message, getSignalBatchTransferables(event.payload));
         return;
       }
 
@@ -127,7 +129,7 @@ function buildContext(pluginId: string): PluginContext {
       const timer: TimerState = {
         intervalMs,
         nextDueMs: performance.now() + intervalMs,
-        eventFactory,
+        eventFactory: () => defineRuntimeEventInput(eventFactory()),
         handle: null,
       };
       state.timers.set(timerId, timer);

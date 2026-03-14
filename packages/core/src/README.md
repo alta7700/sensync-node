@@ -9,13 +9,21 @@
 ## Как работает
 
 - `events.ts` — runtime-события и payload signal batch.
+- `generated-runtime-event-map.ts` — сгенерированная карта exact event union для shared-событий.
+- `runtime-event-map.spec.ts` — декларативное описание shared event map для генератора, не Vitest-suite.
+- `runtime-event-map-codegen.ts` — типы для сборки event map из shared и plugin-specific spec-файлов.
 - `event-types.ts` — словарь фиксированных event type строк.
+- `event-contracts.ts` — базовые типы registry для `(type, v)`.
+- `shared-event-contracts.ts` — shared runtime-контракты, которые знает вся система.
+- `ui-command-boundary.ts` — boundary guards для UI-команд до попадания в шину и типизированный subset UI-доступных command events.
 - `plugin.ts` — manifest, subscriptions, telemetry и plugin snapshot.
-- `ui.ts` — schema-driven UI модель, control rules, modal forms, dynamic form options и stream declarations.
+- `ui.ts` — schema-driven UI модель, control rules, modal forms, dynamic form options, stream declarations и helper'ы `createUiCommandMessage(...)` / `uiCommandMessageToRuntimeEventInput(...)`.
 - `ui-wire.ts` — бинарный формат батчей для UI.
+- `ui-command-helpers.test.ts` — точечный тест на bridge между UI-командой и внутренним runtime-event input.
 - `worker-protocol.ts` — протокол сообщений между main runtime и plugin worker'ом.
 
 ## Взаимодействие
 
 - На эти файлы опираются `apps/runtime`, `apps/desktop`, `apps/client`, `packages/plugin-sdk`, `packages/client-runtime` и все плагины.
+- `events.ts` экспортирует `defineRuntimeEventInput(...)`, `RuntimeEventInput` и exact `RuntimeEvent`, которыми должны пользоваться runtime и плагины при создании событий.
 - Текстовое описание семантики находится в [packages/core/CONTRACTS.md](../CONTRACTS.md).

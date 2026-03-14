@@ -25,7 +25,7 @@ export interface StreamWindowData {
 
 export interface ClientRuntimeNotification {
   id: string;
-  level: 'error';
+  level: 'warning' | 'error';
   code: string;
   message: string;
   pluginId?: string;

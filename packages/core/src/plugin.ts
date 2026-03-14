@@ -1,8 +1,8 @@
-import type { EventKind, EventPriority, EventType, PluginId, RuntimeEvent } from './events.ts';
+import type { EventKind, EventPriority, PluginId, RuntimeEvent } from './events.ts';
+import type { EventRef } from './event-contracts.ts';
 import type { UiWidget } from './ui.ts';
 
-export interface EventSubscription {
-  type: EventType;
+export interface EventSubscription extends EventRef {
   kind?: EventKind;
   priority?: EventPriority;
   filter?: {
@@ -27,7 +27,7 @@ export interface PluginManifest {
     dataCapacity: number;
     dataPolicy: 'fail-fast' | 'coalesce-latest-per-stream';
   };
-  emits?: string[];
+  emits?: EventRef[];
   uiContributions?: UiContributionDescriptor[];
 }
 

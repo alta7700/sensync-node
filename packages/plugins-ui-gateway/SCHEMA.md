@@ -220,8 +220,8 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 Назначение:
 
-- минимальный live-профиль для ANT+/Moxy сценария;
-- сейчас transport ещё fake, но UI, scan flow и data-path уже идут через те же runtime-контракты, что и будут использоваться дальше.
+- live composite-профиль для ANT+/Moxy и BLE/Zephyr сценария;
+- Moxy даёт живые графики `SmO2` и `tHb`, а Zephyr даёт live-график `RR` плюс transport lifecycle и telemetry через те же runtime-контракты.
 
 ### Страница
 
@@ -230,16 +230,17 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 Раскладка строк:
 
-- `controls-main | status-main`
-- `chart-moxy-smo2`
-- `chart-moxy-thb`
+- `controls-main | controls-zephyr | status-main`
+- `chart-moxy-smo2 | chart-moxy-thb`
+- `chart-zephyr-rr`
 - `telemetry-main`
 
 ### Controls
 
-Виджет:
+Виджеты:
 
 - `controls-main`
+- `controls-zephyr`
 
 Кнопки:
 
@@ -252,6 +253,15 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
   - видима только если `adapter.ant-plus.state ∈ { connected, failed, disconnecting }`
   - в `connected` отправляет `adapter.disconnect.request`
   - в `failed` тоже отправляет `adapter.disconnect.request`, чтобы сбросить состояние
+- `scan-zephyr`
+  - в базовом состоянии отправляет `adapter.scan.request` для `adapterId = zephyr-bioharness`
+  - одновременно открывает локальную modal form `connect-zephyr-zephyr-bioharness`
+  - форма содержит `select`, который читает runtime-driven options из `adapter.zephyr-bioharness.scan.candidates`
+  - submit формы отправляет `adapter.connect.request`
+- `disconnect-zephyr`
+  - видима только если `adapter.zephyr-bioharness.state ∈ { connected, failed, disconnecting }`
+  - в `connected` отправляет `adapter.disconnect.request`
+  - в `failed` тоже отправляет `adapter.disconnect.request`, чтобы сбросить состояние
 
 ### Status
 
@@ -261,6 +271,10 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 - `adapter.ant-plus.scanning`
 - `adapter.ant-plus.scanMessage`
 - `adapter.ant-plus.message`
+- `adapter.zephyr-bioharness.state`
+- `adapter.zephyr-bioharness.scanning`
+- `adapter.zephyr-bioharness.scanMessage`
+- `adapter.zephyr-bioharness.message`
 
 ### Графики
 
@@ -272,11 +286,15 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
   - окно: `20_000 ms`
   - поток: `moxy.thb`
   - ось Y: `[8, 18] g/dL`
+- `chart-zephyr-rr`
+  - окно: `20_000 ms`
+  - поток: `zephyr.rr`
+  - ось Y: `[0.3, 1.8] s`
 
 ### Telemetry
 
 - `telemetry-main`
-- Для `veloerg` сюда также попадают latest metrics качества ANT+ канала от `ant-plus-adapter`.
+- Для `veloerg` сюда также попадают latest metrics качества ANT+ канала от `ant-plus-adapter` и BLE/Zephyr transport metrics от `zephyr-bioharness-3-adapter`.
 
 ## 5. Общие правила flags и stream declarations
 
@@ -289,8 +307,14 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 - flags patch для simulation state;
 - `ui.form.options.patch` для runtime-driven options локальных форм;
 - `ui.error` для recorder error, scan failure и adapter `failed`;
+- `ui.warning` для мягких проблем ingress/runtime-contract слоя;
 - `ui.stream.declare` при первом появлении stream;
 - `ui.init` при подключении клиента.
+
+Правило версий UI-команд:
+
+- `UiControlAction.commandVersion` и `UiModalForm.submitEventVersion` можно задавать явно;
+- если версия не указана, renderer отправляет `v=1`.
 
 Правило stream registry:
 

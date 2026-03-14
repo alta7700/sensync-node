@@ -1,4 +1,4 @@
-import { EventTypes, type AdapterConnectRequestPayload, type AdapterDisconnectRequestPayload, type CommandEvent } from '@sensync2/core';
+import { EventTypes } from '@sensync2/core';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 import { adapterStateEvent, signalBatchEvent } from './helpers.ts';
 
@@ -121,6 +121,7 @@ async function startStreaming(ctx: PluginContext): Promise<void> {
   const intervalMs = schedulerTickIntervalMs();
   ctx.setTimer('fake.scheduler', intervalMs, () => ({
     type: SchedulerTickType,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload: {},
@@ -137,15 +138,20 @@ export default definePlugin({
     version: '0.1.0',
     required: true,
     subscriptions: [
-      { type: EventTypes.adapterConnectRequest, kind: 'command', priority: 'control' },
-      { type: EventTypes.adapterDisconnectRequest, kind: 'command', priority: 'control' },
-      { type: SchedulerTickType, kind: 'fact', priority: 'system' },
+      { type: EventTypes.adapterConnectRequest, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.adapterDisconnectRequest, v: 1, kind: 'command', priority: 'control' },
+      { type: SchedulerTickType, v: 1, kind: 'fact', priority: 'system' },
     ],
     mailbox: {
       controlCapacity: 128,
       dataCapacity: 64,
       dataPolicy: 'fail-fast',
     },
+    emits: [
+      { type: EventTypes.adapterStateChanged, v: 1 },
+      { type: EventTypes.signalBatch, v: 1 },
+      { type: SchedulerTickType, v: 1 },
+    ],
   },
   async onInit(ctx) {
     cfg = { ...cfg, ...(ctx.getConfig<FakeSignalAdapterConfig>() ?? {}) };
@@ -154,7 +160,7 @@ export default definePlugin({
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.adapterConnectRequest) {
-      const payload = (event as CommandEvent<AdapterConnectRequestPayload>).payload;
+      const payload = event.payload;
       if (payload.adapterId !== 'fake') return;
       if (connected) return;
 
@@ -171,7 +177,7 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.adapterDisconnectRequest) {
-      const payload = (event as CommandEvent<AdapterDisconnectRequestPayload>).payload;
+      const payload = event.payload;
       if (payload.adapterId !== 'fake') return;
       if (!connected) return;
 
@@ -192,4 +198,3 @@ export default definePlugin({
     connected = false;
   },
 });
-

@@ -13,6 +13,7 @@
 - `interval-label-adapter.ts` — метки интервалов.
 - `rolling-min-processor.ts` — пример таймерного процессора.
 - `activity-detector-processor.ts` — пример derived state/plugin processor.
+- `event-contracts.ts` — plugin-specific события пакета (`fake.scheduler.tick`, `shape.scheduler.tick`, `processor.rolling-min.flush`, `metric.value.changed`).
 - `helpers.ts` — общие функции для событий адаптеров и signal batch.
 
 ## Взаимодействие

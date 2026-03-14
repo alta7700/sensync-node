@@ -1,9 +1,6 @@
 import {
+  defineRuntimeEventInput,
   EventTypes,
-  type AdapterConnectRequestPayload,
-  type AdapterDisconnectRequestPayload,
-  type CommandEvent,
-  type FactEvent,
 } from '@sensync2/core';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 import { adapterStateEvent, signalBatchEvent } from './helpers.ts';
@@ -84,8 +81,9 @@ function stopStreaming(ctx: PluginContext): void {
 
 async function startStreaming(ctx: PluginContext): Promise<void> {
   const intervalMs = Math.max(1, Math.trunc(cfg.batchMs));
-  ctx.setTimer('shape.scheduler', intervalMs, () => ({
+  ctx.setTimer('shape.scheduler', intervalMs, () => defineRuntimeEventInput({
     type: ShapeSchedulerTickType,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload: {},
@@ -98,16 +96,22 @@ export default definePlugin({
     version: '0.1.0',
     required: true,
     subscriptions: [
-      { type: EventTypes.adapterConnectRequest, kind: 'command', priority: 'control' },
-      { type: EventTypes.adapterDisconnectRequest, kind: 'command', priority: 'control' },
-      { type: EventTypes.shapeGenerateRequest, kind: 'command', priority: 'control' },
-      { type: ShapeSchedulerTickType, kind: 'fact', priority: 'system' },
+      { type: EventTypes.adapterConnectRequest, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.adapterDisconnectRequest, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.shapeGenerateRequest, v: 1, kind: 'command', priority: 'control' },
+      { type: ShapeSchedulerTickType, v: 1, kind: 'fact', priority: 'system' },
     ],
     mailbox: {
       controlCapacity: 128,
       dataCapacity: 64,
       dataPolicy: 'fail-fast',
     },
+    emits: [
+      { type: EventTypes.adapterStateChanged, v: 1 },
+      { type: EventTypes.shapeGenerated, v: 1 },
+      { type: EventTypes.signalBatch, v: 1 },
+      { type: ShapeSchedulerTickType, v: 1 },
+    ],
   },
   async onInit(ctx) {
     cfg = { ...cfg, ...(ctx.getConfig<ShapeGeneratorConfig>() ?? {}) };
@@ -115,7 +119,7 @@ export default definePlugin({
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.adapterConnectRequest) {
-      const payload = (event as CommandEvent<AdapterConnectRequestPayload>).payload;
+      const payload = event.payload;
       if (payload.adapterId !== 'shapes') return;
       if (connected) return;
       await ctx.emit(adapterStateEvent('shapes', 'connecting', undefined, payload.requestId));
@@ -127,7 +131,7 @@ export default definePlugin({
       return;
     }
     if (event.type === EventTypes.adapterDisconnectRequest) {
-      const payload = (event as CommandEvent<AdapterDisconnectRequestPayload>).payload;
+      const payload = event.payload;
       if (payload.adapterId !== 'shapes') return;
       if (!connected) return;
       await ctx.emit(adapterStateEvent('shapes', 'disconnecting', undefined, payload.requestId));
@@ -137,16 +141,17 @@ export default definePlugin({
       return;
     }
     if (event.type === EventTypes.shapeGenerateRequest) {
-      const payload = (event as CommandEvent<{ shapeName?: string }>).payload;
+      const payload = event.payload;
       const shapeName = typeof payload.shapeName === 'string' ? payload.shapeName : 'sine';
       pendingShape = buildShape(shapeName, Math.max(1, cfg.sampleRateHz));
       pendingOffset = 0;
-      const shapeGenerated: Omit<FactEvent<{ shapeName: string }>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> = {
+      const shapeGenerated = defineRuntimeEventInput({
         type: EventTypes.shapeGenerated,
+        v: 1,
         kind: 'fact',
         priority: 'control',
         payload: { shapeName },
-      };
+      });
       await ctx.emit(shapeGenerated);
       return;
     }
@@ -162,4 +167,3 @@ export default definePlugin({
     pendingOffset = 0;
   },
 });
-

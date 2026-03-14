@@ -1,4 +1,4 @@
-import { EventTypes, type CommandEvent, type FactEvent } from '@sensync2/core';
+import { defineRuntimeEventInput, EventTypes } from '@sensync2/core';
 import { definePlugin } from '@sensync2/plugin-sdk';
 import { signalBatchEvent } from './helpers.ts';
 
@@ -15,22 +15,27 @@ export default definePlugin({
     version: '0.1.0',
     required: true,
     subscriptions: [
-      { type: EventTypes.intervalStart, kind: 'command', priority: 'control' },
-      { type: EventTypes.intervalStop, kind: 'command', priority: 'control' },
+      { type: EventTypes.intervalStart, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.intervalStop, v: 1, kind: 'command', priority: 'control' },
     ],
     mailbox: {
       controlCapacity: 128,
       dataCapacity: 32,
       dataPolicy: 'fail-fast',
     },
+    emits: [
+      { type: EventTypes.intervalStateChanged, v: 1 },
+      { type: EventTypes.signalBatch, v: 1 },
+    ],
   },
   async onInit(ctx) {
-    const initial: Omit<FactEvent<{ active: boolean }>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> = {
+    const initial = defineRuntimeEventInput({
       type: EventTypes.intervalStateChanged,
+      v: 1,
       kind: 'fact',
       priority: 'system',
       payload: { active: false },
-    };
+    });
     await ctx.emit(initial);
   },
   async onEvent(event, ctx) {
@@ -38,12 +43,13 @@ export default definePlugin({
       if (active) return;
       active = true;
       await ctx.emit(makeLabelBatch(1, ctx.clock.nowSessionMs()));
-      const stateChanged: Omit<FactEvent<{ active: boolean }>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> = {
+      const stateChanged = defineRuntimeEventInput({
         type: EventTypes.intervalStateChanged,
+        v: 1,
         kind: 'fact',
         priority: 'system',
         payload: { active: true },
-      };
+      });
       await ctx.emit(stateChanged);
       return;
     }
@@ -51,12 +57,13 @@ export default definePlugin({
       if (!active) return;
       active = false;
       await ctx.emit(makeLabelBatch(0, ctx.clock.nowSessionMs()));
-      const stateChanged: Omit<FactEvent<{ active: boolean }>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> = {
+      const stateChanged = defineRuntimeEventInput({
         type: EventTypes.intervalStateChanged,
+        v: 1,
         kind: 'fact',
         priority: 'system',
         payload: { active: false },
-      };
+      });
       await ctx.emit(stateChanged);
     }
   },

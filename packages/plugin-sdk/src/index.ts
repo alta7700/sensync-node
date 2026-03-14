@@ -2,6 +2,7 @@ import type {
   PluginManifest,
   PluginMetric,
   RuntimeEvent,
+  RuntimeEventInput,
 } from '@sensync2/core';
 
 export interface SessionClockApi {
@@ -19,11 +20,11 @@ export interface SessionClockApi {
 export interface PluginContext {
   pluginId: string;
   clock: SessionClockApi;
-  emit(event: Omit<RuntimeEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>): Promise<void>;
+  emit<TEvent extends RuntimeEventInput>(event: TEvent): Promise<void>;
   setTimer(
     timerId: string,
     intervalMs: number,
-    eventFactory: () => Omit<RuntimeEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>,
+    eventFactory: () => RuntimeEventInput,
   ): void;
   clearTimer(timerId: string): void;
   telemetry(metric: PluginMetric): void;

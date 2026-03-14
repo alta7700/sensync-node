@@ -12,6 +12,8 @@ Runtime слой для renderer/UI.
 - Принимает transport с интерфейсом `ClientTransport`.
 - После `ui.init` создаёт локальную картину сессии.
 - Binary frames пишет в `StreamBufferStore`, а UI читает окна данных по запросу.
+- `sendCommand(...)` теперь отправляет не только `eventType`, но и `eventVersion`, а сборка `UiCommandMessage` централизована через `createUiCommandMessage(...)`.
+- `ui.warning` materialize'ится отдельно от `ui.error`, но попадает в тот же список уведомлений.
 
 ## Взаимодействие
 

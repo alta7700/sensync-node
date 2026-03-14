@@ -1,10 +1,10 @@
 import {
+  defineRuntimeEventInput,
   encodeUiSignalBatchFrameFromEvent,
   EventTypes,
   type AdapterScanCandidatesPayload,
   type AdapterScanStateChangedPayload,
   type AdapterStateChangedPayload,
-  type FactEvent,
   type RecordingErrorPayload,
   type RecordingStateChangedPayload,
   type RuntimeTelemetrySnapshotPayload,
@@ -228,6 +228,36 @@ function makeMoxyConnectModalForm(adapterId: string): UiModalForm {
         required: true,
         sourceId: scanCandidatesSourceId(adapterId),
         placeholder: 'Выберите Moxy из результатов scan',
+        mergeSelectedOptionPayload: true,
+      },
+    ],
+  };
+}
+
+function makeZephyrScanPayload(adapterId: string): Record<string, unknown> {
+  return {
+    adapterId,
+    timeoutMs: 5_000,
+  };
+}
+
+function makeZephyrConnectModalForm(adapterId: string): UiModalForm {
+  return {
+    id: `connect-zephyr-${adapterId}`,
+    title: 'Выбор Zephyr BioHarness 3',
+    submitLabel: 'Подключить',
+    submitEventType: EventTypes.adapterConnectRequest,
+    submitPayload: {
+      adapterId,
+    },
+    fields: [
+      {
+        kind: 'select',
+        fieldId: 'candidateId',
+        label: 'Устройство',
+        required: true,
+        sourceId: scanCandidatesSourceId(adapterId),
+        placeholder: 'Выберите Zephyr из результатов scan',
         mergeSelectedOptionPayload: true,
       },
     ],
@@ -740,7 +770,8 @@ function fakeHdf5SimulationSchema(): UiSchema {
 }
 
 function veloergSchema(): UiSchema {
-  const adapterId = 'ant-plus';
+  const moxyAdapterId = 'ant-plus';
+  const zephyrAdapterId = 'zephyr-bioharness';
   return {
     version: 1,
     pages: [
@@ -749,15 +780,17 @@ function veloergSchema(): UiSchema {
         title: 'Veloerg',
         widgetIds: [
           'controls-main',
+          'controls-zephyr',
           'status-main',
           'chart-moxy-smo2',
           'chart-moxy-thb',
+          'chart-zephyr-rr',
           'telemetry-main',
         ],
         widgetRows: [
-          ['controls-main', 'status-main'],
-          ['chart-moxy-smo2'],
-          ['chart-moxy-thb'],
+          ['controls-main', 'controls-zephyr', 'status-main'],
+          ['chart-moxy-smo2', 'chart-moxy-thb'],
+          ['chart-zephyr-rr'],
           ['telemetry-main'],
         ],
       },
@@ -773,35 +806,35 @@ function veloergSchema(): UiSchema {
             kind: 'button',
             label: 'Подключить Moxy',
             commandType: EventTypes.adapterScanRequest,
-            payload: makeMoxyScanPayload(adapterId),
+            payload: makeMoxyScanPayload(moxyAdapterId),
             // Модалка живет полностью в renderer, а runtime только присылает варианты выбора.
-            modalForm: makeMoxyConnectModalForm(adapterId),
+            modalForm: makeMoxyConnectModalForm(moxyAdapterId),
             variants: [
               {
-                when: { flag: `adapter.${adapterId}.scanning`, eq: true },
+                when: { flag: `adapter.${moxyAdapterId}.scanning`, eq: true },
                 label: 'Ищем Moxy...',
                 disabled: true,
                 isLoading: true,
               },
               {
-                when: { flag: `adapter.${adapterId}.state`, eq: 'connecting' },
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'connecting' },
                 label: 'Подключение Moxy...',
                 disabled: true,
                 isLoading: true,
               },
               {
-                when: { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'connected' },
                 label: 'Moxy подключен',
                 disabled: true,
               },
               {
-                when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'disconnecting' },
                 label: 'Отключение Moxy...',
                 disabled: true,
                 isLoading: true,
               },
               {
-                when: { flag: `adapter.${adapterId}.state`, eq: 'failed' },
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'failed' },
                 label: 'Повторить поиск Moxy',
               },
             ],
@@ -813,22 +846,95 @@ function veloergSchema(): UiSchema {
             hidden: true,
             variants: [
               {
-                when: { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'connected' },
                 label: 'Отключить Moxy',
                 commandType: EventTypes.adapterDisconnectRequest,
-                payload: { adapterId },
+                payload: { adapterId: moxyAdapterId },
                 hidden: false,
               },
               {
-                when: { flag: `adapter.${adapterId}.state`, eq: 'failed' },
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'failed' },
                 label: 'Сбросить ошибку Moxy',
                 commandType: EventTypes.adapterDisconnectRequest,
-                payload: { adapterId },
+                payload: { adapterId: moxyAdapterId },
                 hidden: false,
               },
               {
-                when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'disconnecting' },
                 label: 'Отключение Moxy...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        kind: 'controls',
+        id: 'controls-zephyr',
+        title: 'BLE / Zephyr',
+        controls: [
+          {
+            id: 'scan-zephyr',
+            kind: 'button',
+            label: 'Подключить Zephyr',
+            commandType: EventTypes.adapterScanRequest,
+            payload: makeZephyrScanPayload(zephyrAdapterId),
+            modalForm: makeZephyrConnectModalForm(zephyrAdapterId),
+            variants: [
+              {
+                when: { flag: `adapter.${zephyrAdapterId}.scanning`, eq: true },
+                label: 'Ищем Zephyr...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${zephyrAdapterId}.state`, eq: 'connecting' },
+                label: 'Подключение Zephyr...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${zephyrAdapterId}.state`, eq: 'connected' },
+                label: 'Zephyr подключен',
+                disabled: true,
+              },
+              {
+                when: { flag: `adapter.${zephyrAdapterId}.state`, eq: 'disconnecting' },
+                label: 'Отключение Zephyr...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${zephyrAdapterId}.state`, eq: 'failed' },
+                label: 'Повторить поиск Zephyr',
+              },
+            ],
+          },
+          {
+            id: 'disconnect-zephyr',
+            kind: 'button',
+            label: 'Отключить Zephyr',
+            hidden: true,
+            variants: [
+              {
+                when: { flag: `adapter.${zephyrAdapterId}.state`, eq: 'connected' },
+                label: 'Отключить Zephyr',
+                commandType: EventTypes.adapterDisconnectRequest,
+                payload: { adapterId: zephyrAdapterId },
+                hidden: false,
+              },
+              {
+                when: { flag: `adapter.${zephyrAdapterId}.state`, eq: 'failed' },
+                label: 'Сбросить ошибку Zephyr',
+                commandType: EventTypes.adapterDisconnectRequest,
+                payload: { adapterId: zephyrAdapterId },
+                hidden: false,
+              },
+              {
+                when: { flag: `adapter.${zephyrAdapterId}.state`, eq: 'disconnecting' },
+                label: 'Отключение Zephyr...',
                 hidden: false,
                 disabled: true,
                 isLoading: true,
@@ -842,16 +948,20 @@ function veloergSchema(): UiSchema {
         id: 'status-main',
         title: 'Состояние',
         flagKeys: [
-          `adapter.${adapterId}.state`,
-          `adapter.${adapterId}.scanning`,
-          `adapter.${adapterId}.scanMessage`,
-          `adapter.${adapterId}.message`,
+          `adapter.${moxyAdapterId}.state`,
+          `adapter.${moxyAdapterId}.scanning`,
+          `adapter.${moxyAdapterId}.scanMessage`,
+          `adapter.${moxyAdapterId}.message`,
+          `adapter.${zephyrAdapterId}.state`,
+          `adapter.${zephyrAdapterId}.scanning`,
+          `adapter.${zephyrAdapterId}.scanMessage`,
+          `adapter.${zephyrAdapterId}.message`,
         ],
       },
       {
         kind: 'chart',
         id: 'chart-moxy-smo2',
-        title: 'Moxy SmO2',
+        title: 'SmO2',
         renderer: 'echarts',
         height: 320,
         timeWindowMs: 20_000,
@@ -870,7 +980,7 @@ function veloergSchema(): UiSchema {
       {
         kind: 'chart',
         id: 'chart-moxy-thb',
-        title: 'Moxy tHb',
+        title: 'tHb',
         renderer: 'echarts',
         height: 320,
         timeWindowMs: 20_000,
@@ -882,6 +992,25 @@ function veloergSchema(): UiSchema {
             streamId: 'moxy.thb',
             label: 'tHb',
             color: '#58a6ff',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-zephyr-rr',
+        title: 'RR',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 0.3, max: 1.8, label: 's' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'zephyr.rr',
+            label: 'RR',
+            color: '#1f6feb',
             lineWidth: 3,
           },
         ],
@@ -901,26 +1030,28 @@ function schemaForProfile(currentProfile: UiGatewayProfile): UiSchema {
   return fakeSchema();
 }
 
-function emitControl(message: UiControlMessage, clientId?: string): Omit<FactEvent<UiControlOutPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
+function emitControl(message: UiControlMessage, clientId?: string) {
   const payload: UiControlOutPayload = { message };
   if (clientId !== undefined) payload.clientId = clientId;
-  return {
+  return defineRuntimeEventInput({
     type: EventTypes.uiControlOut,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload,
-  };
+  });
 }
 
-function emitBinary(data: ArrayBuffer, clientId?: string): Omit<FactEvent<UiBinaryOutPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
+function emitBinary(data: ArrayBuffer, clientId?: string) {
   const payload: UiBinaryOutPayload = { data };
   if (clientId !== undefined) payload.clientId = clientId;
-  return {
+  return defineRuntimeEventInput({
     type: EventTypes.uiBinaryOut,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload,
-  };
+  });
 }
 
 function patchFlags(patch: UiFlagPatch): { patch: UiFlagPatch; version: number } {
@@ -986,23 +1117,27 @@ export default definePlugin({
     version: '0.1.0',
     required: true,
     subscriptions: [
-      { type: 'signal.batch', kind: 'data', priority: 'data' },
-      { type: EventTypes.adapterScanStateChanged, kind: 'fact', priority: 'system' },
-      { type: EventTypes.adapterScanCandidates, kind: 'fact', priority: 'system' },
-      { type: EventTypes.adapterStateChanged, kind: 'fact', priority: 'system' },
-      { type: EventTypes.intervalStateChanged, kind: 'fact', priority: 'system' },
-      { type: EventTypes.activityStateChanged, kind: 'fact', priority: 'system' },
-      { type: EventTypes.recordingStateChanged, kind: 'fact', priority: 'system' },
-      { type: EventTypes.recordingError, kind: 'fact', priority: 'system' },
-      { type: EventTypes.simulationStateChanged, kind: 'fact', priority: 'system' },
-      { type: EventTypes.runtimeTelemetrySnapshot, kind: 'fact', priority: 'system' },
-      { type: EventTypes.uiClientConnected, kind: 'fact', priority: 'system' },
+      { type: EventTypes.signalBatch, v: 1, kind: 'data', priority: 'data' },
+      { type: EventTypes.adapterScanStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.adapterScanCandidates, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.adapterStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.intervalStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.activityStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.recordingStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.recordingError, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.simulationStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.runtimeTelemetrySnapshot, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.uiClientConnected, v: 1, kind: 'fact', priority: 'system' },
     ],
     mailbox: {
       controlCapacity: 512,
       dataCapacity: 256,
       dataPolicy: 'coalesce-latest-per-stream',
     },
+    emits: [
+      { type: EventTypes.uiControlOut, v: 1 },
+      { type: EventTypes.uiBinaryOut, v: 1 },
+    ],
   },
   async onInit(ctx) {
     const cfg = ctx.getConfig<UiGatewayConfig>();
@@ -1015,7 +1150,7 @@ export default definePlugin({
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.uiClientConnected) {
-      const clientId = (event as FactEvent<{ clientId: string }>).payload.clientId;
+      const clientId = event.payload.clientId;
       const initMsg: UiControlMessage = {
         type: 'ui.init',
         sessionId,
@@ -1039,7 +1174,7 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.adapterScanStateChanged) {
-      const payload = (event as FactEvent<AdapterScanStateChangedPayload>).payload;
+      const payload: AdapterScanStateChangedPayload = event.payload;
       const { patch, version } = patchFlags({
         [`adapter.${payload.adapterId}.scanning`]: payload.scanning,
         [`adapter.${payload.adapterId}.scanMessage`]: payload.message ?? null,
@@ -1060,14 +1195,14 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.adapterScanCandidates) {
-      const payload = (event as FactEvent<AdapterScanCandidatesPayload>).payload;
+      const payload: AdapterScanCandidatesPayload = event.payload;
       const sourceId = scanCandidatesSourceId(payload.adapterId);
       await ctx.emit(emitControl(setFormOptions(sourceId, makeUiFormOptions(payload))));
       return;
     }
 
     if (event.type === EventTypes.adapterStateChanged) {
-      const payload = (event as FactEvent<AdapterStateChangedPayload>).payload;
+      const payload: AdapterStateChangedPayload = event.payload;
       const { patch, version } = patchFlags({
         [`adapter.${payload.adapterId}.state`]: payload.state,
         [`adapter.${payload.adapterId}.message`]: payload.message ?? null,
@@ -1085,21 +1220,21 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.intervalStateChanged) {
-      const payload = (event as FactEvent<{ active: boolean }>).payload;
+      const payload = event.payload;
       const { patch, version } = patchFlags({ 'interval.active': payload.active });
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
       return;
     }
 
     if (event.type === EventTypes.activityStateChanged) {
-      const payload = (event as FactEvent<{ active: boolean }>).payload;
+      const payload = event.payload;
       const { patch, version } = patchFlags({ 'activity.active': payload.active });
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
       return;
     }
 
     if (event.type === EventTypes.recordingStateChanged) {
-      const payload = (event as FactEvent<RecordingStateChangedPayload>).payload;
+      const payload: RecordingStateChangedPayload = event.payload;
       const { patch, version } = patchFlags({
         [`recording.${payload.writer}.state`]: payload.state,
         [`recording.${payload.writer}.filePath`]: payload.filePath ?? null,
@@ -1110,7 +1245,7 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.recordingError) {
-      const payload = (event as FactEvent<RecordingErrorPayload>).payload;
+      const payload: RecordingErrorPayload = event.payload;
       await ctx.emit(emitControl({
         type: 'ui.error',
         code: payload.code,
@@ -1121,7 +1256,7 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.simulationStateChanged) {
-      const payload = (event as FactEvent<SimulationStateChangedPayload>).payload;
+      const payload: SimulationStateChangedPayload = event.payload;
       const { patch, version } = patchFlags({
         [`simulation.${payload.adapterId}.speed`]: payload.speed,
         [`simulation.${payload.adapterId}.batchMs`]: payload.batchMs,
@@ -1133,7 +1268,7 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.runtimeTelemetrySnapshot) {
-      const payload = (event as FactEvent<RuntimeTelemetrySnapshotPayload>).payload;
+      const payload: RuntimeTelemetrySnapshotPayload = event.payload;
       await ctx.emit(emitControl({
         type: 'ui.telemetry',
         queues: payload.queues,
@@ -1143,13 +1278,12 @@ export default definePlugin({
       return;
     }
 
-    if (event.type === 'signal.batch') {
-      const signalEvent = event as SignalBatchEvent;
-      const { declared, stream } = ensureStream(signalEvent);
+    if (event.type === EventTypes.signalBatch) {
+      const { declared, stream } = ensureStream(event);
       if (declared) {
         await ctx.emit(emitControl({ type: 'ui.stream.declare', stream: declared }));
       }
-      const frame = encodeUiSignalBatchFrameFromEvent(signalEvent, stream.numericId);
+      const frame = encodeUiSignalBatchFrameFromEvent(event, stream.numericId);
       await ctx.emit(emitBinary(frame));
     }
   },

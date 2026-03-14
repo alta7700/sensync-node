@@ -11,6 +11,7 @@ Synthetic demo-плагины для `v1`.
 
 - Плагины запускаются как обычные worker-плагины через `plugin-sdk`.
 - Часть плагинов генерирует синтетический поток (`fake`, `shapes`, `interval`), часть строит derived данные (`rolling-min`, `activity-detector`).
+- Plugin-specific timer и metric events этого пакета зарегистрированы рядом в `src/event-contracts.ts`.
 - В `fake` launch profile этот пакет даёт основной demo-runtime.
 
 ## Взаимодействие

@@ -21,6 +21,7 @@
     "dev:desktop:fake": "SENSYNC2_PROFILE=fake npm --workspace @sensync2/desktop run dev",
     "dev:desktop:fake-hdf5-simulation": "SENSYNC2_PROFILE=fake-hdf5-simulation npm --workspace @sensync2/desktop run dev",
     "dev:desktop:veloerg": "SENSYNC2_PROFILE=veloerg npm --workspace @sensync2/desktop run dev",
+    "generate:runtime-event-map": "tsx ./scripts/generate_runtime_event_map.ts",
     "smoke:hdf5-recorder": "tsx ./scripts/smoke_hdf5_recorder.ts",
     "smoke:fake-hdf5-simulation": "tsx ./scripts/smoke_fake_hdf5_simulation.ts",
     "build": "npm run --workspaces build",

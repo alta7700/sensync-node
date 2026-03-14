@@ -1,20 +1,27 @@
-import { EventTypes, type AdapterStateChangedPayload, type CommandEvent, type FactEvent, type SignalBatchEvent } from '@sensync2/core';
+import {
+  defineRuntimeEventInput,
+  EventTypes,
+  type AdapterStateChangedPayload,
+  type CommandEvent,
+  type SignalBatchEvent,
+} from '@sensync2/core';
 
 export function adapterStateEvent(
   adapterId: string,
   state: AdapterStateChangedPayload['state'],
   message?: string,
   requestId?: string,
-): Omit<FactEvent<AdapterStateChangedPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
+){
   const payload: AdapterStateChangedPayload = { adapterId, state };
   if (message !== undefined) payload.message = message;
   if (requestId !== undefined) payload.requestId = requestId;
-  return {
+  return defineRuntimeEventInput({
     type: EventTypes.adapterStateChanged,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload,
-  };
+  });
 }
 
 export function commandPayload<T>(event: CommandEvent<T>): T {
@@ -42,10 +49,11 @@ export function signalBatchEvent(
   };
   if (units !== undefined) payload.units = units;
   if (dtMs > 0) payload.sampleRateHz = 1000 / dtMs;
-  return {
-    type: 'signal.batch',
+  return defineRuntimeEventInput({
+    type: EventTypes.signalBatch,
+    v: 1,
     kind: 'data',
     priority: 'data',
     payload,
-  };
+  });
 }

@@ -12,6 +12,8 @@
 - `hdf5-recorder-plugin.ts` пишет `/channels/<channelId>/timestamps` и `/channels/<channelId>/values`.
 - `hdf5-simulation-adapter.ts` лениво читает те же datasets с помощью `h5wasm.slice()` и формирует новые runtime-batch по окну `batchMs`.
 - `hdf5-simulation-adapter.ts` может ограничивать воспроизведение только выбранными `channelIds`, которые пришли в plugin config.
+- File-boundary для симуляции вынесен в `src/hdf5-simulation-boundary.ts`, чтобы адаптер не смешивал runtime-state machine и разбор внешнего HDF5.
+- Внутренний тик симуляции зарегистрирован рядом в `src/event-contracts.ts`.
 - Оба плагина используют один и тот же HDF5 контракт, описанный отдельно.
 
 ## Взаимодействие

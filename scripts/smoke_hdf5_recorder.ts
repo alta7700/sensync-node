@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import h5wasm from 'h5wasm/node';
 import { RuntimeHost } from '../apps/runtime/src/runtime-host';
-import { EventTypes, type UiCommandMessage } from '../packages/core/src/index';
+import { createUiCommandMessage, EventTypes, type UiCommandEventType, type UiCommandMessage } from '../packages/core/src/index';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -18,12 +18,11 @@ function repoModuleUrl(relativePathFromRepoRoot: string): string {
   return pathToFileURL(path.join(repoRoot, relativePathFromRepoRoot)).href;
 }
 
-function uiCommand(eventType: string, payload: Record<string, unknown>): UiCommandMessage {
-  return {
-    type: 'ui.command',
+function uiCommand(eventType: UiCommandEventType, payload: Record<string, unknown>): UiCommandMessage {
+  return createUiCommandMessage({
     eventType,
     payload,
-  };
+  });
 }
 
 function assertMonotonic(values: Float64Array, label: string): void {

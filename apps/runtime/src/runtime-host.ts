@@ -1,15 +1,18 @@
 import {
+  attachRuntimeEventEnvelope,
   cloneSignalBatchPayload,
   EventTypes,
-  type CommandEvent,
+  isSignalBatchEvent,
+  sharedUiCommandBoundaryGuards,
+  uiCommandMessageToRuntimeEventInput,
   type PluginManifest,
   type PluginMetric,
   type PluginRuntimeSnapshot,
   type QueueTelemetry,
   type RuntimeEvent,
+  type RuntimeEventInput,
+  type RuntimeEventOf,
   type RuntimeTelemetrySnapshotPayload,
-  type SignalBatchEvent,
-  type UiBinaryOutPayload,
   type UiClientConnectedPayload,
   type UiClientDisconnectedPayload,
   type UiCommandMessage,
@@ -20,6 +23,7 @@ import { SubscriptionIndex } from './subscription-index.ts';
 import { PluginHost } from './plugin-host.ts';
 import type { PluginDescriptor, RuntimeHostPublic, RuntimeOptions } from './types.ts';
 import { SessionClock } from './session-clock.ts';
+import { WorkspaceEventRegistry, describeEventRef, isEventAllowedForPlugin } from './workspace-event-registry.ts';
 
 function nowMonoMs(): number {
   return performance.now();
@@ -28,6 +32,7 @@ function nowMonoMs(): number {
 export class RuntimeHost implements RuntimeHostPublic {
   private options: RuntimeOptions;
   private subscriptionIndex = new SubscriptionIndex();
+  private eventRegistry = new WorkspaceEventRegistry();
   private pluginHosts = new Map<string, PluginHost>();
   private nextSeq: bigint = 1n;
   private started = false;
@@ -35,6 +40,7 @@ export class RuntimeHost implements RuntimeHostPublic {
   private telemetryTimer: ReturnType<typeof setInterval> | null = null;
   private droppedCounter = 0;
   private latestPluginMetrics = new Map<string, Map<string, UiPluginMetric>>();
+  private recentWarnings = new Map<string, number>();
   private runtimeState: 'starting' | 'running' | 'degraded_fatal' | 'stopping' | 'stopped' = 'starting';
   private sessionClock: SessionClock | null = null;
 
@@ -77,6 +83,7 @@ export class RuntimeHost implements RuntimeHostPublic {
     const payload: UiClientConnectedPayload = { clientId };
     await this.publish({
       type: EventTypes.uiClientConnected,
+      v: 1,
       kind: 'fact',
       priority: 'system',
       payload,
@@ -87,6 +94,7 @@ export class RuntimeHost implements RuntimeHostPublic {
     const payload: UiClientDisconnectedPayload = { clientId };
     await this.publish({
       type: EventTypes.uiClientDisconnected,
+      v: 1,
       kind: 'fact',
       priority: 'system',
       payload,
@@ -101,15 +109,44 @@ export class RuntimeHost implements RuntimeHostPublic {
       return;
     }
 
-    const event: Omit<CommandEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'> = {
-      type: message.eventType,
-      kind: 'command',
-      priority: 'control',
-      payload: message.payload ?? {},
-    };
-    if (message.correlationId !== undefined) {
-      event.correlationId = message.correlationId;
+    const guard = sharedUiCommandBoundaryGuards.find((candidate) => {
+      return candidate.type === message.eventType && candidate.v === message.eventVersion;
+    });
+    if (!guard) {
+      this.emitWarningFallback({
+        code: 'ui_command_unknown_contract',
+        message: `UI прислал неизвестную команду ${message.eventType}@v${message.eventVersion}`,
+      });
+      return;
     }
+
+    const contract = this.eventRegistry.get(guard);
+    if (!contract) {
+      this.emitWarningFallback({
+        code: 'ui_command_unregistered_contract',
+        message: `Команда ${message.eventType}@v${message.eventVersion} не зарегистрирована в runtime`,
+      });
+      return;
+    }
+
+    if (contract.kind !== 'command') {
+      this.emitWarningFallback({
+        code: 'ui_command_kind_mismatch',
+        message: `UI не может отправлять ${describeEventRef(contract)} с kind=${contract.kind}`,
+      });
+      return;
+    }
+
+    const rawPayload = message.payload;
+    if (!guard.isPayload(rawPayload)) {
+      this.emitWarningFallback({
+        code: 'ui_command_invalid_payload',
+        message: `UI прислал некорректный payload для ${message.eventType}@v${message.eventVersion}`,
+      });
+      return;
+    }
+
+    const event = uiCommandMessageToRuntimeEventInput(message);
     await this.publish(event, 'external-ui');
   }
 
@@ -147,6 +184,7 @@ export class RuntimeHost implements RuntimeHostPublic {
   }
 
   private onPluginReady(_pluginId: string, manifest: PluginManifest): void {
+    this.eventRegistry.validateManifest(manifest);
     this.subscriptionIndex.setManifest(manifest);
   }
 
@@ -181,26 +219,114 @@ export class RuntimeHost implements RuntimeHostPublic {
       this.runtimeState = 'degraded_fatal';
     }
 
+    const adapterId = this.resolveAdapterIdForPlugin(pluginId);
+    if (adapterId) {
+      void this.publish({
+        type: EventTypes.adapterStateChanged,
+        v: 1,
+        kind: 'fact',
+        priority: 'system',
+        payload: {
+          adapterId,
+          state: 'failed',
+          message: error.message,
+        },
+      }, 'runtime');
+    }
+
+    this.emitErrorFallback({
+      code: 'plugin_failed',
+      message: error.message,
+      pluginId,
+    });
+  }
+
+  private emitErrorFallback(payload: { code: string; message: string; pluginId?: string }): void {
     this.emitControlFallback({
       message: {
         type: 'ui.error',
-        code: 'plugin_failed',
-        message: error.message,
-        pluginId,
+        code: payload.code,
+        message: payload.message,
+        ...(payload.pluginId !== undefined ? { pluginId: payload.pluginId } : {}),
       },
     });
   }
 
-  private emitControlFallback(payload: UiControlOutPayload): void {
-    const syntheticEvent: RuntimeEvent = {
+  private emitWarningFallback(payload: { code: string; message: string; pluginId?: string }): void {
+    const warningKey = `${payload.code}|${payload.pluginId ?? ''}|${payload.message}`;
+    const now = nowMonoMs();
+    this.pruneRecentWarnings(now);
+    const lastAt = this.recentWarnings.get(warningKey);
+    if (lastAt !== undefined && (now - lastAt) < 2000) {
+      return;
+    }
+    this.recentWarnings.set(warningKey, now);
+    const syntheticEvent: RuntimeEventOf<typeof EventTypes.uiControlOut, 1> = {
       seq: 0n,
+      v: 1,
+      tsMonoMs: nowMonoMs(),
+      sourcePluginId: 'runtime',
+      type: EventTypes.uiControlOut,
+      kind: 'fact',
+      priority: 'system',
+      payload: {
+        message: {
+          type: 'ui.warning',
+          code: payload.code,
+          message: payload.message,
+          ...(payload.pluginId !== undefined ? { pluginId: payload.pluginId } : {}),
+        },
+      },
+    };
+    this.options.uiSinks?.onControl?.(syntheticEvent.payload, syntheticEvent);
+  }
+
+  /**
+   * Ограничивает служебную карту дедупликации warning'ов, чтобы она не росла бесконечно
+   * на длинной сессии с большим числом уникальных диагностик.
+   */
+  private pruneRecentWarnings(now: number): void {
+    for (const [key, ts] of this.recentWarnings) {
+      if ((now - ts) > 30000) {
+        this.recentWarnings.delete(key);
+      }
+    }
+
+    while (this.recentWarnings.size > 512) {
+      const oldestKey = this.recentWarnings.keys().next().value;
+      if (oldestKey === undefined) {
+        break;
+      }
+      this.recentWarnings.delete(oldestKey);
+    }
+  }
+
+  /**
+   * Для adapter-плагинов UI держит состояние по `adapterId`, а не по `pluginId`.
+   * Если worker падает, сам плагин уже не сможет выпустить `adapter.state.changed`,
+   * поэтому runtime пытается восстановить `adapterId` из descriptor config.
+   */
+  private resolveAdapterIdForPlugin(pluginId: string): string | null {
+    const descriptor = this.pluginHosts.get(pluginId)?.descriptor;
+    const config = descriptor?.config;
+    if (!config || typeof config !== 'object') {
+      return null;
+    }
+    const candidate = (config as { adapterId?: unknown }).adapterId;
+    return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
+  }
+
+  private emitControlFallback(payload: UiControlOutPayload): void {
+    const syntheticEvent: RuntimeEventOf<typeof EventTypes.uiControlOut, 1> = {
+      seq: 0n,
+      v: 1,
       tsMonoMs: nowMonoMs(),
       sourcePluginId: 'runtime',
       type: EventTypes.uiControlOut,
       kind: 'fact',
       priority: 'system',
       payload,
-    } as RuntimeEvent;
+    };
     this.options.uiSinks?.onControl?.(payload, syntheticEvent);
   }
 
@@ -220,6 +346,7 @@ export class RuntimeHost implements RuntimeHostPublic {
     };
     await this.publish({
       type: EventTypes.runtimeTelemetrySnapshot,
+      v: 1,
       kind: 'fact',
       priority: 'system',
       payload,
@@ -230,23 +357,63 @@ export class RuntimeHost implements RuntimeHostPublic {
    * Публикует событие в runtime, назначает `seq` и маршрутизирует подписчикам.
    */
   private async publish(
-    eventLike: Omit<RuntimeEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>,
+    eventLike: RuntimeEventInput,
     sourcePluginId: RuntimeEvent['sourcePluginId'],
   ): Promise<void> {
-    const event = {
-      ...eventLike,
-      seq: this.nextSeq++,
-      tsMonoMs: nowMonoMs(),
-      sourcePluginId,
-    } as RuntimeEvent;
+    const contract = this.eventRegistry.get(eventLike);
+    if (!contract) {
+      this.emitWarningFallback({
+        code: 'event_unknown_contract',
+        message: `Шина отклонила неизвестное событие ${eventLike.type}@v${eventLike.v}`,
+        ...(typeof sourcePluginId === 'string' && sourcePluginId !== 'runtime' && sourcePluginId !== 'external-ui'
+          ? { pluginId: sourcePluginId }
+          : {}),
+      });
+      return;
+    }
+
+    if (contract.kind !== eventLike.kind) {
+      this.emitWarningFallback({
+        code: 'event_kind_mismatch',
+        message: `Шина отклонила ${describeEventRef(eventLike)}: kind=${eventLike.kind}, ожидается ${contract.kind}`,
+        ...(typeof sourcePluginId === 'string' && sourcePluginId !== 'runtime' && sourcePluginId !== 'external-ui'
+          ? { pluginId: sourcePluginId }
+          : {}),
+      });
+      return;
+    }
+    if (contract.priority !== eventLike.priority) {
+      this.emitWarningFallback({
+        code: 'event_priority_mismatch',
+        message: `Шина отклонила ${describeEventRef(eventLike)}: priority=${eventLike.priority}, ожидается ${contract.priority}`,
+        ...(typeof sourcePluginId === 'string' && sourcePluginId !== 'runtime' && sourcePluginId !== 'external-ui'
+          ? { pluginId: sourcePluginId }
+          : {}),
+      });
+      return;
+    }
+
+    if (sourcePluginId !== 'runtime' && sourcePluginId !== 'external-ui') {
+      const manifest = this.pluginHosts.get(sourcePluginId)?.getManifest();
+      if (!manifest || !isEventAllowedForPlugin(manifest, eventLike)) {
+        this.emitWarningFallback({
+          code: 'event_emit_forbidden',
+          message: `Плагин ${sourcePluginId} не объявил emit для ${describeEventRef(eventLike)}`,
+          pluginId: sourcePluginId,
+        });
+        return;
+      }
+    }
+
+    const event = attachRuntimeEventEnvelope(eventLike, this.nextSeq++, nowMonoMs(), sourcePluginId);
 
     // UI gateway публикует уже материализованные выходные сообщения — перехватываем их в runtime.
     if (event.type === EventTypes.uiControlOut && event.kind === 'fact') {
-      this.options.uiSinks?.onControl?.(event.payload as UiControlOutPayload, event);
+      this.options.uiSinks?.onControl?.(event.payload, event);
       return;
     }
     if (event.type === EventTypes.uiBinaryOut && event.kind === 'fact') {
-      this.options.uiSinks?.onBinary?.(event.payload as UiBinaryOutPayload, event);
+      this.options.uiSinks?.onBinary?.(event.payload, event);
       return;
     }
 
@@ -260,12 +427,12 @@ export class RuntimeHost implements RuntimeHostPublic {
       if (!host) continue;
 
       let deliverEvent: RuntimeEvent;
-      if (event.type === 'signal.batch') {
+      if (isSignalBatchEvent(event)) {
         // Для `v1` копируем payload на fan-out, чтобы безопасно передавать ownership в worker.
-        const payload = (index === subscribers.length - 1)
-          ? (event.payload as SignalBatchEvent['payload'])
-          : cloneSignalBatchPayload(event.payload as SignalBatchEvent['payload']);
-        deliverEvent = { ...(event as SignalBatchEvent), payload } as RuntimeEvent;
+        const payload = index === subscribers.length - 1
+          ? event.payload
+          : cloneSignalBatchPayload(event.payload);
+        deliverEvent = { ...event, payload };
       } else {
         // Structured clone в worker все равно копирует объект; отдельная копия здесь не нужна.
         deliverEvent = event;
@@ -274,13 +441,10 @@ export class RuntimeHost implements RuntimeHostPublic {
       const result = host.enqueue(deliverEvent);
       if (!result.ok) {
         this.droppedCounter += 1;
-        this.emitControlFallback({
-          message: {
-            type: 'ui.error',
-            code: 'mailbox_overflow',
-            message: result.reason,
-            pluginId,
-          },
+        this.emitErrorFallback({
+          code: 'mailbox_overflow',
+          message: result.reason,
+          pluginId,
         });
       }
     }

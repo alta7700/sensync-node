@@ -14,10 +14,12 @@ ANT+ plugin worker'ы и transport-обёртки.
 - Внутри адаптера есть transport-абстракция:
   - `real` transport поверх библиотеки `ant-plus` для USB ANT+ stick;
   - `fake` transport для scan/connect/data flow без железа.
+- Внешние ingress-границы вынесены в `src/ant-plus-boundary.ts`, чтобы env/formData/raw driver packets нормализовались до входа в runtime-логику адаптера.
 - В live-режиме таймлайн Moxy строится от первого пакета по реальной межпакетной дельте хоста.
 - Для `real` transport callback-очередь вычитывается коротким poll-интервалом, чтобы не собирать burst'ы по UI.
 - `measurementInterval` из ANT+ профиля сохраняется как диагностический сигнал и не считается надёжным источником времени для графика.
 - Адаптер публикует plugin metrics по качеству ANT+ канала: broadcast delta, gap count, max gap и diagnostic profile field.
+- Внутренний poll-тик адаптера зарегистрирован рядом в `src/event-contracts.ts`.
 - Диагностика gap'ов опирается на наблюдаемый cadence broadcast, а не на фиксированное предположение о частоте ANT+ кадров.
 - При разрыве адаптер использует гибридную стратегию: сигнал `detached` из библиотеки плюс watchdog по тишине пакетов.
 - Watchdog сейчас использует простую эвристику `10n + 5s`, где `n` — оценка обычного broadcast cadence.

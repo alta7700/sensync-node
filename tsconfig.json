@@ -7,6 +7,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/plugin-sdk" },
+    { "path": "./packages/plugins-ble" },
     { "path": "./packages/plugins-hdf5" },
     { "path": "./packages/plugins-fake" },
     { "path": "./packages/plugins-ui-gateway" },

@@ -44,6 +44,7 @@ function useRuntimeSnapshot() {
 interface ResolvedControlAction {
   label: string;
   commandType: string | undefined;
+  commandVersion: number;
   payload: Record<string, unknown> | undefined;
   modalForm: UiModalForm | undefined;
   disabled: boolean;
@@ -116,6 +117,7 @@ function compileControlAction(control: UiControlAction): CompiledControlResolver
     return {
       label: merged.label ?? control.id,
       commandType: hasCommand ? merged.commandType : undefined,
+      commandVersion: merged.commandVersion ?? 1,
       payload: merged.payload,
       modalForm: merged.modalForm,
       // Если у варианта нет команды (например, состояние "подключение"), кнопку блокируем автоматически.
@@ -256,7 +258,7 @@ function ControlsWidget(
               aria-busy={resolved.isLoading || undefined}
               onClick={() => {
                 if (resolved.commandType) {
-                  void runtimeSingleton.sendCommand(resolved.commandType, resolved.payload);
+                  void runtimeSingleton.sendCommand(resolved.commandType, resolved.commandVersion, resolved.payload);
                 }
                 if (resolved.modalForm) {
                   onOpenModal(resolved.modalForm);
@@ -381,9 +383,13 @@ function ToastStack({ notifications }: { notifications: ClientRuntimeNotificatio
         <div
           key={notification.id}
           style={{
-            border: '1px solid rgba(248, 81, 73, 0.35)',
-            background: 'linear-gradient(180deg, rgba(76, 17, 19, 0.96) 0%, rgba(45, 13, 14, 0.96) 100%)',
-            color: '#ffd7d5',
+            border: notification.level === 'error'
+              ? '1px solid rgba(248, 81, 73, 0.35)'
+              : '1px solid rgba(210, 153, 34, 0.35)',
+            background: notification.level === 'error'
+              ? 'linear-gradient(180deg, rgba(76, 17, 19, 0.96) 0%, rgba(45, 13, 14, 0.96) 100%)'
+              : 'linear-gradient(180deg, rgba(79, 53, 12, 0.96) 0%, rgba(56, 36, 7, 0.96) 100%)',
+            color: notification.level === 'error' ? '#ffd7d5' : '#ffe9b3',
             borderRadius: 12,
             padding: 12,
             boxShadow: '0 12px 24px rgba(0,0,0,0.25)',
@@ -400,7 +406,7 @@ function ToastStack({ notifications }: { notifications: ClientRuntimeNotificatio
               style={{
                 border: 'none',
                 background: 'transparent',
-                color: '#ffd7d5',
+                color: notification.level === 'error' ? '#ffd7d5' : '#ffe9b3',
                 cursor: 'pointer',
                 fontSize: 18,
                 lineHeight: 1,
@@ -1446,7 +1452,7 @@ export function App() {
       setModalError(built.error);
       return;
     }
-    await runtimeSingleton.sendCommand(modal.form.submitEventType, built.payload);
+    await runtimeSingleton.sendCommand(modal.form.submitEventType, modal.form.submitEventVersion ?? 1, built.payload);
     setModal(null);
   }
 

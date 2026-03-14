@@ -17,6 +17,12 @@
   - оценивает baseline cadence broadcast по живому потоку, чтобы не считать нормальные кадры пропусками;
   - автоматически переподключается по `detached` сигналу библиотеки и по watchdog'у тишины пакетов;
   - умеет `real` transport для Moxy через `ant-plus` и `fake` transport для локальной отладки.
+- `ant-plus-boundary.ts` изолирует внешний boundary:
+  - env overrides;
+  - formData -> transport requests;
+  - raw driver state/page -> `AntTransportPacket`.
+- `ant-plus-boundary.test.ts` отдельно проверяет эту нормализацию без поднятия runtime-плагина.
+- `event-contracts.ts` описывает plugin-specific тик `ant-plus.packet.poll`.
 - `index.ts` экспортирует plugin entrypoint.
 
 ## Взаимодействие

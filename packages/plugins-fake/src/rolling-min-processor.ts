@@ -1,4 +1,4 @@
-import { type CommandEvent, type FactEvent, type SignalBatchEvent } from '@sensync2/core';
+import { defineRuntimeEventInput, EventTypes } from '@sensync2/core';
 import { definePlugin } from '@sensync2/plugin-sdk';
 import { signalBatchEvent } from './helpers.ts';
 
@@ -17,30 +17,35 @@ export default definePlugin({
     version: '0.1.0',
     required: false,
     subscriptions: [
-      { type: 'signal.batch', kind: 'data', priority: 'data', filter: { channelIdPrefix: 'fake.a' } },
-      { type: FlushTickType, kind: 'fact', priority: 'system' },
+      { type: EventTypes.signalBatch, v: 1, kind: 'data', priority: 'data', filter: { channelIdPrefix: 'fake.a' } },
+      { type: FlushTickType, v: 1, kind: 'fact', priority: 'system' },
     ],
     mailbox: {
       controlCapacity: 64,
       dataCapacity: 256,
       dataPolicy: 'fail-fast',
     },
+    emits: [
+      { type: FlushTickType, v: 1 },
+      { type: EventTypes.signalBatch, v: 1 },
+      { type: 'metric.value.changed', v: 1 },
+    ],
   },
   async onInit(ctx) {
     cfg = { ...cfg, ...(ctx.getConfig<RollingMinConfig>() ?? {}) };
-    ctx.setTimer('rolling-min.flush', 1000, () => ({
+    ctx.setTimer('rolling-min.flush', 1000, () => defineRuntimeEventInput({
       type: FlushTickType,
+      v: 1,
       kind: 'fact',
       priority: 'system',
       payload: {},
     }));
   },
   async onEvent(event, ctx) {
-    if (event.type === 'signal.batch') {
-      const e = event as SignalBatchEvent;
-      if (e.payload.channelId !== cfg.sourceChannelId) return;
-      for (let i = 0; i < e.payload.values.length; i += 1) {
-        windowValues.push(Number(e.payload.values[i]));
+    if (event.type === EventTypes.signalBatch) {
+      if (event.payload.channelId !== cfg.sourceChannelId) return;
+      for (let i = 0; i < event.payload.values.length; i += 1) {
+        windowValues.push(Number(event.payload.values[i]));
       }
       const maxKeep = 2000;
       if (windowValues.length > maxKeep) {
@@ -58,12 +63,13 @@ export default definePlugin({
       const values = new Float32Array([min]);
       await ctx.emit(signalBatchEvent(cfg.outputChannelId, cfg.outputChannelId, values, ctx.clock.nowSessionMs(), 1000, 'f32', 'a.u.'));
 
-      const metricEvent: Omit<FactEvent<{ key: string; value: number }>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> = {
+      const metricEvent = defineRuntimeEventInput({
         type: 'metric.value.changed',
+        v: 1,
         kind: 'fact',
         priority: 'system',
         payload: { key: 'rollingMin.fakeA', value: min },
-      };
+      });
       await ctx.emit(metricEvent);
     }
   },

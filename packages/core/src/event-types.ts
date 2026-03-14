@@ -4,6 +4,7 @@
  * Здесь только те события, которые реально используются в runtime и fake-плагинах.
  */
 export const EventTypes = {
+  signalBatch: 'signal.batch',
   adapterScanRequest: 'adapter.scan.request',
   adapterScanStateChanged: 'adapter.scan.state.changed',
   adapterScanCandidates: 'adapter.scan.candidates',

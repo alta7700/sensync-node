@@ -1,5 +1,5 @@
 import type { PluginManifest, PluginMetric } from './plugin.ts';
-import type { RuntimeEvent } from './events.ts';
+import type { RuntimeEvent, RuntimeEventInput } from './events.ts';
 
 export interface PluginWorkerInitMessage {
   kind: 'plugin.init';
@@ -38,7 +38,7 @@ export interface PluginWorkerReadyMessage {
 
 export interface PluginWorkerEmitMessage {
   kind: 'plugin.emit';
-  event: Omit<RuntimeEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>;
+  event: RuntimeEventInput;
 }
 
 export interface PluginWorkerAckMessage {
@@ -64,7 +64,7 @@ export interface PluginWorkerSetTimerMessage {
   kind: 'plugin.set-timer';
   timerId: PluginTimerToken;
   intervalMs: number;
-  eventTemplate: Omit<RuntimeEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>;
+  eventTemplate: RuntimeEventInput;
 }
 
 export interface PluginWorkerClearTimerMessage {

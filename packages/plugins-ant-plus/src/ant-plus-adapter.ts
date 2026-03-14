@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
 import {
+  defineRuntimeEventInput,
   EventTypes,
   type AdapterConnectRequestPayload,
   type AdapterDisconnectRequestPayload,
@@ -9,53 +9,33 @@ import {
   type AdapterScanRequestPayload,
   type AdapterScanStateChangedPayload,
   type AdapterStateChangedPayload,
-  type CommandEvent,
-  type FactEvent,
   type SignalBatchEvent,
 } from '@sensync2/core';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
-
-interface AntPlusAdapterConfig {
-  adapterId?: string;
-  mode?: 'fake' | 'real';
-  stickPresent?: boolean;
-  scanDelayMs?: number;
-  packetIntervalMs?: number;
-  measurementIntervalMs?: number;
-  candidateDeviceId?: number;
-  transmissionType?: number;
-  autoReconnect?: boolean;
-  reconnectRetryDelayMs?: number;
-  reconnectSilenceMultiplier?: number;
-  reconnectMinSilenceMs?: number;
-  logPacketTiming?: boolean;
-}
-
-interface AntTransportScanRequest {
-  profile?: string;
-  timeoutMs?: number;
-}
+import {
+  buildAntTransportConnectRequest,
+  buildAntTransportScanRequest,
+  decodeRawMoxyPacketMeta,
+  loadAntPlusApi,
+  readAntPlusEnvOverrides,
+  realPacketFromState,
+  resolveAntPlusConfig,
+  type AntEventEmitterLike,
+  type AntPlusAdapterConfig,
+  type AntPlusApi,
+  type AntPlusSensor,
+  type AntPlusStick,
+  type AntTransportConnectRequest,
+  type AntTransportPacket,
+  type AntTransportScanRequest,
+  type FakeAntTransportConfig,
+  type RawMoxyPacketMeta,
+  type RealMuscleOxygenState,
+} from './ant-plus-boundary.ts';
 
 interface AntTransportScanResult {
   scanId: string;
   candidates: AdapterScanCandidate[];
-}
-
-interface AntTransportConnectRequest {
-  profile?: string;
-  scanId?: string;
-  candidateId?: string;
-  deviceId?: number;
-}
-
-interface AntTransportPacket {
-  eventCount: number;
-  measurementIntervalMs: number;
-  smo2: number;
-  thb: number;
-  rawMeasurementIntervalMs?: number;
-  arrivalMonoMs?: number;
-  rawHex?: string;
 }
 
 interface AntTransport {
@@ -67,80 +47,8 @@ interface AntTransport {
   takeConnectionSignal(): string | null;
 }
 
-interface FakeAntTransportConfig {
-  stickPresent: boolean;
-  scanDelayMs: number;
-  measurementIntervalMs: number;
-  candidateDeviceId: number;
-  transmissionType: number;
-}
-
-interface AntEventEmitterLike {
-  on(eventName: string, listener: (...args: unknown[]) => void): unknown;
-  prependListener?(eventName: string, listener: (...args: unknown[]) => void): unknown;
-  removeListener(eventName: string, listener: (...args: unknown[]) => void): unknown;
-}
-
-interface AntPlusStick extends AntEventEmitterLike {
-  open(): boolean;
-  close(): void;
-}
-
-interface AntPlusScanner extends AntEventEmitterLike {
-  scan(): void;
-  detach(): void;
-}
-
-interface AntPlusSensor extends AntEventEmitterLike {
-  channel?: number;
-  attach(channel: number, deviceId: number): void;
-  detach(): void;
-  setUTCTime?(cbk?: (result: boolean) => void): void;
-}
-
-interface AntPlusApi {
-  GarminStick2: new () => AntPlusStick;
-  GarminStick3: new () => AntPlusStick;
-  MuscleOxygenScanner: new (stick: AntPlusStick) => AntPlusScanner;
-  MuscleOxygenSensor: new (stick: AntPlusStick) => AntPlusSensor;
-}
-
-interface RealMuscleOxygenState {
-  DeviceID: number;
-  _EventCount?: number;
-  MeasurementInterval?: 0.25 | 0.5 | 1 | 2;
-  TotalHemoglobinConcentration?: number | 'AmbientLightTooHigh' | 'Invalid';
-  PreviousSaturatedHemoglobinPercentage?: number | 'AmbientLightTooHigh' | 'Invalid';
-  CurrentSaturatedHemoglobinPercentage?: number | 'AmbientLightTooHigh' | 'Invalid';
-  UTCTimeRequired?: boolean;
-}
-
-interface RawMoxyPacketMeta {
-  eventCount: number;
-  arrivalMonoMs: number;
-  rawMeasurementIntervalMs?: number;
-  rawHex: string;
-}
-
 const PacketPollType = 'ant-plus.packet.poll';
-const require = createRequire(import.meta.url);
-const DefaultConfig: Required<AntPlusAdapterConfig> = {
-  adapterId: 'ant-plus',
-  mode: 'fake',
-  stickPresent: true,
-  scanDelayMs: 700,
-  packetIntervalMs: 250,
-  measurementIntervalMs: 250,
-  candidateDeviceId: 12345,
-  transmissionType: 1,
-  autoReconnect: true,
-  reconnectRetryDelayMs: 1_500,
-  reconnectSilenceMultiplier: 10,
-  reconnectMinSilenceMs: 5_000,
-  logPacketTiming: false,
-};
-
-let config: Required<AntPlusAdapterConfig> = { ...DefaultConfig };
+let config = resolveAntPlusConfig(undefined);
 let transport: AntTransport | null = null;
 let runtimeState: AdapterStateChangedPayload['state'] = 'disconnected';
 let scanInFlight = false;
@@ -171,55 +79,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function envBoolean(rawValue: string | undefined, fallback: boolean): boolean {
-  if (rawValue === undefined || rawValue === '') return fallback;
-  const normalized = rawValue.trim().toLowerCase();
-  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
-  return fallback;
-}
-
-function envNumber(rawValue: string | undefined, fallback: number): number {
-  if (rawValue === undefined || rawValue === '') return fallback;
-  const parsed = Number(rawValue);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function resolveConfig(rawConfig: AntPlusAdapterConfig | undefined): Required<AntPlusAdapterConfig> {
-  const merged = { ...DefaultConfig, ...(rawConfig ?? {}) };
-  return {
-    adapterId: merged.adapterId,
-    mode: merged.mode,
-    stickPresent: merged.stickPresent,
-    scanDelayMs: Math.max(0, Math.trunc(merged.scanDelayMs)),
-    packetIntervalMs: Math.max(1, Math.trunc(merged.packetIntervalMs)),
-    measurementIntervalMs: Math.max(1, Math.trunc(merged.measurementIntervalMs)),
-    candidateDeviceId: Math.max(1, Math.trunc(merged.candidateDeviceId)),
-    transmissionType: Math.max(0, Math.trunc(merged.transmissionType)),
-    autoReconnect: merged.autoReconnect,
-    reconnectRetryDelayMs: Math.max(100, Math.trunc(merged.reconnectRetryDelayMs)),
-    reconnectSilenceMultiplier: Math.max(2, merged.reconnectSilenceMultiplier),
-    reconnectMinSilenceMs: Math.max(1_000, Math.trunc(merged.reconnectMinSilenceMs)),
-    logPacketTiming: merged.logPacketTiming,
-  };
-}
-
 function normalizeError(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
     return error.message;
   }
   return String(error);
-}
-
-function loadAntPlusApi(): AntPlusApi {
-  try {
-    return require('ant-plus') as AntPlusApi;
-  } catch (error) {
-    throw new Error(
-      'Режим real требует установленный пакет `ant-plus`. '
-      + 'Запусти `npm install` в корне репозитория и проверь установку нативной зависимости usb.',
-    );
-  }
 }
 
 function waitForEmitterEvent(
@@ -257,83 +121,23 @@ async function closeStickSafely(stick: AntPlusStick | null): Promise<void> {
   }
 }
 
-function decodeLegacyMeasurementIntervalMs(data: Buffer): number | undefined {
-  if (data.length < 8) return undefined;
-  const intervalRaw = data.readUInt16LE(2);
-  if (intervalRaw <= 0) return undefined;
-  const decodedMs = Math.round((intervalRaw / 1024) * 1000);
-  if (!Number.isFinite(decodedMs) || decodedMs <= 0) return undefined;
-  return decodedMs;
-}
-
-function chooseMeasurementIntervalMs(
-  libraryMeasurementIntervalMs: number,
-  rawMeasurementIntervalMs: number | undefined,
-): number {
-  if (rawMeasurementIntervalMs === undefined) {
-    return libraryMeasurementIntervalMs;
-  }
-
-  // Для MoxyMonitor библиотека `ant-plus` в реальности может отдавать интервал,
-  // который расходится с сырым page 0x01. Предпочитаем значение из устройства.
-  const deltaMs = Math.abs(rawMeasurementIntervalMs - libraryMeasurementIntervalMs);
-  const mismatchThresholdMs = Math.max(250, libraryMeasurementIntervalMs * 0.4);
-  if (deltaMs >= mismatchThresholdMs) {
-    const signature = `${libraryMeasurementIntervalMs}:${rawMeasurementIntervalMs}`;
-    const nowMonoMs = performance.now();
-    const canWarnAgain = lastIntervalMismatchWarningSignature !== signature
-      || lastIntervalMismatchWarningAtMonoMs === null
-      || (nowMonoMs - lastIntervalMismatchWarningAtMonoMs) >= 5_000;
-    if (canWarnAgain) {
-      console.warn('[ant-plus-adapter] Moxy profile interval field mismatch, используем raw packet field', {
-        profileIntervalFieldMs: libraryMeasurementIntervalMs,
-        rawProfileIntervalFieldMs: rawMeasurementIntervalMs,
-      });
-      lastIntervalMismatchWarningSignature = signature;
-      lastIntervalMismatchWarningAtMonoMs = nowMonoMs;
-    }
-    return rawMeasurementIntervalMs;
-  }
-
-  return rawMeasurementIntervalMs;
-}
-
-function realPacketFromState(state: RealMuscleOxygenState, meta?: RawMoxyPacketMeta): AntTransportPacket | null {
-  const eventCount = state._EventCount;
-  const current = state.CurrentSaturatedHemoglobinPercentage;
-  const total = state.TotalHemoglobinConcentration;
-
-  if (typeof eventCount !== 'number') return null;
-  if (typeof current !== 'number') return null;
-  if (typeof total !== 'number') return null;
-
-  const measurementIntervalMs = Math.max(1, Math.round((state.MeasurementInterval ?? 0.25) * 1000));
-  return {
-    eventCount: eventCount & 0xff,
-    measurementIntervalMs: chooseMeasurementIntervalMs(measurementIntervalMs, meta?.rawMeasurementIntervalMs),
-    smo2: Math.round(current) / 10,
-    thb: Math.round(total) / 100,
-    ...(meta?.rawMeasurementIntervalMs !== undefined ? { rawMeasurementIntervalMs: meta.rawMeasurementIntervalMs } : {}),
-    arrivalMonoMs: meta?.arrivalMonoMs ?? performance.now(),
-    ...(meta?.rawHex !== undefined ? { rawHex: meta.rawHex } : {}),
-  };
-}
 
 function adapterStateEvent(
   adapterId: string,
   state: AdapterStateChangedPayload['state'],
   message?: string,
   requestId?: string,
-): Omit<FactEvent<AdapterStateChangedPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
+) {
   const payload: AdapterStateChangedPayload = { adapterId, state };
   if (message !== undefined) payload.message = message;
   if (requestId !== undefined) payload.requestId = requestId;
-  return {
+  return defineRuntimeEventInput({
     type: EventTypes.adapterStateChanged,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload,
-  };
+  });
 }
 
 function adapterScanStateEvent(
@@ -342,17 +146,18 @@ function adapterScanStateEvent(
   requestId?: string,
   scanId?: string,
   message?: string,
-): Omit<FactEvent<AdapterScanStateChangedPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
+) {
   const payload: AdapterScanStateChangedPayload = { adapterId, scanning };
   if (requestId !== undefined) payload.requestId = requestId;
   if (scanId !== undefined) payload.scanId = scanId;
   if (message !== undefined) payload.message = message;
-  return {
+  return defineRuntimeEventInput({
     type: EventTypes.adapterScanStateChanged,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload,
-  };
+  });
 }
 
 function adapterScanCandidatesEvent(
@@ -360,19 +165,20 @@ function adapterScanCandidatesEvent(
   scanId: string,
   candidates: AdapterScanCandidate[],
   requestId?: string,
-): Omit<FactEvent<AdapterScanCandidatesPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
+) {
   const payload: AdapterScanCandidatesPayload = {
     adapterId,
     scanId,
     candidates,
   };
   if (requestId !== undefined) payload.requestId = requestId;
-  return {
+  return defineRuntimeEventInput({
     type: EventTypes.adapterScanCandidates,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload,
-  };
+  });
 }
 
 function signalBatchEvent(
@@ -383,8 +189,9 @@ function signalBatchEvent(
   dtMs: number,
   units: string,
 ): Omit<SignalBatchEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
-  return {
-    type: 'signal.batch',
+  return defineRuntimeEventInput({
+    type: EventTypes.signalBatch,
+    v: 1,
     kind: 'data',
     priority: 'data',
     payload: {
@@ -399,7 +206,7 @@ function signalBatchEvent(
       values: new Float32Array([value]),
       units,
     },
-  };
+  });
 }
 
 function emitMoxyQualityMetrics(ctx: PluginContext): void {
@@ -611,24 +418,9 @@ class RealAntTransport implements AntTransport {
     const listener = (...args: unknown[]) => {
       const data = args[0];
       if (!Buffer.isBuffer(data)) return;
-      if (typeof sensor.channel !== 'number') return;
-      if (data.length < 12) return;
-
-      const messageType = data.readUInt8(2);
-      if (messageType !== 0x4e && messageType !== 0x4f && messageType !== 0x50) return;
-      if (data.readUInt8(3) !== sensor.channel) return;
-
-      const payload = data.subarray(4, 12);
-      if (payload.readUInt8(0) !== 0x01) return;
-
-      const eventCount = payload.readUInt8(1);
-      const rawMeasurementIntervalMs = decodeLegacyMeasurementIntervalMs(payload);
-      this.rawPacketMetaByEventCount.set(eventCount, {
-        eventCount,
-        arrivalMonoMs: performance.now(),
-        rawHex: payload.toString('hex'),
-        ...(rawMeasurementIntervalMs !== undefined ? { rawMeasurementIntervalMs } : {}),
-      });
+      const meta = decodeRawMoxyPacketMeta(data, sensor.channel);
+      if (!meta) return;
+      this.rawPacketMetaByEventCount.set(meta.eventCount, meta);
       this.forgetOldRawPacketMeta();
     };
 
@@ -744,7 +536,21 @@ class RealAntTransport implements AntTransport {
         }
       }
 
-      const packet = realPacketFromState(state, this.rawPacketMetaByEventCount.get((state._EventCount ?? 0) & 0xff));
+      const packet = realPacketFromState(
+        state,
+        this.rawPacketMetaByEventCount.get((state._EventCount ?? 0) & 0xff),
+        {
+          lastSignature: lastIntervalMismatchWarningSignature,
+          lastAtMonoMs: lastIntervalMismatchWarningAtMonoMs,
+          onWarn(payload) {
+            console.warn('[ant-plus-adapter] Moxy profile interval field mismatch, используем raw packet field', payload);
+          },
+          mark(signature, atMonoMs) {
+            lastIntervalMismatchWarningSignature = signature;
+            lastIntervalMismatchWarningAtMonoMs = atMonoMs;
+          },
+        },
+      );
       if (!packet) return;
       if (this.lastQueuedEventCount === packet.eventCount) return;
       this.lastQueuedEventCount = packet.eventCount;
@@ -844,6 +650,7 @@ function startPolling(ctx: PluginContext): void {
     : config.packetIntervalMs;
   ctx.setTimer('ant-plus.poll', intervalMs, () => ({
     type: PacketPollType,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload: {},
@@ -913,35 +720,6 @@ async function tryPendingReconnect(ctx: PluginContext): Promise<void> {
   }
 }
 
-function selectedProfile(formData: Record<string, unknown> | undefined): string | undefined {
-  const rawValue = formData?.profile;
-  return typeof rawValue === 'string' && rawValue.length > 0 ? rawValue : undefined;
-}
-
-function selectedCandidateId(formData: Record<string, unknown> | undefined): string | undefined {
-  const rawValue = formData?.candidateId;
-  return typeof rawValue === 'string' && rawValue.length > 0 ? rawValue : undefined;
-}
-
-function selectedScanId(formData: Record<string, unknown> | undefined): string | undefined {
-  const rawValue = formData?.scanId;
-  return typeof rawValue === 'string' && rawValue.length > 0 ? rawValue : undefined;
-}
-
-function selectedDeviceId(formData: Record<string, unknown> | undefined): number | undefined {
-  const rawValue = formData?.deviceId;
-  if (typeof rawValue === 'number' && Number.isFinite(rawValue) && rawValue > 0) {
-    return Math.trunc(rawValue);
-  }
-  if (typeof rawValue === 'string' && rawValue.trim().length > 0) {
-    const parsed = Number(rawValue);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.trunc(parsed);
-    }
-  }
-  return undefined;
-}
-
 async function handleScan(ctx: PluginContext, payload: AdapterScanRequestPayload): Promise<void> {
   if (!transport) {
     throw new Error('ANT+ transport не инициализирован');
@@ -950,10 +728,7 @@ async function handleScan(ctx: PluginContext, payload: AdapterScanRequestPayload
     return;
   }
 
-  const profile = selectedProfile(payload.formData);
-  const scanRequest: AntTransportScanRequest = {};
-  if (profile !== undefined) scanRequest.profile = profile;
-  if (payload.timeoutMs !== undefined) scanRequest.timeoutMs = payload.timeoutMs;
+  const scanRequest = buildAntTransportScanRequest(payload.formData, payload.timeoutMs);
 
   scanInFlight = true;
   await ctx.emit(adapterScanStateEvent(config.adapterId, true, payload.requestId));
@@ -976,15 +751,7 @@ async function handleConnect(ctx: PluginContext, payload: AdapterConnectRequestP
     return;
   }
 
-  const profile = selectedProfile(payload.formData);
-  const scanId = selectedScanId(payload.formData);
-  const candidateId = selectedCandidateId(payload.formData);
-  const deviceId = selectedDeviceId(payload.formData);
-  const connectRequest: AntTransportConnectRequest = {};
-  if (profile !== undefined) connectRequest.profile = profile;
-  if (scanId !== undefined) connectRequest.scanId = scanId;
-  if (candidateId !== undefined) connectRequest.candidateId = candidateId;
-  if (deviceId !== undefined) connectRequest.deviceId = deviceId;
+  const connectRequest = buildAntTransportConnectRequest(payload.formData);
 
   manualDisconnectRequested = false;
   lastConnectRequest = connectRequest;
@@ -1183,10 +950,10 @@ export default definePlugin({
     version: '0.1.0',
     required: true,
     subscriptions: [
-      { type: EventTypes.adapterScanRequest, kind: 'command', priority: 'control' },
-      { type: EventTypes.adapterConnectRequest, kind: 'command', priority: 'control' },
-      { type: EventTypes.adapterDisconnectRequest, kind: 'command', priority: 'control' },
-      { type: PacketPollType, kind: 'fact', priority: 'system' },
+      { type: EventTypes.adapterScanRequest, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.adapterConnectRequest, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.adapterDisconnectRequest, v: 1, kind: 'command', priority: 'control' },
+      { type: PacketPollType, v: 1, kind: 'fact', priority: 'system' },
     ],
     mailbox: {
       controlCapacity: 128,
@@ -1194,46 +961,17 @@ export default definePlugin({
       dataPolicy: 'fail-fast',
     },
     emits: [
-      EventTypes.adapterScanStateChanged,
-      EventTypes.adapterScanCandidates,
-      EventTypes.adapterStateChanged,
-      'signal.batch',
+      { type: EventTypes.adapterScanStateChanged, v: 1 },
+      { type: EventTypes.adapterScanCandidates, v: 1 },
+      { type: EventTypes.adapterStateChanged, v: 1 },
+      { type: EventTypes.signalBatch, v: 1 },
+      { type: PacketPollType, v: 1 },
     ],
   },
   async onInit(ctx) {
-    const envMode = process.env.SENSYNC2_ANT_PLUS_MODE;
-    config = resolveConfig({
+    config = resolveAntPlusConfig({
       ...(ctx.getConfig<AntPlusAdapterConfig>() ?? {}),
-      ...((envMode === 'fake' || envMode === 'real')
-        ? { mode: envMode }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_STICK_PRESENT !== undefined
-        ? { stickPresent: envBoolean(process.env.SENSYNC2_ANT_PLUS_STICK_PRESENT, DefaultConfig.stickPresent) }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_SCAN_DELAY_MS !== undefined
-        ? { scanDelayMs: envNumber(process.env.SENSYNC2_ANT_PLUS_SCAN_DELAY_MS, DefaultConfig.scanDelayMs) }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_PACKET_INTERVAL_MS !== undefined
-        ? { packetIntervalMs: envNumber(process.env.SENSYNC2_ANT_PLUS_PACKET_INTERVAL_MS, DefaultConfig.packetIntervalMs) }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_MEASUREMENT_INTERVAL_MS !== undefined
-        ? { measurementIntervalMs: envNumber(process.env.SENSYNC2_ANT_PLUS_MEASUREMENT_INTERVAL_MS, DefaultConfig.measurementIntervalMs) }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_AUTO_RECONNECT !== undefined
-        ? { autoReconnect: envBoolean(process.env.SENSYNC2_ANT_PLUS_AUTO_RECONNECT, DefaultConfig.autoReconnect) }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_RECONNECT_RETRY_DELAY_MS !== undefined
-        ? { reconnectRetryDelayMs: envNumber(process.env.SENSYNC2_ANT_PLUS_RECONNECT_RETRY_DELAY_MS, DefaultConfig.reconnectRetryDelayMs) }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_RECONNECT_SILENCE_MULTIPLIER !== undefined
-        ? { reconnectSilenceMultiplier: envNumber(process.env.SENSYNC2_ANT_PLUS_RECONNECT_SILENCE_MULTIPLIER, DefaultConfig.reconnectSilenceMultiplier) }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_RECONNECT_MIN_SILENCE_MS !== undefined
-        ? { reconnectMinSilenceMs: envNumber(process.env.SENSYNC2_ANT_PLUS_RECONNECT_MIN_SILENCE_MS, DefaultConfig.reconnectMinSilenceMs) }
-        : {}),
-      ...(process.env.SENSYNC2_ANT_PLUS_LOG_PACKET_TIMING !== undefined
-        ? { logPacketTiming: envBoolean(process.env.SENSYNC2_ANT_PLUS_LOG_PACKET_TIMING, DefaultConfig.logPacketTiming) }
-        : {}),
+      ...readAntPlusEnvOverrides(process.env),
     });
     transport = createTransport();
     runtimeState = 'disconnected';
@@ -1248,21 +986,21 @@ export default definePlugin({
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.adapterScanRequest) {
-      const payload = (event as CommandEvent<AdapterScanRequestPayload>).payload;
+      const payload = event.payload;
       if (payload.adapterId !== config.adapterId) return;
       await handleScan(ctx, payload);
       return;
     }
 
     if (event.type === EventTypes.adapterConnectRequest) {
-      const payload = (event as CommandEvent<AdapterConnectRequestPayload>).payload;
+      const payload = event.payload;
       if (payload.adapterId !== config.adapterId) return;
       await handleConnect(ctx, payload);
       return;
     }
 
     if (event.type === EventTypes.adapterDisconnectRequest) {
-      const payload = (event as CommandEvent<AdapterDisconnectRequestPayload>).payload;
+      const payload = event.payload;
       if (payload.adapterId !== config.adapterId) return;
       await handleDisconnect(ctx, payload);
       return;

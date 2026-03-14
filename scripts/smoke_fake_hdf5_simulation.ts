@@ -4,7 +4,7 @@ import os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { RuntimeHost } from '../apps/runtime/src/runtime-host';
-import { EventTypes, type UiCommandMessage } from '../packages/core/src/index';
+import { createUiCommandMessage, EventTypes, type UiCommandEventType, type UiCommandMessage } from '../packages/core/src/index';
 
 type ControlMessage = { type: string; [key: string]: unknown };
 
@@ -19,12 +19,11 @@ function repoModuleUrl(relativePathFromRepoRoot: string): string {
   return pathToFileURL(path.join(repoRoot, relativePathFromRepoRoot)).href;
 }
 
-function uiCommand(eventType: string, payload: Record<string, unknown>): UiCommandMessage {
-  return {
-    type: 'ui.command',
+function uiCommand(eventType: UiCommandEventType, payload: Record<string, unknown>): UiCommandMessage {
+  return createUiCommandMessage({
     eventType,
     payload,
-  };
+  });
 }
 
 async function recordFixture(outputDir: string): Promise<string> {

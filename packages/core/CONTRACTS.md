@@ -23,6 +23,7 @@
 Семантика:
 
 - `seq` назначается только runtime.
+- `v` — версия контракта события и часть identity вместе с `type`.
 - `tsMonoMs` назначается только runtime и отражает монотонное внутреннее время публикации события.
 - `sourcePluginId` назначается только runtime.
 - Плагин при `emit()` не должен пытаться задавать эти поля сам.
@@ -30,8 +31,37 @@
 Поля маршрутизации:
 
 - `type` — строковый тип события.
+- `v` — версия события внутри registry.
 - `kind` — логическая категория (`command`, `fact`, `data`, `system`).
 - `priority` — класс очереди (`control`, `data`, `system`).
+
+## 2.1 Event Registry
+
+В `sensync2` событие в общей шине идентифицируется парой `(type, v)`.
+
+Правила:
+
+- shared-события описываются в [packages/core/src/shared-event-contracts.ts](src/shared-event-contracts.ts);
+- plugin-specific события описываются рядом с пакетами `packages/plugins-*/src/event-contracts.ts`;
+- runtime собирает единый workspace registry и не маршрутизирует событие, если `(type, v)` не зарегистрирован;
+- runtime также проверяет согласованность `kind` и `priority` с контрактом;
+- plugin `emit` допускается только для событий, явно перечисленных в `manifest.emits`.
+
+Типизация runtime-событий:
+
+- `RuntimeEvent` больше не является "общим мешком" `CommandEvent | FactEvent | SignalBatchEvent`;
+- точный union собирается кодогенерацией из:
+  - [packages/core/src/runtime-event-map.spec.ts](src/runtime-event-map.spec.ts)
+  - `packages/plugins-*/src/runtime-event-map.spec.ts`;
+- сгенерированные augmentation-файлы `generated-runtime-event-map.ts` подключаются автоматически через package entrypoints;
+- для создания input-событий нужно использовать `defineRuntimeEventInput(...)`, чтобы сохранить literal-типы `type`, `v`, `kind` и `priority`.
+
+Boundary-валидация payload:
+
+- payload не валидируется тяжёлой schema-проверкой в hot path шины;
+- внешние ingress-слои обязаны валидировать payload до попадания в шину;
+- для UI-команд shared-guards живут в [packages/core/src/ui-command-boundary.ts](src/ui-command-boundary.ts).
+- общая карта boundary-слоёв и границ доверия описана в [BOUNDARIES.md](../../BOUNDARIES.md).
 
 Гарантии `v1`:
 
@@ -165,7 +195,11 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
   - при падении такого плагина runtime переходит в `degraded_fatal`.
 - `subscriptions`
   - описывают, какие события плагин хочет получать;
-  - runtime не должен доставлять события вне этого набора.
+  - runtime не должен доставлять события вне этого набора;
+  - подписка указывается как `(type, v)` и при startup проверяется на существование в registry.
+- `emits`
+  - перечисляют все события, которые плагин может выпустить в общую шину;
+  - отсутствие нужного `(type, v)` в `emits` считается нарушением контракта emit path.
 - `mailbox.controlCapacity`
   - ёмкость очереди команд и системных событий.
 - `mailbox.dataCapacity`
@@ -237,6 +271,9 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - Первый совпавший `variant.when` поверх них накладывает переопределения.
 - `hidden` имеет приоритет над `visible`.
 - Если после разрешения варианта отсутствует `commandType`, кнопка должна считаться disabled.
+- `commandVersion`, если задан, должен отправляться в `UiCommandMessage`.
+- Если `commandVersion` не задан, renderer использует `v=1`.
+- `commandType` в schema теперь не произвольная строка, а union допустимых UI-команд из boundary-registry.
 
 Поддерживаемые логические операторы:
 
@@ -254,6 +291,11 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - `modalForm` описывается в общей `UiSchema`, но его open/close состояние живёт только в renderer;
 - runtime не знает, открыта форма или нет;
 - submit формы отправляет обычный `UiCommandMessage` в runtime;
+- `UiCommandMessage` всегда несёт не только `eventType`, но и `eventVersion`;
+- `UiCommandMessage` теперь типизируется от `SharedUiCommandBoundaryEvent`, то есть `eventType`, `eventVersion` и `payload` берутся из exact event map, а не живут отдельным строковым контрактом;
+- `createUiCommandMessage(...)` — единственный sanctioned helper для сборки `UiCommandMessage` в schema-driven местах;
+- `uiCommandMessageToRuntimeEventInput(...)` — единственный sanctioned helper для bridge между UI boundary и внутренним `RuntimeEventInput`;
+- `submitEventVersion`, если не задан, трактуется как `1`;
 - поля формы по умолчанию собираются в `payload.formData`, если renderer не вводит более узкое поведение.
 
 Поддерживаемые node-виды `v1`:

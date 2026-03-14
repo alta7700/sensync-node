@@ -15,8 +15,9 @@
   - materialize'ит dynamic options для локальных форм;
   - кодирует `signal.batch` в binary UI frames;
   - отправляет `ui.init`, patch-сообщения и telemetry.
+- Control schema может задавать `commandVersion` / `submitEventVersion`; если они не указаны, renderer использует `v=1`.
 - Для `fake-hdf5-simulation` схема отдельная: по графикам она совместима с fake-демо, но управляющие кнопки уже относятся к simulation-источнику.
-- Для `veloerg` схема минимальна: scan/connect/disconnect Moxy, live charts и toast/error flow.
+- Для `veloerg` схема composite: scan/connect/disconnect для Moxy и Zephyr, первый ряд графиков показывает `SmO2` и `tHb`, второй — `RR` от Zephyr.
 
 ## Взаимодействие
 

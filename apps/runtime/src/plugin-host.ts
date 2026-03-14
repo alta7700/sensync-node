@@ -7,9 +7,9 @@ import type {
   PluginToMainWorkerMessage,
   QueueTelemetry,
   RuntimeEvent,
-  SignalBatchEvent,
+  RuntimeEventInput,
 } from '@sensync2/core';
-import { getSignalBatchTransferables } from '@sensync2/core';
+import { getSignalBatchTransferables, isSignalBatchEvent } from '@sensync2/core';
 import type { PluginDescriptor, RuntimeSessionClockInfo } from './types.ts';
 
 interface QueuedItem {
@@ -18,7 +18,7 @@ interface QueuedItem {
 
 interface PluginHostCallbacks {
   onReady: (pluginId: string, manifest: PluginManifest) => void;
-  onEmit: (pluginId: string, event: Omit<RuntimeEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>) => Promise<void>;
+  onEmit: (pluginId: string, event: RuntimeEventInput) => Promise<void>;
   onError: (pluginId: string, error: Error) => void;
   onMetric: (pluginId: string, metric: PluginMetric) => void;
 }
@@ -151,12 +151,11 @@ export class PluginHost {
     }
 
     if (this.dataQueue.length >= this.manifest.mailbox.dataCapacity) {
-      if (this.manifest.mailbox.dataPolicy === 'coalesce-latest-per-stream' && event.type === 'signal.batch') {
-        const signalEvent = event as SignalBatchEvent;
-        const streamId = signalEvent.payload.streamId;
+      if (this.manifest.mailbox.dataPolicy === 'coalesce-latest-per-stream' && isSignalBatchEvent(event)) {
+        const streamId = event.payload.streamId;
         const existingIndex = this.dataQueue.findIndex((item) => {
-          if (item.event.type !== 'signal.batch') return false;
-          return (item.event as SignalBatchEvent).payload.streamId === streamId;
+          if (!isSignalBatchEvent(item.event)) return false;
+          return item.event.payload.streamId === streamId;
         });
         if (existingIndex >= 0) {
           this.dataQueue[existingIndex] = { event };
@@ -201,8 +200,8 @@ export class PluginHost {
       event: next.event,
     };
 
-    if (next.event.type === 'signal.batch') {
-      this.post(message, getSignalBatchTransferables((next.event as SignalBatchEvent).payload));
+    if (isSignalBatchEvent(next.event)) {
+      this.post(message, getSignalBatchTransferables(next.event.payload));
       return;
     }
     this.post(message);

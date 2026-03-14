@@ -1,5 +1,8 @@
 import {
+  createUiCommandMessage,
   decodeUiSignalBatchFrame,
+  type UiCommandEventType,
+  type UiCommandEventVersion,
   type UiControlMessage,
   type UiFormOption,
   type UiSessionClockInfo,
@@ -159,12 +162,21 @@ export class ClientRuntime {
     }
   }
 
-  async sendCommand(eventType: string, payload?: Record<string, unknown>): Promise<void> {
-    const command = { type: 'ui.command', eventType, correlationId: crypto.randomUUID() } as const;
-    if (payload !== undefined) {
-      await this.transport.sendCommand({ ...command, payload });
-      return;
-    }
+  async sendCommand(
+    eventType: UiCommandEventType,
+    payloadOrVersion?: Record<string, unknown> | UiCommandEventVersion,
+    payloadMaybe?: Record<string, unknown>,
+  ): Promise<void> {
+    const eventVersion = typeof payloadOrVersion === 'number'
+      ? payloadOrVersion
+      : 1;
+    const payload = (typeof payloadOrVersion === 'number' ? payloadMaybe : payloadOrVersion) ?? {};
+    const command = createUiCommandMessage({
+      eventType,
+      eventVersion,
+      payload,
+      correlationId: crypto.randomUUID(),
+    });
     await this.transport.sendCommand(command);
   }
 
@@ -273,6 +285,23 @@ export class ClientRuntime {
         },
       ];
       this.flags = { ...this.flags, lastError: message.message };
+      this.notifyUpdate();
+      return;
+    }
+
+    if (message.type === 'ui.warning') {
+      this.notifications = [
+        ...this.notifications.slice(-19),
+        {
+          id: crypto.randomUUID(),
+          level: 'warning',
+          code: message.code,
+          message: message.message,
+          ...(message.pluginId !== undefined ? { pluginId: message.pluginId } : {}),
+          createdAtMs: Date.now(),
+        },
+      ];
+      this.flags = { ...this.flags, lastWarning: message.message };
       this.notifyUpdate();
     }
   }

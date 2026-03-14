@@ -1,0 +1,18 @@
+// Этот файл сгенерирован `npm run generate:runtime-event-map`.
+// Не редактируй его вручную: править нужно *.spec.ts и генератор.
+
+import type { FactEvent, RuntimeEventMap } from '@sensync2/core';
+
+export type AntPlusPacketPollEvent = FactEvent<Record<string, never>, 'ant-plus.packet.poll'> & {
+  v: 1;
+  kind: 'fact';
+  priority: 'system';
+};
+
+declare module '@sensync2/core' {
+  interface RuntimeEventMap {
+    'ant-plus.packet.poll@1': AntPlusPacketPollEvent;
+  }
+}
+
+export {};

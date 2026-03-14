@@ -9,6 +9,7 @@ function readPayloadField(event: RuntimeEvent, field: 'adapterId' | 'streamId' |
 
 function matchesSubscription(event: RuntimeEvent, sub: EventSubscription): boolean {
   if (sub.type !== event.type) return false;
+  if (sub.v !== event.v) return false;
   if (sub.kind && sub.kind !== event.kind) return false;
   if (sub.priority && sub.priority !== event.priority) return false;
   if (!sub.filter) return true;

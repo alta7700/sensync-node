@@ -1,3 +1,5 @@
+import type { EventVersion } from './event-contracts.ts';
+
 export type EventSeq = bigint;
 export type PluginId = string;
 export type EventType = string;
@@ -12,6 +14,7 @@ export type EventKind = 'command' | 'fact' | 'data' | 'system';
 export interface RuntimeEventBase<TType extends EventType = EventType> {
   seq: EventSeq;
   type: TType;
+  v: EventVersion;
   tsMonoMs: number;
   sourcePluginId: PluginId | 'runtime' | 'external-ui';
   correlationId?: string;
@@ -58,10 +61,60 @@ export interface SignalBatchPayload {
 export interface SignalBatchEvent extends RuntimeEventBase<'signal.batch'> {
   kind: 'data';
   priority: 'data';
+  v: 1;
   payload: SignalBatchPayload;
 }
 
-export type RuntimeEvent = CommandEvent | FactEvent | SignalBatchEvent;
+/**
+ * Карта конкретных событий runtime.
+ *
+ * Shared-слой и plugin-specific пакеты расширяют её через module augmentation.
+ */
+export interface RuntimeEventMap {}
+
+export type RuntimeEvent = RuntimeEventMap[keyof RuntimeEventMap];
+export type RuntimeEventInput = RuntimeEvent extends infer TEvent
+  ? TEvent extends RuntimeEvent
+    ? Omit<TEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>
+    : never
+  : never;
+export type RuntimeEventOf<
+  TType extends RuntimeEvent['type'],
+  TVersion extends Extract<RuntimeEvent, { type: TType }>['v'] = Extract<RuntimeEvent, { type: TType }>['v'],
+> = Extract<RuntimeEvent, { type: TType; v: TVersion }>;
+export type RuntimeEventInputOf<
+  TType extends RuntimeEvent['type'],
+  TVersion extends Extract<RuntimeEvent, { type: TType }>['v'] = Extract<RuntimeEvent, { type: TType }>['v'],
+> = Omit<RuntimeEventOf<TType, TVersion>, 'seq' | 'tsMonoMs' | 'sourcePluginId'>;
+
+/**
+ * Сохраняет точный literal-тип события при создании input-объектов для `emit()` и runtime publish.
+ */
+export function defineRuntimeEventInput<TEvent extends RuntimeEventInput>(event: TEvent): TEvent {
+  return event;
+}
+
+export function attachRuntimeEventEnvelope<TEvent extends RuntimeEventInput>(
+  event: TEvent,
+  seq: EventSeq,
+  tsMonoMs: number,
+  sourcePluginId: RuntimeEvent['sourcePluginId'],
+): RuntimeEventOf<TEvent['type'], TEvent['v']> {
+  return {
+    ...event,
+    seq,
+    tsMonoMs,
+    sourcePluginId,
+  } as unknown as RuntimeEventOf<TEvent['type'], TEvent['v']>;
+}
+
+export function isSignalBatchEventInput(event: RuntimeEventInput): event is RuntimeEventInputOf<'signal.batch', 1> {
+  return event.type === 'signal.batch';
+}
+
+export function isSignalBatchEvent(event: RuntimeEvent): event is SignalBatchEvent {
+  return event.type === 'signal.batch';
+}
 
 export interface AdapterConnectRequestPayload {
   adapterId: string;
@@ -137,6 +190,18 @@ export interface SimulationStateChangedPayload {
   filePath: string;
   requestId?: string;
   message?: string;
+}
+
+export interface ShapeGenerateRequestPayload {
+  shapeName?: string;
+}
+
+export interface ShapeGeneratedPayload {
+  shapeName: string;
+}
+
+export interface IntervalCommandPayload {
+  requestId?: string;
 }
 
 export type RecordingMetadataScalar = string | number | boolean;

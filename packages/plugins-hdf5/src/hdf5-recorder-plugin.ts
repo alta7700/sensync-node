@@ -2,10 +2,9 @@ import * as path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import h5wasm from 'h5wasm/node';
 import {
+  defineRuntimeEventInput,
   EventTypes,
-  type CommandEvent,
   type FrameKind,
-  type FactEvent,
   type RecordingChannelConfig,
   type RecordingErrorPayload,
   type RecordingMetadataScalar,
@@ -81,17 +80,18 @@ function makeStateEvent(
   filePath?: string,
   message?: string,
   requestId?: string,
-): Omit<FactEvent<RecordingStateChangedPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
+) {
   const payload: RecordingStateChangedPayload = { writer, state };
   if (filePath !== undefined) payload.filePath = filePath;
   if (message !== undefined) payload.message = message;
   if (requestId !== undefined) payload.requestId = requestId;
-  return {
+  return defineRuntimeEventInput({
     type: EventTypes.recordingStateChanged,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload,
-  };
+  });
 }
 
 function makeErrorEvent(
@@ -100,16 +100,17 @@ function makeErrorEvent(
   message: string,
   filePath?: string,
   requestId?: string,
-): Omit<FactEvent<RecordingErrorPayload>, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
+) {
   const payload: RecordingErrorPayload = { writer, code, message };
   if (filePath !== undefined) payload.filePath = filePath;
   if (requestId !== undefined) payload.requestId = requestId;
-  return {
+  return defineRuntimeEventInput({
     type: EventTypes.recordingError,
+    v: 1,
     kind: 'fact',
     priority: 'system',
     payload,
-  };
+  });
 }
 
 function isSupportedValueArray(values: SignalBatchEvent['payload']['values']): values is SupportedValueArray {
@@ -610,11 +611,11 @@ export default definePlugin({
     version: '0.1.0',
     required: false,
     subscriptions: [
-      { type: EventTypes.recordingStart, kind: 'command', priority: 'control' },
-      { type: EventTypes.recordingStop, kind: 'command', priority: 'control' },
-      { type: EventTypes.recordingPause, kind: 'command', priority: 'control' },
-      { type: EventTypes.recordingResume, kind: 'command', priority: 'control' },
-      { type: 'signal.batch', kind: 'data', priority: 'data' },
+      { type: EventTypes.recordingStart, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.recordingStop, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.recordingPause, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.recordingResume, v: 1, kind: 'command', priority: 'control' },
+      { type: EventTypes.signalBatch, v: 1, kind: 'data', priority: 'data' },
     ],
     mailbox: {
       controlCapacity: 128,
@@ -622,8 +623,8 @@ export default definePlugin({
       dataPolicy: 'fail-fast',
     },
     emits: [
-      EventTypes.recordingStateChanged,
-      EventTypes.recordingError,
+      { type: EventTypes.recordingStateChanged, v: 1 },
+      { type: EventTypes.recordingError, v: 1 },
     ],
   },
   async onInit(ctx) {
@@ -637,35 +638,35 @@ export default definePlugin({
   },
   async onEvent(event: RuntimeEvent, ctx) {
     if (event.type === EventTypes.recordingStart) {
-      const payload = (event as CommandEvent<RecordingStartPayload>).payload;
+      const payload: RecordingStartPayload = event.payload;
       if (payload.writer !== pluginConfig.writerKey) return;
       await startRecording(ctx, payload);
       return;
     }
 
     if (event.type === EventTypes.recordingPause) {
-      const payload = (event as CommandEvent<RecordingPausePayload>).payload;
+      const payload: RecordingPausePayload = event.payload;
       if (payload.writer !== pluginConfig.writerKey) return;
       await pauseRecording(ctx, payload);
       return;
     }
 
     if (event.type === EventTypes.recordingResume) {
-      const payload = (event as CommandEvent<RecordingResumePayload>).payload;
+      const payload: RecordingResumePayload = event.payload;
       if (payload.writer !== pluginConfig.writerKey) return;
       await resumeRecording(ctx, payload);
       return;
     }
 
     if (event.type === EventTypes.recordingStop) {
-      const payload = (event as CommandEvent<RecordingStopPayload>).payload;
+      const payload: RecordingStopPayload = event.payload;
       if (payload.writer !== pluginConfig.writerKey) return;
       await stopRecording(ctx, payload);
       return;
     }
 
-    if (event.type === 'signal.batch') {
-      await handleSignalBatch(ctx, event as SignalBatchEvent);
+    if (event.type === EventTypes.signalBatch) {
+      await handleSignalBatch(ctx, event);
     }
   },
   async onShutdown(ctx) {
