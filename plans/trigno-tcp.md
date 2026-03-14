@@ -92,6 +92,12 @@
 4. Добавить запись сырого traffic/logging для первых прогонов на железе.
 5. Только если всплывёт vendor-зависимая нестабильность, рассматривать sidecar на Python.
 
+Дополнение по текущей архитектуре `sensync2`:
+
+- `trigno-tcp-adapter` нужно сразу проектировать как normal adapter-plugin поверх shared runtime-контрактов, а не как отдельный ad hoc IPC-слой;
+- в `PluginDescriptor.config` должен быть явный `adapterId`, потому что runtime теперь использует его как fallback при crash-path и синтетически переводит adapter в `failed`;
+- manifest плагина должен заранее объявлять `subscriptions` и `emits` для `adapter.connect.request`, `adapter.disconnect.request`, `adapter.state.changed` и `signal.batch`.
+
 Итоговая оценка:
 - поддержка Trigno в `sensync2` реалистична;
 - готовой хорошей Node-библиотеки нет;
@@ -113,6 +119,8 @@
    - при необходимости device-specific flags.
 4. Submit формы отправляет `adapter.connect.request` с `formData`.
 
+Это уже не просто рекомендация по UX, а ожидаемый способ подключения в текущем `sensync2`: UI-команды типизированы через shared `UiCommandMessage`, а schema-driven submit формы уже является штатным путём отправки `adapter.connect.request`.
+
 Если позже для Trigno появится отдельный шаг discovery или probe до подключения, его тоже нужно встраивать в тот же общий паттерн:
 
 - сначала `adapter.scan.request` или иной подготовительный command;
@@ -129,6 +137,7 @@
 - `packages/plugins-ui-gateway/SCHEMA.md` — профиль `veloerg` как пример declarative-кнопки, которая открывает форму;
 - `packages/plugins-ui-gateway/src/ui-gateway-plugin.ts` — как UI получает flags, messages и runtime-driven options;
 - `apps/client/src/App.tsx` — как renderer хранит открытие формы локально и как отправляет submit;
+- `packages/core/src/ui-command-boundary.ts` и `packages/core/src/ui.ts` — как schema-driven команда превращается в типизированный `UiCommandMessage`;
 - `packages/plugins-ant-plus/src/ant-plus-adapter.ts` — пример adapter-side connect/disconnect и scan lifecycle.
 
 Для `Trigno TCP` это не означает, что нужен буквальный scan BLE/ANT-стиля. Здесь важно повторить именно UX-контракт подключения и архитектурное разделение: форма и локальное состояние в renderer, а сам connect — через обычный runtime command.
