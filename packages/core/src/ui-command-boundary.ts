@@ -207,3 +207,39 @@ export const sharedUiCommandBoundaryGuards = [
 ] as const;
 
 export type SharedUiCommandBoundaryEvent = UiCommandBoundaryEvent<typeof sharedUiCommandBoundaryGuards>;
+
+type SharedUiCommandBoundaryEntry<
+  TType extends SharedUiCommandBoundaryEvent['type'],
+  TVersion extends Extract<SharedUiCommandBoundaryEvent, { type: TType }>['v'],
+> = Extract<SharedUiCommandBoundaryEvent, { type: TType; v: TVersion }>;
+
+/**
+ * Расширяемая карта UI-команд.
+ *
+ * Shared-команды объявлены здесь, а plugin-specific пакеты могут
+ * достраивать union через module augmentation на `@sensync2/core`.
+ */
+export interface UiCommandBoundaryEventMap {
+  'adapter.scan.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.adapterScanRequest, 1>;
+  'adapter.connect.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.adapterConnectRequest, 1>;
+  'adapter.disconnect.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.adapterDisconnectRequest, 1>;
+  'simulation.pause.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.simulationPauseRequest, 1>;
+  'simulation.resume.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.simulationResumeRequest, 1>;
+  'simulation.speed.set.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.simulationSpeedSetRequest, 1>;
+  'recording.start@1': SharedUiCommandBoundaryEntry<typeof EventTypes.recordingStart, 1>;
+  'recording.pause@1': SharedUiCommandBoundaryEntry<typeof EventTypes.recordingPause, 1>;
+  'recording.resume@1': SharedUiCommandBoundaryEntry<typeof EventTypes.recordingResume, 1>;
+  'recording.stop@1': SharedUiCommandBoundaryEntry<typeof EventTypes.recordingStop, 1>;
+  'shape.generate.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.shapeGenerateRequest, 1>;
+  'interval.start@1': SharedUiCommandBoundaryEntry<typeof EventTypes.intervalStart, 1>;
+  'interval.stop@1': SharedUiCommandBoundaryEntry<typeof EventTypes.intervalStop, 1>;
+}
+
+export type UiCommandBoundaryKnownEvent = UiCommandBoundaryEventMap[keyof UiCommandBoundaryEventMap];
+
+export function findUiCommandBoundaryGuard<TGuards extends readonly UiCommandBoundaryGuard[]>(
+  guards: TGuards,
+  ref: EventRef,
+): TGuards[number] | undefined {
+  return guards.find((candidate) => candidate.type === ref.type && candidate.v === ref.v);
+}

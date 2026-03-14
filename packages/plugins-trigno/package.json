@@ -1,5 +1,5 @@
 {
-  "name": "@sensync2/plugins-ui-gateway",
+  "name": "@sensync2/plugins-trigno",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,7 @@
   },
   "dependencies": {
     "@sensync2/core": "0.1.0",
-    "@sensync2/plugin-sdk": "0.1.0",
-    "@sensync2/plugins-trigno": "0.1.0"
+    "@sensync2/plugin-sdk": "0.1.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

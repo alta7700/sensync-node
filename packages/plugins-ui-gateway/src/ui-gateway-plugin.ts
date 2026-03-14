@@ -24,6 +24,7 @@ import {
   type UiStreamDeclaration,
 } from '@sensync2/core';
 import { definePlugin } from '@sensync2/plugin-sdk';
+import { TrignoEventTypes, type TrignoStatusReportedPayload } from '@sensync2/plugins-trigno';
 
 type UiGatewayProfile = 'fake' | 'fake-hdf5-simulation' | 'veloerg';
 
@@ -259,6 +260,43 @@ function makeZephyrConnectModalForm(adapterId: string): UiModalForm {
         sourceId: scanCandidatesSourceId(adapterId),
         placeholder: 'Выберите Zephyr из результатов scan',
         mergeSelectedOptionPayload: true,
+      },
+    ],
+  };
+}
+
+function makeTrignoConnectModalForm(adapterId: string): UiModalForm {
+  return {
+    id: `connect-trigno-${adapterId}`,
+    title: 'Подключение Trigno',
+    submitLabel: 'Подключить',
+    submitEventType: EventTypes.adapterConnectRequest,
+    submitPayload: {
+      adapterId,
+    },
+    fields: [
+      {
+        kind: 'column',
+        children: [
+          {
+            kind: 'textInput',
+            fieldId: 'host',
+            label: 'Host',
+            required: true,
+            defaultValue: '10.9.15.71',
+            placeholder: '10.9.15.71',
+          },
+          {
+            kind: 'numberInput',
+            fieldId: 'sensorSlot',
+            label: 'Слот датчика',
+            required: true,
+            defaultValue: 1,
+            min: 1,
+            max: 16,
+            step: 1,
+          },
+        ],
       },
     ],
   };
@@ -772,6 +810,7 @@ function fakeHdf5SimulationSchema(): UiSchema {
 function veloergSchema(): UiSchema {
   const moxyAdapterId = 'ant-plus';
   const zephyrAdapterId = 'zephyr-bioharness';
+  const trignoAdapterId = 'trigno';
   return {
     version: 1,
     pages: [
@@ -779,23 +818,203 @@ function veloergSchema(): UiSchema {
         id: 'main',
         title: 'Veloerg',
         widgetIds: [
+          'controls-trigno',
+          'status-main',
           'controls-main',
           'controls-zephyr',
-          'status-main',
+          'chart-trigno-emg',
+          'chart-trigno-gyro',
           'chart-moxy-smo2',
           'chart-moxy-thb',
           'chart-zephyr-rr',
           'telemetry-main',
         ],
-        widgetRows: [
-          ['controls-main', 'controls-zephyr', 'status-main'],
-          ['chart-moxy-smo2', 'chart-moxy-thb'],
-          ['chart-zephyr-rr'],
-          ['telemetry-main'],
-        ],
+        layout: {
+          kind: 'column',
+          gap: 12,
+          children: [
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                {
+                  kind: 'column',
+                  gap: 12,
+                  minWidth: 360,
+                  children: [
+                    { kind: 'widget', widgetId: 'controls-trigno' },
+                    { kind: 'widget', widgetId: 'controls-main' },
+                    { kind: 'widget', widgetId: 'controls-zephyr' },
+                  ],
+                },
+                {
+                  kind: 'widget',
+                  widgetId: 'status-main',
+                  minWidth: 420,
+                },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-moxy-smo2', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-moxy-thb', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-zephyr-rr' },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'telemetry-main' },
+              ],
+            },
+          ],
+        },
       },
     ],
     widgets: [
+      {
+        kind: 'controls',
+        id: 'controls-trigno',
+        title: 'Trigno',
+        controls: [
+          {
+            id: 'connect-trigno',
+            kind: 'button',
+            label: 'Подключить Trigno',
+            modalForm: makeTrignoConnectModalForm(trignoAdapterId),
+            variants: [
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'connecting' },
+                label: 'Подключение Trigno...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'disconnecting' },
+                label: 'Отключение Trigno...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: {
+                  or: [
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'paused' },
+                  ],
+                },
+                label: 'Trigno подключён',
+                disabled: true,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'failed' },
+                label: 'Повторить подключение Trigno',
+              },
+            ],
+          },
+          {
+            id: 'disconnect-trigno',
+            kind: 'button',
+            label: 'Отключить Trigno',
+            hidden: true,
+            variants: [
+              {
+                when: {
+                  or: [
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'paused' },
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'failed' },
+                  ],
+                },
+                label: 'Отключить Trigno',
+                commandType: EventTypes.adapterDisconnectRequest,
+                payload: { adapterId: trignoAdapterId },
+                hidden: false,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'disconnecting' },
+                label: 'Отключение Trigno...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+          {
+            id: 'start-trigno',
+            kind: 'button',
+            label: 'Старт Trigno',
+            hidden: true,
+            variants: [
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'paused' },
+                label: 'Старт Trigno',
+                commandType: TrignoEventTypes.streamStartRequest,
+                payload: { adapterId: trignoAdapterId },
+                hidden: false,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'connecting' },
+                label: 'Запуск Trigno...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+          {
+            id: 'stop-trigno',
+            kind: 'button',
+            label: 'Стоп Trigno',
+            hidden: true,
+            variants: [
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                label: 'Стоп Trigno',
+                commandType: TrignoEventTypes.streamStopRequest,
+                payload: { adapterId: trignoAdapterId },
+                hidden: false,
+              },
+            ],
+          },
+          {
+            id: 'refresh-trigno',
+            kind: 'button',
+            label: 'Обновить статус Trigno',
+            hidden: true,
+            variants: [
+              {
+                when: {
+                  or: [
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'paused' },
+                  ],
+                },
+                label: 'Обновить статус Trigno',
+                commandType: TrignoEventTypes.statusRefreshRequest,
+                payload: { adapterId: trignoAdapterId },
+                hidden: false,
+              },
+            ],
+          },
+        ],
+      },
       {
         kind: 'controls',
         id: 'controls-main',
@@ -956,6 +1175,70 @@ function veloergSchema(): UiSchema {
           `adapter.${zephyrAdapterId}.scanning`,
           `adapter.${zephyrAdapterId}.scanMessage`,
           `adapter.${zephyrAdapterId}.message`,
+          `adapter.${trignoAdapterId}.state`,
+          `adapter.${trignoAdapterId}.message`,
+          'trigno.host',
+          'trigno.sensorSlot',
+          'trigno.mode',
+          'trigno.startIndex',
+          'trigno.serial',
+          'trigno.firmware',
+          'trigno.backwardsCompatibility',
+          'trigno.upsampling',
+          'trigno.emgRateHz',
+          'trigno.gyroRateHz',
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-trigno-emg',
+        title: 'Trigno EMG',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'V' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'trigno.avanti',
+            label: 'EMG',
+            color: '#ff922b',
+            lineWidth: 2,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-trigno-gyro',
+        title: 'Trigno Gyroscope',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'deg/s' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'trigno.avanti.gyro.x',
+            label: 'gyro.x',
+            color: '#f03e3e',
+            lineWidth: 2,
+          },
+          {
+            type: 'line',
+            streamId: 'trigno.avanti.gyro.y',
+            label: 'gyro.y',
+            color: '#2b8a3e',
+            lineWidth: 2,
+          },
+          {
+            type: 'line',
+            streamId: 'trigno.avanti.gyro.z',
+            label: 'gyro.z',
+            color: '#1c7ed6',
+            lineWidth: 2,
+          },
         ],
       },
       {
@@ -1126,6 +1409,7 @@ export default definePlugin({
       { type: EventTypes.recordingStateChanged, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.recordingError, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.simulationStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: TrignoEventTypes.statusReported, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.runtimeTelemetrySnapshot, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.uiClientConnected, v: 1, kind: 'fact', priority: 'system' },
     ],
@@ -1262,6 +1546,24 @@ export default definePlugin({
         [`simulation.${payload.adapterId}.batchMs`]: payload.batchMs,
         [`simulation.${payload.adapterId}.filePath`]: payload.filePath,
         [`simulation.${payload.adapterId}.message`]: payload.message ?? null,
+      });
+      await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      return;
+    }
+
+    if (event.type === TrignoEventTypes.statusReported) {
+      const payload: TrignoStatusReportedPayload = event.payload;
+      const { patch, version } = patchFlags({
+        'trigno.host': payload.status.host,
+        'trigno.sensorSlot': payload.status.sensorSlot,
+        'trigno.mode': payload.status.mode,
+        'trigno.startIndex': payload.status.startIndex,
+        'trigno.serial': payload.status.serial ?? null,
+        'trigno.firmware': payload.status.firmware ?? payload.status.protocolVersion ?? null,
+        'trigno.backwardsCompatibility': payload.status.backwardsCompatibility,
+        'trigno.upsampling': payload.status.upsampling,
+        'trigno.emgRateHz': payload.status.emg.rateHz,
+        'trigno.gyroRateHz': payload.status.gyro.rateHz,
       });
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
       return;

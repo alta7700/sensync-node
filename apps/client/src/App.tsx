@@ -7,6 +7,7 @@ import { LineChart, ScatterChart } from 'echarts/charts';
 import { CanvasRenderer } from 'echarts/renderers';
 import { ClientRuntime, type ClientRuntimeNotification, type StreamWindowData } from '@sensync2/client-runtime';
 import type {
+  UiLayoutNode,
   UiChartSeries,
   UiChartWidget,
   UiControlAction,
@@ -1379,6 +1380,65 @@ function renderWidget(
   return <TelemetryWidget key={widget.id} widget={widget} telemetry={telemetry} />;
 }
 
+function layoutNodeStyle(node: UiLayoutNode): React.CSSProperties {
+  const style: React.CSSProperties = {};
+  if (node.minWidth !== undefined) {
+    style.minWidth = node.minWidth;
+  }
+  if (node.minHeight !== undefined) {
+    style.minHeight = node.minHeight;
+  }
+  return style;
+}
+
+function rowTrack(node: UiLayoutNode): string {
+  const grow = node.grow ?? 1;
+  const minWidth = Math.max(0, Math.trunc(node.minWidth ?? 0));
+  if (minWidth > 0) {
+    return `minmax(${minWidth}px, ${grow}fr)`;
+  }
+  return `minmax(0, ${grow}fr)`;
+}
+
+function renderLayoutNode(
+  node: UiLayoutNode,
+  widgetsById: ReadonlyMap<string, UiWidget>,
+  flags: Record<string, unknown>,
+  telemetry: ReturnType<typeof runtimeSingleton.getSnapshot>['telemetry'],
+  onOpenModal: (form: UiModalForm) => void,
+  key: string,
+): React.ReactNode {
+  if (node.kind === 'widget') {
+    const widget = widgetsById.get(node.widgetId);
+    if (!widget) return null;
+    return (
+      <div key={key} style={layoutNodeStyle(node)}>
+        {renderWidget(widget, flags, telemetry, onOpenModal)}
+      </div>
+    );
+  }
+
+  const children = node.children
+    .map((child, index) => renderLayoutNode(child, widgetsById, flags, telemetry, onOpenModal, `${key}-${index}`))
+    .filter((child) => child !== null);
+
+  return (
+    <div
+      key={key}
+      style={{
+        ...layoutNodeStyle(node),
+        display: 'grid',
+        gap: node.gap ?? 12,
+        gridTemplateColumns: node.kind === 'row'
+          ? node.children.map((child) => rowTrack(child)).join(' ')
+          : 'minmax(0, 1fr)',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 const panelStyle: React.CSSProperties = {
   background: 'linear-gradient(180deg, rgba(22,27,34,0.92) 0%, rgba(13,17,23,0.92) 100%)',
   border: '1px solid var(--border)',
@@ -1418,16 +1478,19 @@ export function App() {
   const { snapshot, rev } = useRuntimeSnapshot();
   const [modal, setModal] = useState<ModalState | null>(null);
   const page = useMemo(() => snapshot.schema?.pages[0], [snapshot.schema, rev]);
+  const widgetsById = useMemo(() => {
+    if (!snapshot.schema || !page) return new Map<string, UiWidget>();
+    return new Map(snapshot.schema.widgets.map((widget) => [widget.id, widget]));
+  }, [snapshot.schema, page, rev]);
   const widgetRows = useMemo(() => {
     if (!snapshot.schema || !page) return [];
-    const byId = new Map(snapshot.schema.widgets.map((w) => [w.id, w]));
     const rows = page.widgetRows && page.widgetRows.length > 0
       ? page.widgetRows
       : page.widgetIds.map((id) => [id]);
     return rows
-      .map((row) => row.map((id) => byId.get(id)).filter(Boolean) as UiWidget[])
+      .map((row) => row.map((id) => widgetsById.get(id)).filter(Boolean) as UiWidget[])
       .filter((row) => row.length > 0);
-  }, [snapshot.schema, page, rev]);
+  }, [snapshot.schema, page, rev, widgetsById]);
 
   function openModal(form: UiModalForm): void {
     setModal({
@@ -1457,7 +1520,7 @@ export function App() {
   }
 
   return (
-    <div style={{ minHeight: '100%', padding: 16, display: 'grid', gap: 12, alignContent: 'start' }}>
+    <div style={{ minHeight: '100%', padding: 16, display: 'grid', gap: 12, alignContent: 'start', overflowX: 'auto' }}>
       <ToastStack notifications={snapshot.notifications} />
       {modal ? (
         <ModalFormDialog
@@ -1487,6 +1550,8 @@ export function App() {
             Renderer подключен, ожидаем `ui.init` от `ui-gateway`.
           </div>
         </section>
+      ) : page?.layout ? (
+        renderLayoutNode(page.layout, widgetsById, snapshot.flags, snapshot.telemetry, openModal, `layout-${page.id}`)
       ) : (
         widgetRows.map((row, idx) => (
           <div
@@ -1494,7 +1559,7 @@ export function App() {
             style={{
               display: 'grid',
               gap: 12,
-              gridTemplateColumns: row.length > 1 ? 'repeat(auto-fit, minmax(420px, 1fr))' : 'minmax(0, 1fr)',
+              gridTemplateColumns: row.length > 1 ? `repeat(${row.length}, minmax(0, 1fr))` : 'minmax(0, 1fr)',
             }}
           >
             {row.map((widget) => renderWidget(widget, snapshot.flags, snapshot.telemetry, openModal))}

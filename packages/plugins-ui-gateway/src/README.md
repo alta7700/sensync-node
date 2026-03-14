@@ -10,6 +10,7 @@
 
 - `ui-gateway-plugin.ts`:
   - выбирает concrete `UiSchema` по профилю запуска;
+  - описывает explicit `UiPage.layout` там, где простых `widgetRows` уже недостаточно;
   - следит за stream registry и numeric IDs;
   - обновляет flags;
   - materialize'ит dynamic options для локальных форм;
@@ -17,7 +18,7 @@
   - отправляет `ui.init`, patch-сообщения и telemetry.
 - Control schema может задавать `commandVersion` / `submitEventVersion`; если они не указаны, renderer использует `v=1`.
 - Для `fake-hdf5-simulation` схема отдельная: по графикам она совместима с fake-демо, но управляющие кнопки уже относятся к simulation-источнику.
-- Для `veloerg` схема composite: scan/connect/disconnect для Moxy и Zephyr, первый ряд графиков показывает `SmO2` и `tHb`, второй — `RR` от Zephyr.
+- Для `veloerg` схема composite: отдельный Trigno control-блок и графики `EMG/Gyroscope`, плюс scan/connect/disconnect для Moxy и Zephyr.
 
 ## Взаимодействие
 

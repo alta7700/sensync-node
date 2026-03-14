@@ -241,8 +241,15 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 Правила:
 
 - `pages[].widgetIds` — полный набор виджетов страницы.
+- `pages[].layout`
+  - если задан, renderer должен использовать именно это дерево layout;
+  - `row` задаёт горизонтальную группу;
+  - `column` задаёт вертикальную группу;
+  - `widget` ссылается на конкретный `widgetId`;
+  - `minWidth/minHeight/grow/gap` являются declarative layout-подсказками, а не сырыми CSS-стилями.
 - `pages[].widgetRows`
-  - если задано, renderer должен использовать именно эту раскладку;
+  - используется только как fallback для простых схем без `layout`;
+  - если задано, renderer должен использовать именно эту раскладку строк без скрытого auto-reflow;
   - если не задано, допустим fallback на один виджет в строку.
 - `UiChartWidget.series`
   - `line` — линейная серия;
@@ -292,7 +299,7 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - runtime не знает, открыта форма или нет;
 - submit формы отправляет обычный `UiCommandMessage` в runtime;
 - `UiCommandMessage` всегда несёт не только `eventType`, но и `eventVersion`;
-- `UiCommandMessage` теперь типизируется от `SharedUiCommandBoundaryEvent`, то есть `eventType`, `eventVersion` и `payload` берутся из exact event map, а не живут отдельным строковым контрактом;
+- `UiCommandMessage` теперь типизируется от расширяемой `UiCommandBoundaryEventMap`, то есть `eventType`, `eventVersion` и `payload` берутся из exact shared/plugin-specific boundary map, а не живут отдельным строковым контрактом;
 - `createUiCommandMessage(...)` — единственный sanctioned helper для сборки `UiCommandMessage` в schema-driven местах;
 - `uiCommandMessageToRuntimeEventInput(...)` — единственный sanctioned helper для bridge между UI boundary и внутренним `RuntimeEventInput`;
 - `submitEventVersion`, если не задан, трактуется как `1`;

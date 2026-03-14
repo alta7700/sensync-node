@@ -12,7 +12,8 @@
   - стартует runtime;
   - держит таблицу подключённых UI-клиентов;
   - бродкастит control/binary payload в renderer;
-  - пробрасывает команды обратно в runtime.
+  - пробрасывает команды обратно в runtime;
+  - задаёт минимальный размер окна Electron для стабильной раскладки renderer.
 - `preload.cjs`:
   - публикует транспортные методы и минимальный file/directory picker для `modalForm`;
   - не даёт renderer прямого доступа к Node API.

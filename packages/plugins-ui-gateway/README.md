@@ -14,7 +14,11 @@ UI gateway plugin.
 - При подключении UI-клиента отправляет `ui.init` и текущий снимок состояния.
 - В materialized control-потоке теперь различаются `ui.warning` и `ui.error`.
 - Concrete-схема зависит от launch profile (`fake`, `fake-hdf5-simulation` или `veloerg`).
-- В `veloerg` live-графики держат короткое окно `20s`: в первой строке идут `SmO2` и `tHb`, во второй `RR` от Zephyr.
+- В `veloerg` схема теперь composite:
+  - отдельный control-блок Trigno с modal form `host + sensorSlot`;
+  - явный layout с левой колонкой control-виджетов и отдельной правой панелью статуса;
+  - live-графики `EMG` и `Gyroscope`;
+  - рядом остаются Moxy (`SmO2`, `tHb`) и Zephyr (`RR`).
 - `ui.telemetry` теперь несёт не только runtime queue snapshot, но и latest plugin metrics, например качество ANT+ канала и BLE/Zephyr transport.
 
 ## Взаимодействие

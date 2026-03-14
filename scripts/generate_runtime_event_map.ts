@@ -10,6 +10,7 @@ import { fakeRuntimeEventMapSpec } from '../packages/plugins-fake/src/runtime-ev
 import { hdf5RuntimeEventMapSpec } from '../packages/plugins-hdf5/src/runtime-event-map.spec.ts';
 import { antPlusRuntimeEventMapSpec } from '../packages/plugins-ant-plus/src/runtime-event-map.spec.ts';
 import { bleRuntimeEventMapSpec } from '../packages/plugins-ble/src/runtime-event-map.spec.ts';
+import { trignoRuntimeEventMapSpec } from '../packages/plugins-trigno/src/runtime-event-map.spec.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const allSpecs = [
@@ -18,6 +19,7 @@ const allSpecs = [
   hdf5RuntimeEventMapSpec,
   antPlusRuntimeEventMapSpec,
   bleRuntimeEventMapSpec,
+  trignoRuntimeEventMapSpec,
 ] as const;
 
 function importLine(pathLiteral: string, typeNames: string[]): string {

@@ -30,11 +30,13 @@ Node runtime и хост plugin worker'ов.
   - `veloerg`.
 - Профиль выбирается через `SENSYNC2_PROFILE`; если значение не задано, runtime поднимает `fake`.
 - Профиль `fake-hdf5-simulation` требует `SENSYNC2_HDF5_SIMULATION_FILE`; путь валидируется до старта worker'ов.
-- Профиль `veloerg` поднимает `ant-plus-adapter` и `zephyr-bioharness-3-adapter` в real mode по умолчанию, а fake transport у обоих остаётся как fallback для локальной отладки.
+- Профиль `veloerg` поднимает `ant-plus-adapter`, `zephyr-bioharness-3-adapter` и `trigno-adapter` в real mode по умолчанию.
+- Для Trigno runtime агрегирует plugin-specific UI boundary guards отдельно от shared `core`, чтобы `START/STOP/refresh` проходили тот же exact-typed ingress, что и shared команды.
+- Fake transport остаётся fallback только у ANT+ и BLE; Trigno в `v1` работает как real-only интеграция.
 - Если путь относительный, runtime резолвит его от корня репозитория `sensync2`.
 
 ## Взаимодействие
 
-- Использует `@sensync2/core`, `@sensync2/plugin-sdk`, `@sensync2/plugins-ant-plus`, `@sensync2/plugins-ble`, `@sensync2/plugins-fake`, `@sensync2/plugins-hdf5`, `@sensync2/plugins-ui-gateway`.
-- В `fake`-профиле поднимает recorder, в `fake-hdf5-simulation` — HDF5-источник с fake-каналами, а в `veloerg` — composite-сценарий ANT+/Moxy и BLE/Zephyr.
+- Использует `@sensync2/core`, `@sensync2/plugin-sdk`, `@sensync2/plugins-ant-plus`, `@sensync2/plugins-ble`, `@sensync2/plugins-trigno`, `@sensync2/plugins-fake`, `@sensync2/plugins-hdf5`, `@sensync2/plugins-ui-gateway`.
+- В `fake`-профиле поднимает recorder, в `fake-hdf5-simulation` — HDF5-источник с fake-каналами, а в `veloerg` — composite-сценарий ANT+/Moxy, BLE/Zephyr и TCP/Trigno.
 - Может стартовать отдельно для отладки или через `apps/desktop`.

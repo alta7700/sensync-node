@@ -220,30 +220,56 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 Назначение:
 
-- live composite-профиль для ANT+/Moxy и BLE/Zephyr сценария;
-- Moxy даёт живые графики `SmO2` и `tHb`, а Zephyr даёт live-график `RR` плюс transport lifecycle и telemetry через те же runtime-контракты.
+- live composite-профиль для ANT+/Moxy, BLE/Zephyr и TCP/Trigno;
+- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-график `RR`, а Trigno даёт raw `EMG + Gyroscope`.
 
 ### Страница
 
 - Одна страница: `main`.
 - Заголовок страницы: `Veloerg`.
 
-Раскладка строк:
+Раскладка страницы задаётся через `page.layout`:
 
-- `controls-main | controls-zephyr | status-main`
-- `chart-moxy-smo2 | chart-moxy-thb`
-- `chart-zephyr-rr`
-- `telemetry-main`
+- верхний `row` делит экран на две зоны:
+  - левая `column` содержит:
+    - `controls-trigno`
+    - `controls-main`
+    - `controls-zephyr`
+  - справа находится `status-main`
+- ниже идут отдельные `row`:
+  - `chart-trigno-emg | chart-trigno-gyro`
+  - `chart-moxy-smo2 | chart-moxy-thb`
+  - `chart-zephyr-rr`
+  - `telemetry-main`
 
 ### Controls
 
 Виджеты:
 
+- `controls-trigno`
 - `controls-main`
 - `controls-zephyr`
 
 Кнопки:
 
+- `connect-trigno`
+  - открывает modal form `connect-trigno-trigno`
+  - submit формы отправляет `adapter.connect.request` для `adapterId = trigno`
+  - форма содержит:
+    - `host`
+    - `sensorSlot`
+- `disconnect-trigno`
+  - видима только если `adapter.trigno.state ∈ { connected, paused, failed, disconnecting }`
+  - отправляет `adapter.disconnect.request`
+- `start-trigno`
+  - видима только если `adapter.trigno.state = paused`
+  - отправляет `trigno.stream.start.request`
+- `stop-trigno`
+  - видима только если `adapter.trigno.state = connected`
+  - отправляет `trigno.stream.stop.request`
+- `refresh-trigno`
+  - видима только если `adapter.trigno.state ∈ { connected, paused }`
+  - отправляет `trigno.status.refresh.request`
 - `scan-moxy`
   - в базовом состоянии отправляет `adapter.scan.request` для `adapterId = ant-plus`
   - одновременно открывает локальную modal form `connect-moxy-ant-plus`
@@ -267,6 +293,18 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 Показываемые флаги:
 
+- `adapter.trigno.state`
+- `adapter.trigno.message`
+- `trigno.host`
+- `trigno.sensorSlot`
+- `trigno.mode`
+- `trigno.startIndex`
+- `trigno.serial`
+- `trigno.firmware`
+- `trigno.backwardsCompatibility`
+- `trigno.upsampling`
+- `trigno.emgRateHz`
+- `trigno.gyroRateHz`
 - `adapter.ant-plus.state`
 - `adapter.ant-plus.scanning`
 - `adapter.ant-plus.scanMessage`
@@ -278,6 +316,17 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 ### Графики
 
+- `chart-trigno-emg`
+  - окно: `20_000 ms`
+  - поток: `trigno.avanti`
+  - ось Y: `V`
+- `chart-trigno-gyro`
+  - окно: `20_000 ms`
+  - потоки:
+    - `trigno.avanti.gyro.x`
+    - `trigno.avanti.gyro.y`
+    - `trigno.avanti.gyro.z`
+  - ось Y: `deg/s`
 - `chart-moxy-smo2`
   - окно: `20_000 ms`
   - поток: `moxy.smo2`

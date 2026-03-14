@@ -3,7 +3,6 @@ import {
   cloneSignalBatchPayload,
   EventTypes,
   isSignalBatchEvent,
-  sharedUiCommandBoundaryGuards,
   uiCommandMessageToRuntimeEventInput,
   type PluginManifest,
   type PluginMetric,
@@ -24,6 +23,7 @@ import { PluginHost } from './plugin-host.ts';
 import type { PluginDescriptor, RuntimeHostPublic, RuntimeOptions } from './types.ts';
 import { SessionClock } from './session-clock.ts';
 import { WorkspaceEventRegistry, describeEventRef, isEventAllowedForPlugin } from './workspace-event-registry.ts';
+import { findWorkspaceUiCommandBoundaryGuard } from './workspace-ui-command-boundary.ts';
 
 function nowMonoMs(): number {
   return performance.now();
@@ -109,8 +109,9 @@ export class RuntimeHost implements RuntimeHostPublic {
       return;
     }
 
-    const guard = sharedUiCommandBoundaryGuards.find((candidate) => {
-      return candidate.type === message.eventType && candidate.v === message.eventVersion;
+    const guard = findWorkspaceUiCommandBoundaryGuard({
+      type: message.eventType,
+      v: message.eventVersion,
     });
     if (!guard) {
       this.emitWarningFallback({

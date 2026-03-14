@@ -134,6 +134,14 @@ function makeVeloergPluginDescriptors(): PluginDescriptor[] {
       },
     },
     {
+      id: 'trigno-adapter',
+      modulePath: moduleFileUrl('packages/plugins-trigno/src/trigno-adapter.ts'),
+      config: {
+        adapterId: 'trigno',
+        mode: 'real',
+      },
+    },
+    {
       id: 'ui-gateway',
       modulePath: moduleFileUrl('packages/plugins-ui-gateway/src/ui-gateway-plugin.ts'),
       config: {

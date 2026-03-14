@@ -45,6 +45,7 @@
 - [packages/core/src/ui-command-boundary.ts](packages/core/src/ui-command-boundary.ts)
 - [packages/core/src/ui.ts](packages/core/src/ui.ts)
 - [apps/runtime/src/runtime-host.ts](apps/runtime/src/runtime-host.ts)
+- [apps/runtime/src/workspace-ui-command-boundary.ts](apps/runtime/src/workspace-ui-command-boundary.ts)
 
 Что считается boundary:
 
@@ -53,7 +54,7 @@
 
 Что происходит:
 
-- runtime находит guard по `(type, v)`;
+- runtime находит guard по `(type, v)` уже не только среди shared-команд `core`, но и в workspace-агрегате plugin-specific guards;
 - guard проверяет payload;
 - только после этого сообщение превращается в внутренний `RuntimeEventInput`.
 
@@ -212,6 +213,38 @@
 
 - текущий объём логики ещё слишком мал;
 - отдельный модуль пока не снижает связность так заметно, как для simulation или ANT+.
+
+### 7. Trigno TCP ingress
+
+Поток:
+
+`formData/command TCP/data TCP -> trigno-boundary + trigno-transport -> trigno-adapter -> signal.batch / trigno.status.reported / adapter.state.changed`
+
+Файлы:
+
+- [packages/plugins-trigno/src/trigno-boundary.ts](packages/plugins-trigno/src/trigno-boundary.ts)
+- [packages/plugins-trigno/src/trigno-transport.ts](packages/plugins-trigno/src/trigno-transport.ts)
+- [packages/plugins-trigno/src/trigno-adapter.ts](packages/plugins-trigno/src/trigno-adapter.ts)
+
+Что считается boundary:
+
+- `formData.host` и `formData.sensorSlot` из UI;
+- TCP banner и ASCII-ответы command socket;
+- бинарные data sockets `50043/50044`;
+- live status snapshot устройства перед `START`.
+
+Что происходит:
+
+- `formData` нормализуется до `TrignoConnectRequest`;
+- command-layer ответы валидируются и переводятся в `TrignoStatusSnapshot`;
+- бинарные data sockets режутся по fixed step layout протокола;
+- только потом адаптер публикует `signal.batch` и runtime state.
+
+Что уже trusted:
+
+- `TrignoConnectRequest`;
+- `TrignoStatusSnapshot`;
+- extracted raw batches `trigno.avanti` и `trigno.avanti.gyro.{x,y,z}`.
 
 ## Что boundary **не** делает
 

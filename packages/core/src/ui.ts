@@ -1,8 +1,8 @@
 import type { RuntimeEventInput } from './events.ts';
 import type { QueueTelemetry } from './plugin.ts';
-import type { SharedUiCommandBoundaryEvent } from './ui-command-boundary.ts';
+import type { UiCommandBoundaryEventMap } from './ui-command-boundary.ts';
 
-export type UiCommandEvent = SharedUiCommandBoundaryEvent;
+export type UiCommandEvent = UiCommandBoundaryEventMap[keyof UiCommandBoundaryEventMap];
 export type UiCommandEventType = UiCommandEvent['type'];
 export type UiCommandEventVersion = UiCommandEvent['v'];
 
@@ -17,11 +17,40 @@ export interface UiPage {
   title: string;
   widgetIds: string[];
   /**
+   * Дерево явной раскладки.
+   * Если задано, renderer должен использовать его как источник истины для row/column структуры.
+   */
+  layout?: UiLayoutNode;
+  /**
    * Явная раскладка виджетов по строкам.
-   * Если задано, renderer использует этот порядок/группировку вместо "по одному виджету в строку".
+   * Legacy fallback для простых схем без вложенного layout.
    */
   widgetRows?: string[][];
 }
+
+export interface UiLayoutBase {
+  gap?: number;
+  minWidth?: number;
+  minHeight?: number;
+  grow?: number;
+}
+
+export interface UiLayoutRowNode extends UiLayoutBase {
+  kind: 'row';
+  children: UiLayoutNode[];
+}
+
+export interface UiLayoutColumnNode extends UiLayoutBase {
+  kind: 'column';
+  children: UiLayoutNode[];
+}
+
+export interface UiLayoutWidgetNode extends UiLayoutBase {
+  kind: 'widget';
+  widgetId: string;
+}
+
+export type UiLayoutNode = UiLayoutRowNode | UiLayoutColumnNode | UiLayoutWidgetNode;
 
 export interface UiLineChartWidget {
   kind: 'line-chart';

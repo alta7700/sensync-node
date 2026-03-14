@@ -10,6 +10,7 @@ import { antPlusEventContracts } from '@sensync2/plugins-ant-plus';
 import { bleEventContracts } from '@sensync2/plugins-ble';
 import { fakeEventContracts } from '@sensync2/plugins-fake';
 import { hdf5EventContracts } from '@sensync2/plugins-hdf5';
+import { trignoEventContracts } from '@sensync2/plugins-trigno';
 
 const workspaceEventContracts = [
   ...sharedEventContracts,
@@ -17,6 +18,7 @@ const workspaceEventContracts = [
   ...hdf5EventContracts,
   ...antPlusEventContracts,
   ...bleEventContracts,
+  ...trignoEventContracts,
 ] as const;
 
 export type WorkspaceEventContract = (typeof workspaceEventContracts)[number];

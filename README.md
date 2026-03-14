@@ -11,6 +11,7 @@
 - `packages/plugin-sdk` — API для plugin worker'ов.
 - `packages/plugins-ant-plus` — ANT+ адаптеры и transport boundary для Moxy и будущих ANT+ профилей.
 - `packages/plugins-ble` — BLE transport boundary и Zephyr BioHarness 3 адаптер.
+- `packages/plugins-trigno` — TCP transport boundary и live-адаптер `Delsys Trigno`.
 - `packages/plugins-fake` — synthetic demo-плагины и процессоры.
 - `packages/plugins-hdf5` — recorder-плагин и прямой simulation-адаптер для нового HDF5 формата.
 - `packages/plugins-ui-gateway` — материализация runtime-событий в UI schema/control/binary поток.
@@ -54,8 +55,9 @@ npm run dev
 - `veloerg`
   - `ant-plus-adapter` по умолчанию идёт через real transport поверх `ant-plus`;
   - `zephyr-bioharness-3-adapter` по умолчанию идёт через real transport поверх `@abandonware/noble`;
-  - Moxy публикует `moxy.smo2` и `moxy.thb`, а Zephyr в `v1` даёт transport diagnostics через status/telemetry;
-  - `ui-gateway` поднимает composite-схему live-подключения Moxy и Zephyr;
+  - `trigno-adapter` по умолчанию идёт через real TCP transport поверх `node:net`;
+  - Moxy публикует `moxy.smo2` и `moxy.thb`, Zephyr даёт live `RR`, а Trigno в `v1` публикует raw `EMG + Gyroscope`;
+  - `ui-gateway` поднимает composite-схему live-подключения Moxy, Zephyr и Trigno;
   - fake transport остаётся доступен для локальной отладки.
 
 Профиль выбирается через `SENSYNC2_PROFILE`, а npm-скрипты просто подставляют это значение явно.
@@ -81,6 +83,8 @@ SENSYNC2_ANT_PLUS_MODE=fake SENSYNC2_ANT_PLUS_STICK_PRESENT=0 npm run dev:veloer
 ```bash
 SENSYNC2_ZEPHYR_BIOHARNESS_MODE=fake npm run dev:veloerg
 ```
+
+Для Trigno host/slot задаются уже из modal form в UI, а не через launch profile.
 
 ## Как устроена документация
 
