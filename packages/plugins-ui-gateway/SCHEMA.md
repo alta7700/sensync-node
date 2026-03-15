@@ -224,8 +224,8 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 Назначение:
 
-- live composite-профиль для ANT+/Moxy, BLE/Zephyr и TCP/Trigno;
-- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-график `RR`, а Trigno даёт raw `EMG + Gyroscope`.
+- live composite-профиль для ANT+/Moxy, BLE/Zephyr, generic HR-from-RR processor и TCP/Trigno;
+- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-график `RR`, processor строит derived `HR`, а Trigno даёт raw `EMG + Gyroscope`.
 
 ### Страница
 
@@ -243,7 +243,7 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 - ниже идут отдельные `row`:
   - `chart-trigno-emg | chart-trigno-gyro`
   - `chart-moxy-smo2 | chart-moxy-thb`
-  - `chart-zephyr-rr`
+  - `chart-zephyr-rr | chart-zephyr-hr`
   - `telemetry-main`
 
 ### Controls
@@ -343,6 +343,10 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
   - окно: `20_000 ms`
   - поток: `zephyr.rr`
   - ось Y: `[0.3, 1.8] s`
+- `chart-zephyr-hr`
+  - окно: `20_000 ms`
+  - поток: `zephyr.hr`
+  - ось Y: `[40, 220] bpm`
 
 ### Telemetry
 

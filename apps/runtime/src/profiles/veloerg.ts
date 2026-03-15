@@ -28,6 +28,14 @@ export const veloergProfile: LaunchProfileDefinition = {
           },
         },
         {
+          id: 'hr-from-rr-processor',
+          modulePath: moduleFileUrl('packages/plugins-processors/src/hr-from-rr-processor.ts'),
+          config: {
+            sourceStreamId: 'zephyr.rr',
+            outputStreamId: 'zephyr.hr',
+          },
+        },
+        {
           id: 'trigno-adapter',
           modulePath: moduleFileUrl('packages/plugins-trigno/src/trigno-adapter.ts'),
           config: {

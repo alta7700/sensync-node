@@ -12,3 +12,10 @@
 - планы опираются на контракты из `packages/core`;
 - планы по устройствам и форматам данных описывают будущие плагины для `apps/runtime` и `packages/plugin-sdk`;
 - при превращении плана в код нужно обновлять `README.md` затронутых модулей и, если требуется, `CONTRACTS.md` / `SCHEMA.md`.
+
+Текущие рабочие планы:
+- `adapter-kit.md`
+- `plugin-kit.md`
+- `plugin-multi-instance.md`
+- `processor-kit.md`
+- `test-coverage.md`

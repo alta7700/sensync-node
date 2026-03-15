@@ -18,6 +18,7 @@
     "@sensync2/plugins-ble": "0.1.0",
     "@sensync2/plugins-fake": "0.1.0",
     "@sensync2/plugins-hdf5": "0.1.0",
+    "@sensync2/plugins-processors": "0.1.0",
     "@sensync2/plugins-trigno": "0.1.0",
     "@sensync2/plugins-ui-gateway": "0.1.0"
   }

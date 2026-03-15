@@ -12,6 +12,7 @@
 - `plugin-kit` даёт переиспользуемые helper'ы для adapter и processor authoring поверх `core` и `plugin-sdk`.
 - `plugin-sdk` задаёт модель worker-плагина.
 - `plugins-*` реализуют доменную логику поверх этих контрактов.
+- `plugins-processors` собирает generic signal-processors, которые не должны жить внутри transport-адаптеров.
 - `plugins-ant-plus` отвечает за ANT+ scan/connect/data flow и transport boundary к stick.
 - `plugins-ble` отвечает за BLE scan/connect/notify/write flow и boundary к `noble`.
 - `plugins-trigno` отвечает за TCP connect/start/stop/status flow и boundary к `Delsys Trigno`.

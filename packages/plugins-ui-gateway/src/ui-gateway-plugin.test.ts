@@ -152,7 +152,8 @@ describe('ui-gateway-plugin', () => {
           kind: 'row',
           gap: 12,
           children: [
-            { kind: 'widget', widgetId: 'chart-zephyr-rr' },
+            { kind: 'widget', widgetId: 'chart-zephyr-rr', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-zephyr-hr', minWidth: 420 },
           ],
         },
         {

@@ -31,7 +31,8 @@ Node runtime и хост plugin worker'ов.
 - Профиль выбирается через `SENSYNC2_PROFILE`; если значение не задано, runtime поднимает `fake`.
 - В `fake`-профиле `fake-signal-adapter` сам переходит в `connected` только после общего system-event `runtime.started`, а `shape-generator-adapter` остаётся manual.
 - Профиль `fake-hdf5-simulation` требует `SENSYNC2_HDF5_SIMULATION_FILE`; путь валидируется до старта worker'ов.
-- Профиль `veloerg` поднимает `ant-plus-adapter`, `zephyr-bioharness-3-adapter` и `trigno-adapter` в real mode по умолчанию.
+- Профиль `veloerg` поднимает `ant-plus-adapter`, `zephyr-bioharness-3-adapter`, generic `hr-from-rr-processor` и `trigno-adapter` в real mode по умолчанию.
+- `hr-from-rr-processor` не знает про Zephyr как устройство: профиль только связывает `zephyr.rr` как вход и `zephyr.hr` как derived output stream.
 - Для Trigno в `veloerg` runtime явно задаёт `BACKWARDS COMPATIBILITY = OFF` и `UPSAMPLE = OFF`, чтобы live `EMG` не уходил в legacy-совместимую частотную схему SDK ports.
 - Для Trigno runtime агрегирует plugin-specific UI boundary guards отдельно от shared `core`, чтобы `START/STOP/refresh` проходили тот же exact-typed ingress, что и shared команды.
 - Fake transport остаётся fallback только у ANT+ и BLE; Trigno в `v1` работает как real-only интеграция.
@@ -39,6 +40,6 @@ Node runtime и хост plugin worker'ов.
 
 ## Взаимодействие
 
-- Использует `@sensync2/core`, `@sensync2/plugin-sdk`, `@sensync2/plugins-ant-plus`, `@sensync2/plugins-ble`, `@sensync2/plugins-trigno`, `@sensync2/plugins-fake`, `@sensync2/plugins-hdf5`, `@sensync2/plugins-ui-gateway`.
-- В `fake`-профиле поднимает recorder, в `fake-hdf5-simulation` — HDF5-источник с fake-каналами, а в `veloerg` — composite-сценарий ANT+/Moxy, BLE/Zephyr и TCP/Trigno.
+- Использует `@sensync2/core`, `@sensync2/plugin-sdk`, `@sensync2/plugins-ant-plus`, `@sensync2/plugins-ble`, `@sensync2/plugins-trigno`, `@sensync2/plugins-fake`, `@sensync2/plugins-hdf5`, `@sensync2/plugins-processors`, `@sensync2/plugins-ui-gateway`.
+- В `fake`-профиле поднимает recorder, в `fake-hdf5-simulation` — HDF5-источник с fake-каналами, а в `veloerg` — composite-сценарий ANT+/Moxy, BLE/Zephyr, derived HR-from-RR и TCP/Trigno.
 - Может стартовать отдельно для отладки или через `apps/desktop`.

@@ -766,6 +766,7 @@ export function buildVeloergUiSchema(): UiSchema {
           'chart-moxy-smo2',
           'chart-moxy-thb',
           'chart-zephyr-rr',
+          'chart-zephyr-hr',
           'telemetry-main',
         ],
         layout: {
@@ -813,7 +814,8 @@ export function buildVeloergUiSchema(): UiSchema {
               kind: 'row',
               gap: 12,
               children: [
-                { kind: 'widget', widgetId: 'chart-zephyr-rr' },
+                { kind: 'widget', widgetId: 'chart-zephyr-rr', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-zephyr-hr', minWidth: 420 },
               ],
             },
             {
@@ -1233,6 +1235,25 @@ export function buildVeloergUiSchema(): UiSchema {
             streamId: 'zephyr.rr',
             label: 'RR',
             color: '#1f6feb',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-zephyr-hr',
+        title: 'HR',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 40, max: 220, label: 'bpm' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'zephyr.hr',
+            label: 'HR',
+            color: '#d6336c',
             lineWidth: 3,
           },
         ],

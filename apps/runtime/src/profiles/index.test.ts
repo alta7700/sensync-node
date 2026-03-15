@@ -57,6 +57,17 @@ describe('launch profiles registry', () => {
     expect(config.schema.pages[0]?.title).toBe('Veloerg');
   });
 
+  it('в veloerg-профиле подключает generic hr-from-rr processor', () => {
+    const profile = buildLaunchProfile('veloerg');
+    const processor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
+
+    expect(processor).toBeDefined();
+    expect(processor?.config).toMatchObject({
+      sourceStreamId: 'zephyr.rr',
+      outputStreamId: 'zephyr.hr',
+    });
+  });
+
   it('в fake-hdf5-simulation профиле применяет env overrides до сборки plugins', () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), 'sensync2-profile-'));
     const hdf5Path = path.join(tempDir, 'simulation.h5');
