@@ -78,3 +78,22 @@
 - `trigno.stream.start.request` заново читает status snapshot и сравнивает его с ожидаемым режимом `veloerg`;
 - при несовпадении адаптер остаётся в `paused`, а не переходит в `connected`.
 - если TCP-сессия рвётся в `paused`, адаптер переходит в `failed` без auto-reconnect, чтобы оператор явно переподключил устройство.
+
+## 5. Sampling policy для `BC / UPSAMPLE`
+
+Практическая политика `v1`:
+
+- профиль `veloerg` запускает Trigno с `backwardsCompatibility = false`;
+- профиль `veloerg` запускает Trigno с `upsampling = false`;
+- эти два флага входят в ожидаемый `start snapshot` и считаются частью допустимого live-режима.
+
+Причина:
+
+- по `Trigno SDK User Guide` раздел `6.1.2` режим `BACKWARDS COMPATIBILITY = ON` переводит SDK data ports в legacy-совместимую частотную схему;
+- разделы `6.3.3` и `6.3.4` описывают, что при `BC=ON` порт `50043` даёт фиксированные `2000 Hz` или `1111.111 Hz` в зависимости от `UPSAMPLE`, а `50044` остаётся на фиксированных частотах AUX-каналов;
+- при `BC=OFF` цифровые SDK ports ресемплируются к максимальной нативной частоте на каждом порту.
+
+Следствие для `sensync2`:
+
+- режим `BC=ON` может давать расхождение между command-layer snapshot и фактической частотой EMG data port;
+- поэтому текущий live-профиль выбирает `BC=OFF + UPSAMPLE=OFF` как наиболее предсказуемую схему для `EMG + Gyro`.

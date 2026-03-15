@@ -1,0 +1,24 @@
+{
+  "name": "@sensync2/adapter-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./adapter-state-holder": "./src/adapter-state-holder.ts",
+    "./autoconnect-policy": "./src/autoconnect-policy.ts",
+    "./output-map": "./src/output-map.ts",
+    "./reconnect-policy": "./src/reconnect-policy.ts",
+    "./scan-flow": "./src/scan-flow.ts",
+    "./signal-emit": "./src/signal-emit.ts",
+    "./types": "./src/types.ts"
+  },
+  "dependencies": {
+    "@sensync2/core": "0.1.0",
+    "@sensync2/plugin-sdk": "0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}

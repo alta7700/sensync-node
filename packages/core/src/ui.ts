@@ -272,7 +272,6 @@ export interface UiStreamDeclaration {
   streamId: string;
   numericId: number;
   label: string;
-  channelId: string;
   sampleFormat: 'f32' | 'f64' | 'i16';
   frameKind: 'uniform-signal-batch' | 'irregular-signal-batch' | 'label-batch';
   units?: string;

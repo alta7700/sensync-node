@@ -17,6 +17,11 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 `fake` — дефолтный dev-профиль.
 
+Важно:
+
+- `fake-signal-adapter` теперь auto-connect'ится на `onInit`, поэтому `adapter.fake.state` обычно быстро переходит в `connected` без отдельного клика.
+- `shape-generator-adapter` manual по-прежнему требует явного `adapter.connect.request`.
+
 ## 2. Профиль `fake`
 
 ### Страница
@@ -40,8 +45,6 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 Кнопки:
 
-- `toggle-fake`
-  - управляет `adapter.connect.request` / `adapter.disconnect.request` для `adapterId = fake`
 - `toggle-shapes`
   - управляет `adapter.connect.request` / `adapter.disconnect.request` для `adapterId = shapes`
 - `shape-sine`
@@ -76,6 +79,7 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 Особенность demo:
 
+- manual connect/disconnect для `fake` больше нет: источник уже должен быть в `connected` после старта профиля;
 - `recording.start` сейчас отправляет фиксированные metadata:
   - `testie = fake-demo`
   - `profile = fake`

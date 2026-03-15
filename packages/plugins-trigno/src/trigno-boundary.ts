@@ -14,6 +14,8 @@ export const TrignoEventTypes = {
 export interface TrignoAdapterConfig {
   adapterId?: string;
   mode?: 'real';
+  backwardsCompatibility?: boolean;
+  upsampling?: boolean;
   commandPort?: number;
   emgPort?: number;
   auxPort?: number;
@@ -126,6 +128,8 @@ export interface TrignoSnapshotMismatch {
 export const DefaultTrignoAdapterConfig: Required<TrignoAdapterConfig> = {
   adapterId: 'trigno',
   mode: 'real',
+  backwardsCompatibility: false,
+  upsampling: false,
   commandPort: 50040,
   emgPort: 50043,
   auxPort: 50044,
@@ -140,25 +144,31 @@ export const DefaultTrignoAdapterConfig: Required<TrignoAdapterConfig> = {
   stopTimeoutMs: 5_000,
 };
 
-export const DefaultTrignoExpectedStartSnapshot: TrignoExpectedStartSnapshot = {
-  mode: 7,
-  channelCount: 4,
-  emgChannelCount: 1,
-  auxChannelCount: 3,
-  backwardsCompatibility: true,
-  upsampling: true,
-  frameInterval: 0.0135,
-  maxSamplesEmg: 26,
-  maxSamplesAux: 2,
-  emgRateHz: 1925.92592592593,
-  emgSamplesPerFrame: 26,
-  emgUnits: 'V',
-  emgGain: 300,
-  gyroRateHz: 148.148148148148,
-  gyroSamplesPerFrame: 2,
-  gyroUnits: 'deg/s',
-  gyroGain: 16.4,
-};
+export function buildTrignoExpectedStartSnapshot(
+  config: Pick<TrignoAdapterConfig, 'backwardsCompatibility' | 'upsampling'> = DefaultTrignoAdapterConfig,
+): TrignoExpectedStartSnapshot {
+  return {
+    mode: 7,
+    channelCount: 4,
+    emgChannelCount: 1,
+    auxChannelCount: 3,
+    backwardsCompatibility: config.backwardsCompatibility ?? DefaultTrignoAdapterConfig.backwardsCompatibility,
+    upsampling: config.upsampling ?? DefaultTrignoAdapterConfig.upsampling,
+    frameInterval: 0.0135,
+    maxSamplesEmg: 26,
+    maxSamplesAux: 2,
+    emgRateHz: 1925.92592592593,
+    emgSamplesPerFrame: 26,
+    emgUnits: 'V',
+    emgGain: 300,
+    gyroRateHz: 148.148148148148,
+    gyroSamplesPerFrame: 2,
+    gyroUnits: 'deg/s',
+    gyroGain: 16.4,
+  };
+}
+
+export const DefaultTrignoExpectedStartSnapshot: TrignoExpectedStartSnapshot = buildTrignoExpectedStartSnapshot();
 
 function isRecord(input: unknown): input is Record<string, unknown> {
   return typeof input === 'object' && input !== null && !Array.isArray(input);
@@ -200,6 +210,8 @@ export function resolveTrignoAdapterConfig(rawConfig: TrignoAdapterConfig | unde
   return {
     adapterId: merged.adapterId,
     mode: 'real',
+    backwardsCompatibility: merged.backwardsCompatibility,
+    upsampling: merged.upsampling,
     commandPort: Math.max(1, Math.trunc(merged.commandPort)),
     emgPort: Math.max(1, Math.trunc(merged.emgPort)),
     auxPort: Math.max(1, Math.trunc(merged.auxPort)),

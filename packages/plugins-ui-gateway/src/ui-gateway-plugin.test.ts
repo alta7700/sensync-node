@@ -57,6 +57,36 @@ afterEach(async () => {
 });
 
 describe('ui-gateway-plugin', () => {
+  it('не показывает manual connect control для fake auto-source', async () => {
+    const { ctx, emitted } = createTestContext('fake');
+    await plugin.onInit(ctx as never);
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.uiClientConnected,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: { clientId: 'client-1' },
+    })), ctx as never);
+
+    const message = extractControlMessage(emitted);
+    expect(message).not.toBeNull();
+    if (!message || message.type !== 'ui.init') {
+      throw new Error('Ожидалось ui.init сообщение');
+    }
+
+    const controlsWidget = message.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-main' && widget.kind === 'controls';
+    });
+    expect(controlsWidget?.kind).toBe('controls');
+    if (!controlsWidget || controlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-main');
+    }
+
+    const controlIds = controlsWidget.controls.map((control) => control.id);
+    expect(controlIds).not.toContain('toggle-fake');
+    expect(controlIds).toContain('toggle-shapes');
+  });
+
   it('материализует Trigno controls и графики в veloerg schema', async () => {
     const { ctx, emitted } = createTestContext('veloerg');
     await plugin.onInit(ctx as never);

@@ -8,6 +8,7 @@
 - `apps/desktop` — Electron main process и IPC bridge между runtime и renderer.
 - `apps/client` — schema-driven React UI, который получает control-сообщения и binary batches.
 - `packages/core` — типы runtime-событий, plugin manifest, UI schema и binary UI wire.
+- `packages/adapter-kit` — переиспользуемые helper'ы для adapter lifecycle, output-map, uniform emit, autoconnect и scan cache.
 - `packages/plugin-sdk` — API для plugin worker'ов.
 - `packages/plugins-ant-plus` — ANT+ адаптеры и transport boundary для Moxy и будущих ANT+ профилей.
 - `packages/plugins-ble` — BLE transport boundary и Zephyr BioHarness 3 адаптер.
@@ -43,7 +44,7 @@ npm run dev
 Сейчас есть три штатных профиля запуска:
 
 - `fake`
-  - synthetic fake adapter;
+  - synthetic fake adapter с автостартом `fake-signal` после общего runtime-барьера `runtime.started`;
   - shape generator;
   - interval labels;
   - demo processors;
@@ -56,6 +57,7 @@ npm run dev
   - `ant-plus-adapter` по умолчанию идёт через real transport поверх `ant-plus`;
   - `zephyr-bioharness-3-adapter` по умолчанию идёт через real transport поверх `@abandonware/noble`;
   - `trigno-adapter` по умолчанию идёт через real TCP transport поверх `node:net`;
+  - для `Trigno` профиль сейчас фиксирует `BACKWARDS COMPATIBILITY = OFF` и `UPSAMPLE = OFF`, чтобы live `EMG` и `Gyro` шли в нативной для SDK ports схеме;
   - Moxy публикует `moxy.smo2` и `moxy.thb`, Zephyr даёт live `RR`, а Trigno в `v1` публикует raw `EMG + Gyroscope`;
   - `ui-gateway` поднимает composite-схему live-подключения Moxy, Zephyr и Trigno;
   - fake transport остаётся доступен для локальной отладки.

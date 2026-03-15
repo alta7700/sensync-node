@@ -169,6 +169,13 @@ export const SharedEventContracts = {
     priority: 'system',
     visibility: 'shared',
   }),
+  runtimeStarted: defineEventContract({
+    type: EventTypes.runtimeStarted,
+    v: 1,
+    kind: 'fact',
+    priority: 'system',
+    visibility: 'shared',
+  }),
   runtimeTelemetrySnapshot: defineEventContract({
     type: EventTypes.runtimeTelemetrySnapshot,
     v: 1,

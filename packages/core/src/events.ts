@@ -41,7 +41,6 @@ export type SignalValues = Float32Array | Float64Array | Int16Array;
 
 export interface SignalBatchPayload {
   streamId: string;
-  channelId: string;
   sampleFormat: SampleFormat;
   frameKind: FrameKind;
   /**
@@ -192,6 +191,8 @@ export interface SimulationStateChangedPayload {
   message?: string;
 }
 
+export interface RuntimeStartedPayload {}
+
 export interface ShapeGenerateRequestPayload {
   shapeName?: string;
 }
@@ -207,7 +208,7 @@ export interface IntervalCommandPayload {
 export type RecordingMetadataScalar = string | number | boolean;
 
 export interface RecordingChannelConfig {
-  channelId: string;
+  streamId: string;
   minSamples: number;
   maxBufferedMs: number;
 }

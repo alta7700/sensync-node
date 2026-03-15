@@ -34,12 +34,12 @@ interface UiGatewayConfig {
 }
 
 const FakeRecordingChannels = [
-  { channelId: 'fake.a1', minSamples: 200, maxBufferedMs: 1_000 },
-  { channelId: 'fake.a2', minSamples: 200, maxBufferedMs: 1_000 },
-  { channelId: 'fake.b', minSamples: 200, maxBufferedMs: 1_000 },
-  { channelId: 'shapes.signal', minSamples: 200, maxBufferedMs: 1_000 },
-  { channelId: 'interval.label', minSamples: 1, maxBufferedMs: 500 },
-  { channelId: 'activity.label', minSamples: 1, maxBufferedMs: 500 },
+  { streamId: 'fake.a1', minSamples: 200, maxBufferedMs: 1_000 },
+  { streamId: 'fake.a2', minSamples: 200, maxBufferedMs: 1_000 },
+  { streamId: 'fake.b', minSamples: 200, maxBufferedMs: 1_000 },
+  { streamId: 'shapes.signal', minSamples: 200, maxBufferedMs: 1_000 },
+  { streamId: 'interval.label', minSamples: 1, maxBufferedMs: 500 },
+  { streamId: 'activity.label', minSamples: 1, maxBufferedMs: 500 },
 ] as const;
 const SimulationSpeedOptions = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 6, 8] as const;
 
@@ -332,39 +332,6 @@ function fakeSchema(): UiSchema {
         id: 'controls-main',
         title: 'Управление Fake',
         controls: [
-          {
-            id: 'toggle-fake',
-            kind: 'button',
-            label: 'Подключить fake',
-            commandType: EventTypes.adapterConnectRequest,
-            payload: { adapterId: 'fake' },
-            variants: [
-              {
-                when: { flag: 'adapter.fake.state', eq: 'connected' },
-                label: 'Отключить fake',
-                commandType: EventTypes.adapterDisconnectRequest,
-                payload: { adapterId: 'fake' },
-              },
-              {
-                when: { flag: 'adapter.fake.state', eq: 'connecting' },
-                label: 'Подключение fake...',
-                disabled: true,
-                isLoading: true,
-              },
-              {
-                when: { flag: 'adapter.fake.state', eq: 'disconnecting' },
-                label: 'Отключение fake...',
-                disabled: true,
-                isLoading: true,
-              },
-              {
-                when: { flag: 'adapter.fake.state', eq: 'disconnected' },
-                label: 'Подключить fake',
-                commandType: EventTypes.adapterConnectRequest,
-                payload: { adapterId: 'fake' },
-              },
-            ],
-          },
           {
             id: 'toggle-shapes',
             kind: 'button',
@@ -1353,7 +1320,6 @@ function ensureStream(event: SignalBatchEvent): { declared?: UiStreamDeclaration
     streamId: event.payload.streamId,
     numericId: nextStreamNumericId++,
     label: event.payload.streamId,
-    channelId: event.payload.channelId,
     sampleFormat: event.payload.sampleFormat,
     frameKind: event.payload.frameKind,
   };

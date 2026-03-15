@@ -6,7 +6,7 @@ let active = false;
 
 function makeLabelBatch(value: 0 | 1, t0Ms: number) {
   const values = new Int16Array([value]);
-  return signalBatchEvent('interval.label', 'interval.label', values, t0Ms, 0, 'i16');
+  return signalBatchEvent('interval.label', values, t0Ms, 0, 'i16');
 }
 
 export default definePlugin({

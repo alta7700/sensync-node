@@ -1,6 +1,13 @@
 import { EventTypes } from '@sensync2/core';
+import {
+  createAdapterStateHolder,
+  createOutputRegistry,
+  createUniformSignalEmitter,
+  resolveAutoconnectDecision,
+  runAutoconnect,
+  type AdapterAutoconnectDecision,
+} from '@sensync2/adapter-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
-import { adapterStateEvent, signalBatchEvent } from './helpers.ts';
 
 interface FakeSignalAdapterConfig {
   sampleRateHz: number;
@@ -10,9 +17,10 @@ interface FakeSignalAdapterConfig {
 }
 
 type Waveform = 'a' | 'b';
+type FakeStreamId = 'fake.a1' | 'fake.a2' | 'fake.b';
 
 interface StreamState {
-  channelId: 'fake.a1' | 'fake.a2' | 'fake.b';
+  streamId: FakeStreamId;
   waveform: Waveform;
   sampleRateHz: number;
   batchMs: number;
@@ -23,11 +31,21 @@ interface StreamState {
 
 const SchedulerTickType = 'fake.scheduler.tick';
 const MaxBatchesPerSchedulerTick = 64;
+const FakeSignalOutputs = createOutputRegistry({
+  'fake.a1': { streamId: 'fake.a1', units: 'a.u.' },
+  'fake.a2': { streamId: 'fake.a2', units: 'a.u.' },
+  'fake.b': { streamId: 'fake.b', units: 'a.u.' },
+});
+const fakeSignalEmitter = createUniformSignalEmitter(FakeSignalOutputs);
 
-let connected = false;
 let cfg: FakeSignalAdapterConfig = { sampleRateHz: 200, batchMs: 50 };
 let connectionStartSessionMs = 0;
 let streams: StreamState[] = [];
+let fakeState = createAdapterStateHolder({ adapterId: 'fake' });
+let autoconnectDecision: AdapterAutoconnectDecision = {
+  kind: 'manual',
+  shouldAutoconnect: false,
+};
 
 function gcd(a: number, b: number): number {
   let x = Math.abs(Math.trunc(a));
@@ -40,11 +58,11 @@ function gcd(a: number, b: number): number {
   return x || 1;
 }
 
-function makeStream(channelId: StreamState['channelId'], waveform: Waveform, sampleRateHz: number, batchMs: number): StreamState {
+function makeStream(streamId: StreamState['streamId'], waveform: Waveform, sampleRateHz: number, batchMs: number): StreamState {
   const safeRate = Math.max(1, sampleRateHz);
   const safeBatchMs = Math.max(1, Math.trunc(batchMs));
   return {
-    channelId,
+    streamId,
     waveform,
     sampleRateHz: safeRate,
     batchMs: safeBatchMs,
@@ -104,7 +122,11 @@ async function emitDueBatches(ctx: PluginContext): Promise<void> {
 
       // Время сессии считаем по sample-index от старта подключения: без накопления `t += dt`.
       const t0Ms = connectionStartSessionMs + startSample * stream.dtMs;
-      await ctx.emit(signalBatchEvent(stream.channelId, stream.channelId, values, t0Ms, stream.dtMs, 'f32', 'a.u.'));
+      await fakeSignalEmitter.emit(ctx, stream.streamId, values, {
+        t0Ms,
+        dtMs: stream.dtMs,
+        sampleRateHz: stream.sampleRateHz,
+      });
 
       stream.producedSamples += stream.samplesPerBatch;
       emitted += 1;
@@ -132,12 +154,36 @@ function stopStreaming(ctx: PluginContext): void {
   ctx.clearTimer('fake.scheduler');
 }
 
+function resetStreamProgress(): void {
+  rebuildStreams();
+  for (const stream of streams) {
+    stream.producedSamples = 0;
+  }
+}
+
+async function connectFakeAdapter(ctx: PluginContext, requestId?: string): Promise<void> {
+  fakeState.assertCanConnect();
+  await fakeState.setState(ctx, 'connecting', requestId);
+  resetStreamProgress();
+  connectionStartSessionMs = ctx.clock.nowSessionMs();
+  await startStreaming(ctx);
+  await fakeState.setState(ctx, 'connected', requestId);
+}
+
+async function disconnectFakeAdapter(ctx: PluginContext, requestId?: string): Promise<void> {
+  if (!fakeState.canDisconnect()) return;
+  await fakeState.setState(ctx, 'disconnecting', requestId);
+  stopStreaming(ctx);
+  await fakeState.setState(ctx, 'disconnected', requestId);
+}
+
 export default definePlugin({
   manifest: {
     id: 'fake-signal-adapter',
     version: '0.1.0',
     required: true,
     subscriptions: [
+      { type: EventTypes.runtimeStarted, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.adapterConnectRequest, v: 1, kind: 'command', priority: 'control' },
       { type: EventTypes.adapterDisconnectRequest, v: 1, kind: 'command', priority: 'control' },
       { type: SchedulerTickType, v: 1, kind: 'fact', priority: 'system' },
@@ -156,45 +202,42 @@ export default definePlugin({
   async onInit(ctx) {
     cfg = { ...cfg, ...(ctx.getConfig<FakeSignalAdapterConfig>() ?? {}) };
     rebuildStreams();
-    await ctx.emit(adapterStateEvent('fake', 'disconnected'));
+    fakeState = createAdapterStateHolder({ adapterId: 'fake' });
+    autoconnectDecision = resolveAutoconnectDecision({ kind: 'auto-on-init' });
+    await fakeState.emitCurrent(ctx);
   },
   async onEvent(event, ctx) {
+    if (event.type === EventTypes.runtimeStarted) {
+      if (!fakeState.canConnect()) return;
+      await runAutoconnect(autoconnectDecision, async () => {
+        await connectFakeAdapter(ctx);
+      });
+      return;
+    }
+
     if (event.type === EventTypes.adapterConnectRequest) {
       const payload = event.payload;
       if (payload.adapterId !== 'fake') return;
-      if (connected) return;
-
-      await ctx.emit(adapterStateEvent('fake', 'connecting', undefined, payload.requestId));
-      rebuildStreams();
-      for (const stream of streams) {
-        stream.producedSamples = 0;
-      }
-      connectionStartSessionMs = ctx.clock.nowSessionMs();
-      connected = true;
-      await startStreaming(ctx);
-      await ctx.emit(adapterStateEvent('fake', 'connected', undefined, payload.requestId));
+      if (!fakeState.canConnect()) return;
+      await connectFakeAdapter(ctx, payload.requestId);
       return;
     }
 
     if (event.type === EventTypes.adapterDisconnectRequest) {
       const payload = event.payload;
       if (payload.adapterId !== 'fake') return;
-      if (!connected) return;
-
-      await ctx.emit(adapterStateEvent('fake', 'disconnecting', undefined, payload.requestId));
-      connected = false;
-      stopStreaming(ctx);
-      await ctx.emit(adapterStateEvent('fake', 'disconnected', undefined, payload.requestId));
+      await disconnectFakeAdapter(ctx, payload.requestId);
       return;
     }
 
     if (event.type === SchedulerTickType) {
-      if (!connected) return;
+      if (!fakeState.isState('connected')) return;
       await emitDueBatches(ctx);
     }
   },
   async onShutdown(ctx) {
     stopStreaming(ctx);
-    connected = false;
+    fakeState = createAdapterStateHolder({ adapterId: 'fake' });
+    autoconnectDecision = { kind: 'manual', shouldAutoconnect: false };
   },
 });

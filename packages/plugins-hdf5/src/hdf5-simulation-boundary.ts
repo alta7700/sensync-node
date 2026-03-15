@@ -17,14 +17,13 @@ export type H5Dataset = InstanceType<typeof h5wasm.Dataset>;
 export interface Hdf5SimulationAdapterConfig {
   adapterId?: string;
   filePath: string;
-  channelIds?: string[];
+  streamIds?: string[];
   batchMs?: number;
   speed?: number;
   readChunkSamples?: number;
 }
 
 export interface ChannelReaderState {
-  channelId: string;
   streamId: string;
   frameKind: FrameKind;
   sampleFormat: SampleFormat;
@@ -45,7 +44,7 @@ export interface SimulationSessionState {
   file: H5File;
   filePath: string;
   channels: ChannelReaderState[];
-  missingChannelIds: string[];
+  missingStreamIds: string[];
   dataStartMs: number;
   dataEndMs: number;
   currentWindowStartMs: number;
@@ -56,7 +55,7 @@ export const AllowedSimulationSpeeds = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3
 export const DefaultHdf5SimulationConfig: Required<Hdf5SimulationAdapterConfig> = {
   adapterId: 'hdf5-simulation',
   filePath: '',
-  channelIds: [],
+  streamIds: [],
   batchMs: 50,
   speed: 1,
   readChunkSamples: 4096,
@@ -80,8 +79,8 @@ export function resolveHdf5SimulationConfig(
   }
 
   next.filePath = path.resolve(rawFilePath);
-  next.channelIds = Array.isArray(next.channelIds)
-    ? [...new Set(next.channelIds.map((value) => String(value).trim()).filter((value) => value.length > 0))]
+  next.streamIds = Array.isArray(next.streamIds)
+    ? [...new Set(next.streamIds.map((value) => String(value).trim()).filter((value) => value.length > 0))]
     : [];
   next.batchMs = Math.max(1, Math.trunc(next.batchMs));
   next.readChunkSamples = Math.max(1, Math.trunc(next.readChunkSamples));
@@ -269,12 +268,12 @@ function loadBuffer(channel: ChannelReaderState, startIndex: number): void {
   }
   assertValueArrayMatchesSampleFormat(values, channel.sampleFormat, channel.valuesDataset.path);
   if (timestamps.length !== values.length) {
-    throw new Error(`В ${channel.channelId} длины timestamps и values не совпадают`);
+    throw new Error(`В ${channel.streamId} длины timestamps и values не совпадают`);
   }
 
   for (let index = 1; index < timestamps.length; index += 1) {
     if (timestamps[index]! < timestamps[index - 1]!) {
-      throw new Error(`timestamps для ${channel.channelId} не монотонны внутри chunk`);
+      throw new Error(`timestamps для ${channel.streamId} не монотонны внутри chunk`);
     }
   }
 
@@ -298,7 +297,6 @@ function buildSignalEvent(
 ): RuntimeEventInputOf<typeof EventTypes.signalBatch, 1> {
   const payload: RuntimeEventInputOf<typeof EventTypes.signalBatch, 1>['payload'] = {
     streamId: channel.streamId,
-    channelId: channel.channelId,
     sampleFormat: channel.sampleFormat,
     frameKind: channel.frameKind,
     t0Ms: timestamps[0] ?? 0,
@@ -399,7 +397,7 @@ export function closeHdf5SimulationSession(activeSession: SimulationSessionState
 
 export function loadHdf5SimulationSession(
   filePath: string,
-  selectedChannelIds: readonly string[],
+  selectedStreamIds: readonly string[],
   readChunkSamples: number,
 ): SimulationSessionState {
   if (!existsSync(filePath)) {
@@ -417,8 +415,8 @@ export function loadHdf5SimulationSession(
   }
 
   const channels: ChannelReaderState[] = [];
-  const selectedSet = selectedChannelIds.length > 0 ? new Set(selectedChannelIds) : null;
-  const missingChannelIds = selectedSet ? [...selectedChannelIds] : [];
+  const selectedSet = selectedStreamIds.length > 0 ? new Set(selectedStreamIds) : null;
+  const missingStreamIds = selectedSet ? [...selectedStreamIds] : [];
   let globalStartMs = Number.POSITIVE_INFINITY;
   let globalEndMs = Number.NEGATIVE_INFINITY;
 
@@ -429,11 +427,11 @@ export function loadHdf5SimulationSession(
         continue;
       }
 
-      const channelId = requireStringAttribute(channelGroup, 'channelId');
-      if (selectedSet && !selectedSet.has(channelId)) {
+      const streamId = readOptionalStringAttribute(channelGroup, 'streamId')
+        ?? channelKey;
+      if (selectedSet && !selectedSet.has(streamId)) {
         continue;
       }
-      const streamId = requireStringAttribute(channelGroup, 'streamId');
       const sampleFormat = readSampleFormatAttribute(channelGroup);
       const frameKind = readFrameKindAttribute(channelGroup);
       const units = readOptionalStringAttribute(channelGroup, 'units');
@@ -444,7 +442,7 @@ export function loadHdf5SimulationSession(
       const valuesCount = requireOneDimensionalLength(valuesDataset);
 
       if (sampleCount !== valuesCount) {
-        throw new Error(`В канале ${channelId} длины timestamps и values не совпадают`);
+        throw new Error(`В канале ${streamId} длины timestamps и values не совпадают`);
       }
       if (sampleCount === 0) {
         continue;
@@ -453,20 +451,19 @@ export function loadHdf5SimulationSession(
       const firstTs = readTimestampBoundary(timestampsDataset, 0);
       const lastTs = readTimestampBoundary(timestampsDataset, sampleCount - 1);
       if (lastTs < firstTs) {
-        throw new Error(`В канале ${channelId} last timestamp меньше first timestamp`);
+        throw new Error(`В канале ${streamId} last timestamp меньше first timestamp`);
       }
 
       globalStartMs = Math.min(globalStartMs, firstTs);
       globalEndMs = Math.max(globalEndMs, lastTs);
       if (selectedSet) {
-        const missingIndex = missingChannelIds.indexOf(channelId);
+        const missingIndex = missingStreamIds.indexOf(streamId);
         if (missingIndex >= 0) {
-          missingChannelIds.splice(missingIndex, 1);
+          missingStreamIds.splice(missingIndex, 1);
         }
       }
 
       channels.push({
-        channelId,
         streamId,
         frameKind,
         sampleFormat,
@@ -485,22 +482,22 @@ export function loadHdf5SimulationSession(
     }
 
     if (selectedSet) {
-      const order = new Map(selectedChannelIds.map((channelId, index) => [channelId, index]));
-      channels.sort((left, right) => (order.get(left.channelId) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.channelId) ?? Number.MAX_SAFE_INTEGER));
+      const order = new Map(selectedStreamIds.map((streamId, index) => [streamId, index]));
+      channels.sort((left, right) => (order.get(left.streamId) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.streamId) ?? Number.MAX_SAFE_INTEGER));
     }
 
     if (channels.length === 0) {
       if (selectedSet) {
-        throw new Error(`В файле ${filePath} не найден ни один из выбранных каналов: ${selectedChannelIds.join(', ')}`);
+        throw new Error(`В файле ${filePath} не найден ни один из выбранных потоков: ${selectedStreamIds.join(', ')}`);
       }
-      throw new Error(`В файле ${filePath} не найдено ни одного непустого канала`);
+      throw new Error(`В файле ${filePath} не найдено ни одного непустого потока`);
     }
 
     return {
       file,
       filePath,
       channels,
-      missingChannelIds,
+      missingStreamIds,
       dataStartMs: globalStartMs,
       dataEndMs: globalEndMs,
       currentWindowStartMs: globalStartMs,

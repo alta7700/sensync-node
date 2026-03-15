@@ -30,7 +30,6 @@ export function commandPayload<T>(event: CommandEvent<T>): T {
 
 export function signalBatchEvent(
   streamId: string,
-  channelId: string,
   values: Float32Array | Int16Array,
   t0Ms: number,
   dtMs: number,
@@ -39,7 +38,6 @@ export function signalBatchEvent(
 ): Omit<SignalBatchEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
   const payload: SignalBatchEvent['payload'] = {
     streamId,
-    channelId,
     sampleFormat,
     frameKind: 'uniform-signal-batch',
     t0Ms,

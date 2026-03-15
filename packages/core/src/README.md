@@ -9,6 +9,7 @@
 ## Как работает
 
 - `events.ts` — runtime-события и payload signal batch.
+- `events.ts` также описывает shared startup-barrier `runtime.started`, который runtime публикует после регистрации всех manifest'ов в индексе подписок.
 - `generated-runtime-event-map.ts` — сгенерированная карта exact event union для shared-событий.
 - `runtime-event-map.spec.ts` — декларативное описание shared event map для генератора, не Vitest-suite.
 - `runtime-event-map-codegen.ts` — типы для сборки event map из shared и plugin-specific spec-файлов.

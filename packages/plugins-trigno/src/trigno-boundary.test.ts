@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildTrignoExpectedStartSnapshot,
   buildTrignoConnectRequest,
   diffTrignoExpectedStartSnapshot,
   formatTrignoSnapshotMismatchMessage,
@@ -20,8 +21,8 @@ function makeSnapshot(): TrignoStatusSnapshot {
     channelCount: 4,
     emgChannelCount: 1,
     auxChannelCount: 3,
-    backwardsCompatibility: true,
-    upsampling: true,
+    backwardsCompatibility: false,
+    upsampling: false,
     frameInterval: 0.0135,
     maxSamplesEmg: 26,
     maxSamplesAux: 2,
@@ -49,8 +50,11 @@ describe('trigno-boundary', () => {
       emgPort: 50043.2,
       auxPort: 50044.8,
       reconnectRetryDelayMs: 25,
+      backwardsCompatibility: true,
     });
 
+    expect(config.backwardsCompatibility).toBe(true);
+    expect(config.upsampling).toBe(false);
     expect(config.commandPort).toBe(50040);
     expect(config.emgPort).toBe(50043);
     expect(config.auxPort).toBe(50044);
@@ -82,6 +86,18 @@ describe('trigno-boundary', () => {
       { field: 'gyro.units', expected: 'deg/s', actual: 'rad/s' },
     ]);
     expect(formatTrignoSnapshotMismatchMessage(mismatches)).toContain('mode: ожидалось 7, получено 65');
+  });
+
+  it('строит expected snapshot с BC/UPSAMPLE из adapter config', () => {
+    expect(buildTrignoExpectedStartSnapshot({
+      backwardsCompatibility: true,
+      upsampling: true,
+    })).toMatchObject({
+      backwardsCompatibility: true,
+      upsampling: true,
+      emgRateHz: 1925.92592592593,
+      gyroRateHz: 148.148148148148,
+    });
   });
 
   it('экспортирует UI guards для plugin-specific команд', () => {

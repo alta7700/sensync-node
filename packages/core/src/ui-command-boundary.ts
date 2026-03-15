@@ -88,7 +88,7 @@ function isSimulationSpeedPayload(input: unknown): input is SimulationSpeedSetRe
 
 function isRecordingChannelConfig(input: unknown): input is RecordingChannelConfig {
   if (!isRecord(input)) return false;
-  return typeof input.channelId === 'string'
+  return typeof input.streamId === 'string'
     && typeof input.minSamples === 'number'
     && Number.isFinite(input.minSamples)
     && typeof input.maxBufferedMs === 'number'

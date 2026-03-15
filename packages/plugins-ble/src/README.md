@@ -10,6 +10,7 @@
 
 - `zephyr-bioharness-3-adapter.ts`:
   - реализует scan/connect/disconnect lifecycle;
+  - держит opaque `candidateId` cache, state holder, reconnect timer и irregular emit через `adapter-kit`;
   - управляет reconnect и watchdog по тишине notifications;
   - публикует shared adapter-события, `signal.batch` для `zephyr.rr` и telemetry.
 - `ble-boundary.ts` изолирует внешний boundary:

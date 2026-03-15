@@ -2,8 +2,12 @@ import {
   defineRuntimeEventInput,
   EventTypes,
 } from '@sensync2/core';
+import {
+  createAdapterStateHolder,
+  createOutputRegistry,
+  createUniformSignalEmitter,
+} from '@sensync2/adapter-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
-import { adapterStateEvent, signalBatchEvent } from './helpers.ts';
 
 interface ShapeGeneratorConfig {
   sampleRateHz: number;
@@ -11,13 +15,17 @@ interface ShapeGeneratorConfig {
 }
 
 const ShapeSchedulerTickType = 'shape.scheduler.tick';
+const ShapeOutputs = createOutputRegistry({
+  'shapes.signal': { streamId: 'shapes.signal', units: 'a.u.' },
+});
+const shapeEmitter = createUniformSignalEmitter(ShapeOutputs);
 
 let cfg: ShapeGeneratorConfig = { sampleRateHz: 200, batchMs: 50 };
-let connected = false;
 let producedSamples = 0;
 let streamStartSessionMs = 0;
 let pendingShape: Float32Array | null = null;
 let pendingOffset = 0;
+let shapeState = createAdapterStateHolder({ adapterId: 'shapes' });
 
 function buildShape(shapeName: string, sampleRateHz: number): Float32Array {
   const durationSec = 2;
@@ -68,7 +76,11 @@ async function emitDueBatches(ctx: PluginContext): Promise<void> {
     const startSample = producedSamples;
     const values = nextShapeValues(samplesPerBatch);
     const t0Ms = streamStartSessionMs + startSample * dtMs;
-    await ctx.emit(signalBatchEvent('shapes.signal', 'shapes.signal', values, t0Ms, dtMs, 'f32', 'a.u.'));
+    await shapeEmitter.emit(ctx, 'shapes.signal', values, {
+      t0Ms,
+      dtMs,
+      sampleRateHz,
+    });
     producedSamples += samplesPerBatch;
     emitted += 1;
     if (emitted >= maxBatchesPerTick) break;
@@ -88,6 +100,22 @@ async function startStreaming(ctx: PluginContext): Promise<void> {
     priority: 'system',
     payload: {},
   }));
+}
+
+async function connectShapeAdapter(ctx: PluginContext, requestId?: string): Promise<void> {
+  shapeState.assertCanConnect();
+  await shapeState.setState(ctx, 'connecting', requestId);
+  producedSamples = 0;
+  streamStartSessionMs = ctx.clock.nowSessionMs();
+  await startStreaming(ctx);
+  await shapeState.setState(ctx, 'connected', requestId);
+}
+
+async function disconnectShapeAdapter(ctx: PluginContext, requestId?: string): Promise<void> {
+  if (!shapeState.canDisconnect()) return;
+  await shapeState.setState(ctx, 'disconnecting', requestId);
+  stopStreaming(ctx);
+  await shapeState.setState(ctx, 'disconnected', requestId);
 }
 
 export default definePlugin({
@@ -115,29 +143,21 @@ export default definePlugin({
   },
   async onInit(ctx) {
     cfg = { ...cfg, ...(ctx.getConfig<ShapeGeneratorConfig>() ?? {}) };
-    await ctx.emit(adapterStateEvent('shapes', 'disconnected'));
+    shapeState = createAdapterStateHolder({ adapterId: 'shapes' });
+    await shapeState.emitCurrent(ctx);
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.adapterConnectRequest) {
       const payload = event.payload;
       if (payload.adapterId !== 'shapes') return;
-      if (connected) return;
-      await ctx.emit(adapterStateEvent('shapes', 'connecting', undefined, payload.requestId));
-      connected = true;
-      producedSamples = 0;
-      streamStartSessionMs = ctx.clock.nowSessionMs();
-      await startStreaming(ctx);
-      await ctx.emit(adapterStateEvent('shapes', 'connected', undefined, payload.requestId));
+      if (!shapeState.canConnect()) return;
+      await connectShapeAdapter(ctx, payload.requestId);
       return;
     }
     if (event.type === EventTypes.adapterDisconnectRequest) {
       const payload = event.payload;
       if (payload.adapterId !== 'shapes') return;
-      if (!connected) return;
-      await ctx.emit(adapterStateEvent('shapes', 'disconnecting', undefined, payload.requestId));
-      connected = false;
-      stopStreaming(ctx);
-      await ctx.emit(adapterStateEvent('shapes', 'disconnected', undefined, payload.requestId));
+      await disconnectShapeAdapter(ctx, payload.requestId);
       return;
     }
     if (event.type === EventTypes.shapeGenerateRequest) {
@@ -156,13 +176,13 @@ export default definePlugin({
       return;
     }
     if (event.type === ShapeSchedulerTickType) {
-      if (!connected) return;
+      if (!shapeState.isState('connected')) return;
       await emitDueBatches(ctx);
     }
   },
   async onShutdown(ctx) {
     stopStreaming(ctx);
-    connected = false;
+    shapeState = createAdapterStateHolder({ adapterId: 'shapes' });
     pendingShape = null;
     pendingOffset = 0;
   },

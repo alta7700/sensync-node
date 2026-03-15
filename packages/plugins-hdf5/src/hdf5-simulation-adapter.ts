@@ -209,10 +209,10 @@ export default definePlugin({
   async onInit(ctx) {
     await h5wasm.ready;
     config = resolveHdf5SimulationConfig(ctx.getConfig<Hdf5SimulationAdapterConfig>());
-    session = loadHdf5SimulationSession(config.filePath, config.channelIds, config.readChunkSamples);
+    session = loadHdf5SimulationSession(config.filePath, config.streamIds, config.readChunkSamples);
     runtimeState = 'disconnected';
-    const missingMessage = session.missingChannelIds.length > 0
-      ? `Часть каналов не найдена в файле: ${session.missingChannelIds.join(', ')}`
+    const missingMessage = session.missingStreamIds.length > 0
+      ? `Часть потоков не найдена в файле: ${session.missingStreamIds.join(', ')}`
       : undefined;
     await emitRuntimeState(ctx, 'disconnected', missingMessage);
   },

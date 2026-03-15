@@ -3,12 +3,15 @@ import {
   EventTypes,
   type AdapterConnectRequestPayload,
   type AdapterDisconnectRequestPayload,
-  type AdapterScanCandidatesPayload,
   type AdapterScanRequestPayload,
-  type AdapterScanStateChangedPayload,
-  type AdapterStateChangedPayload,
-  type SignalBatchEvent,
 } from '@sensync2/core';
+import {
+  createAdapterStateHolder,
+  createIrregularSignalEmitter,
+  createOutputRegistry,
+  createReconnectPolicy,
+  createScanFlow,
+} from '@sensync2/adapter-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 import {
   buildBleTransportConnectRequest,
@@ -34,15 +37,23 @@ const ZephyrPollTimerId = 'zephyr-bioharness.poll';
 const ZephyrPollIntervalMs = 250;
 const NotificationSilenceTimeoutMs = 5_000;
 const ZephyrRrStreamId = 'zephyr.rr';
+const ZephyrOutputs = createOutputRegistry({
+  rr: { streamId: ZephyrRrStreamId, units: 's' },
+});
+const zephyrEmitter = createIrregularSignalEmitter(ZephyrOutputs);
+
+interface ZephyrScanCandidateData {
+  scanId?: string;
+  transportCandidateId?: string;
+  peripheralId?: string;
+  localName?: string;
+}
 
 let config = resolveZephyrBioHarnessConfig(undefined);
 let transport: BleTransport | null = null;
-let runtimeState: AdapterStateChangedPayload['state'] = 'disconnected';
 let scanInFlight = false;
 let manualDisconnectRequested = false;
 let lastConnectRequest: BleTransportConnectRequest | null = null;
-let reconnectAttempt = 0;
-let reconnectNextAttemptSessionMs: number | null = null;
 let reconnectReason: string | null = null;
 let lastPacketSeenSessionMs: number | null = null;
 let packetsReceived = 0;
@@ -52,6 +63,9 @@ let lastPacketKind: string | null = null;
 let lastPacketSizeBytes: number | null = null;
 let lastDisconnectReason: string | null = null;
 let rrExtractionState: ZephyrRrExtractionState = resetZephyrRrExtractionState();
+let zephyrState = createAdapterStateHolder({ adapterId: config.adapterId });
+let zephyrScanFlow = createScanFlow<ZephyrScanCandidateData>({ adapterId: config.adapterId });
+let reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
 
 function zephyrPollEvent() {
   return defineRuntimeEventInput({
@@ -67,105 +81,54 @@ function normalizeError(error: unknown): string {
   return normalizeBleError(error);
 }
 
-function adapterStateEvent(
-  adapterId: string,
-  state: AdapterStateChangedPayload['state'],
-  message?: string,
-  requestId?: string,
-) {
-  const payload: AdapterStateChangedPayload = { adapterId, state };
-  if (message !== undefined) payload.message = message;
-  if (requestId !== undefined) payload.requestId = requestId;
-  return defineRuntimeEventInput({
-    type: EventTypes.adapterStateChanged,
-    v: 1,
-    kind: 'fact',
-    priority: 'system',
-    payload,
-  });
-}
-
-function adapterScanStateEvent(
-  adapterId: string,
-  scanning: boolean,
-  requestId?: string,
-  scanId?: string,
-  message?: string,
-) {
-  const payload: AdapterScanStateChangedPayload = { adapterId, scanning };
-  if (requestId !== undefined) payload.requestId = requestId;
-  if (scanId !== undefined) payload.scanId = scanId;
-  if (message !== undefined) payload.message = message;
-  return defineRuntimeEventInput({
-    type: EventTypes.adapterScanStateChanged,
-    v: 1,
-    kind: 'fact',
-    priority: 'system',
-    payload,
-  });
-}
-
-function adapterScanCandidatesEvent(
-  adapterId: string,
-  scanId: string,
-  candidates: AdapterScanCandidatesPayload['candidates'],
-  requestId?: string,
-) {
-  const payload: AdapterScanCandidatesPayload = {
-    adapterId,
-    scanId,
-    candidates,
-  };
-  if (requestId !== undefined) payload.requestId = requestId;
-  return defineRuntimeEventInput({
-    type: EventTypes.adapterScanCandidates,
-    v: 1,
-    kind: 'fact',
-    priority: 'system',
-    payload,
-  });
-}
-
-function signalBatchEvent(
-  streamId: string,
-  channelId: string,
-  values: Float32Array,
-  timestampsMs: Float64Array,
-  units: string,
-): Omit<SignalBatchEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
-  return defineRuntimeEventInput({
-    type: EventTypes.signalBatch,
-    v: 1,
-    kind: 'data',
-    priority: 'data',
-    payload: {
-      streamId,
-      channelId,
-      sampleFormat: 'f32',
-      frameKind: 'irregular-signal-batch',
-      t0Ms: timestampsMs[0] ?? 0,
-      sampleCount: values.length,
-      values,
-      timestampsMs,
-      units,
-    },
-  });
-}
-
 async function setAdapterRuntimeState(
   ctx: PluginContext,
-  state: AdapterStateChangedPayload['state'],
+  state: Parameters<typeof zephyrState.setState>[1],
   requestId?: string,
   message?: string,
 ): Promise<void> {
-  runtimeState = state;
-  await ctx.emit(adapterStateEvent(config.adapterId, state, message, requestId));
+  await zephyrState.setState(ctx, state, requestId, message);
 }
 
 function resetReconnectState(): void {
-  reconnectAttempt = 0;
-  reconnectNextAttemptSessionMs = null;
   reconnectReason = null;
+  reconnectPolicy.reset();
+}
+
+function currentRuntimeState() {
+  return zephyrState.getState();
+}
+
+function stringFormField(formData: Record<string, unknown> | undefined, key: string): string | undefined {
+  const rawValue = formData?.[key];
+  return typeof rawValue === 'string' && rawValue.trim().length > 0 ? rawValue.trim() : undefined;
+}
+
+function buildConnectRequestFromCandidate(formData: Record<string, unknown> | undefined): BleTransportConnectRequest {
+  const connectRequest = buildBleTransportConnectRequest(formData);
+  const selectedCandidateId = stringFormField(formData, 'candidateId');
+  const scannedCandidate = selectedCandidateId ? zephyrScanFlow.getCandidateData(selectedCandidateId) : null;
+
+  if (selectedCandidateId && scannedCandidate === null && connectRequest.peripheralId === undefined) {
+    throw new Error('Выбранное устройство не найдено в последнем scan');
+  }
+
+  if (scannedCandidate) {
+    if (scannedCandidate.scanId !== undefined) {
+      connectRequest.scanId = scannedCandidate.scanId;
+    }
+    if (scannedCandidate.transportCandidateId !== undefined) {
+      connectRequest.candidateId = scannedCandidate.transportCandidateId;
+    }
+    if (scannedCandidate.peripheralId !== undefined) {
+      connectRequest.peripheralId = scannedCandidate.peripheralId;
+    }
+    if (connectRequest.localName === undefined && scannedCandidate.localName !== undefined) {
+      connectRequest.localName = scannedCandidate.localName;
+    }
+  }
+
+  return connectRequest;
 }
 
 function resetPacketStats(): void {
@@ -192,7 +155,7 @@ function emitTransportTelemetry(ctx: PluginContext): void {
   ctx.telemetry({ name: 'zephyr.packets_received', value: packetsReceived, unit: 'count', tags });
   ctx.telemetry({ name: 'zephyr.parse_errors', value: parseErrors, unit: 'count', tags });
   ctx.telemetry({ name: 'zephyr.rr_samples_received', value: rrSamplesReceived, unit: 'count', tags });
-  ctx.telemetry({ name: 'zephyr.reconnect_attempt', value: reconnectAttempt, unit: 'count', tags });
+  ctx.telemetry({ name: 'zephyr.reconnect_attempt', value: reconnectPolicy.getAttempt(), unit: 'count', tags });
   if (lastPacketSeenSessionMs !== null) {
     ctx.telemetry({
       name: 'zephyr.last_packet_age_ms',
@@ -258,36 +221,45 @@ async function handleScan(ctx: PluginContext, payload: AdapterScanRequestPayload
   if (scanInFlight) {
     throw new Error('Поиск Zephyr уже выполняется');
   }
-  if (runtimeState === 'connecting' || runtimeState === 'disconnecting') {
+  if (zephyrState.isState('connecting', 'disconnecting')) {
     throw new Error('Нельзя запускать поиск Zephyr во время connect/disconnect');
   }
 
+  const activeTransport = transport;
   scanInFlight = true;
-  const scanRequest = buildBleTransportScanRequest(payload.formData, payload.timeoutMs);
-  logDebug('scan:request', { requestId: payload.requestId, scanRequest });
-  await ctx.emit(adapterScanStateEvent(config.adapterId, true, payload.requestId));
   try {
-    const result = await transport.scan(scanRequest);
-    logDebug('scan:result', {
-      requestId: payload.requestId,
-      scanId: result.scanId,
-      candidates: result.candidates.map((candidate) => ({
-        candidateId: candidate.candidateId,
-        title: candidate.title,
-        details: candidate.details,
-      })),
+    await zephyrScanFlow.handleScanRequest(ctx, payload, async (scanPayload) => {
+      const scanRequest = buildBleTransportScanRequest(scanPayload.formData, scanPayload.timeoutMs);
+      logDebug('scan:request', { requestId: scanPayload.requestId, scanRequest });
+      const result = await activeTransport.scan(scanRequest);
+      logDebug('scan:result', {
+        requestId: scanPayload.requestId,
+        scanId: result.scanId,
+        candidates: result.candidates.map((candidate) => ({
+          candidateId: candidate.candidateId,
+          title: candidate.title,
+          details: candidate.details,
+        })),
+      });
+      return result.candidates.map((candidate) => {
+        const localName = stringFormField(candidate.connectFormData, 'localName');
+        const candidateData: ZephyrScanCandidateData = {
+          scanId: result.scanId,
+          transportCandidateId: candidate.candidateId,
+          peripheralId: stringFormField(candidate.connectFormData, 'peripheralId') ?? candidate.candidateId,
+        };
+        if (localName !== undefined) candidateData.localName = localName;
+
+        return {
+          title: candidate.title,
+          ...(candidate.subtitle !== undefined ? { subtitle: candidate.subtitle } : {}),
+          ...(candidate.details !== undefined ? { details: candidate.details } : {}),
+          data: candidateData,
+        };
+      });
     });
-    await ctx.emit(adapterScanCandidatesEvent(config.adapterId, result.scanId, result.candidates, payload.requestId));
-    await ctx.emit(adapterScanStateEvent(config.adapterId, false, payload.requestId, result.scanId));
   } catch (error) {
     warnDebug('scan:error', { requestId: payload.requestId, message: normalizeError(error) });
-    await ctx.emit(adapterScanStateEvent(
-      config.adapterId,
-      false,
-      payload.requestId,
-      undefined,
-      normalizeError(error),
-    ));
   } finally {
     scanInFlight = false;
   }
@@ -300,11 +272,11 @@ async function handleConnect(ctx: PluginContext, payload: AdapterConnectRequestP
   if (scanInFlight) {
     throw new Error('Дождись завершения поиска Zephyr перед подключением');
   }
-  if (runtimeState === 'connected' || runtimeState === 'connecting' || runtimeState === 'disconnecting') {
+  if (zephyrState.isState('connected', 'connecting', 'disconnecting')) {
     throw new Error('Zephyr уже подключается или подключён');
   }
 
-  const connectRequest = buildBleTransportConnectRequest(payload.formData);
+  const connectRequest = buildConnectRequestFromCandidate(payload.formData);
   if (!connectRequest.candidateId) {
     throw new Error('Для подключения Zephyr нужно выбрать устройство из результатов scan');
   }
@@ -338,14 +310,14 @@ async function handleDisconnect(ctx: PluginContext, payload: AdapterDisconnectRe
   if (!transport) {
     throw new Error('BLE transport Zephyr не инициализирован');
   }
-  if (runtimeState !== 'connected' && runtimeState !== 'failed' && runtimeState !== 'connecting') {
+  if (!zephyrState.isState('connected', 'failed', 'connecting')) {
     return;
   }
 
   manualDisconnectRequested = true;
   lastConnectRequest = null;
   resetReconnectState();
-  logDebug('disconnect:request', { requestId: payload.requestId, runtimeState });
+  logDebug('disconnect:request', { requestId: payload.requestId, runtimeState: currentRuntimeState() });
   await setAdapterRuntimeState(ctx, 'disconnecting', payload.requestId);
   stopPolling(ctx);
   await transport.disconnect();
@@ -371,34 +343,34 @@ async function scheduleReconnect(ctx: PluginContext, reason: string): Promise<vo
     await setAdapterRuntimeState(ctx, 'failed', undefined, reason);
     return;
   }
-  if (reconnectNextAttemptSessionMs !== null) {
+  if (reconnectPolicy.getNextAttemptSessionMs() !== null) {
     return;
   }
 
   reconnectReason = reason;
-  reconnectNextAttemptSessionMs = ctx.clock.nowSessionMs() + config.reconnectRetryDelayMs;
+  reconnectPolicy.schedule(ctx.clock.nowSessionMs());
   await transport.disconnect().catch(() => undefined);
   logDebug('reconnect:armed', {
-    reconnectAttempt,
+    reconnectAttempt: reconnectPolicy.getAttempt(),
     reconnectReason,
-    reconnectNextAttemptSessionMs,
+    reconnectNextAttemptSessionMs: reconnectPolicy.getNextAttemptSessionMs(),
   });
   await setAdapterRuntimeState(ctx, 'connecting', undefined, `Автопереподключение Zephyr: ${reason}`);
 }
 
 async function tryPendingReconnect(ctx: PluginContext): Promise<void> {
-  if (!transport || !lastConnectRequest || reconnectNextAttemptSessionMs === null) {
+  if (!transport || !lastConnectRequest || reconnectPolicy.getNextAttemptSessionMs() === null) {
     return;
   }
-  if (ctx.clock.nowSessionMs() < reconnectNextAttemptSessionMs) {
+  if (!reconnectPolicy.isReady(ctx.clock.nowSessionMs())) {
     return;
   }
 
-  reconnectAttempt += 1;
+  const reconnectAttempt = reconnectPolicy.getAttempt();
   logDebug('reconnect:attempt', {
     reconnectAttempt,
     reconnectReason,
-    reconnectNextAttemptSessionMs,
+    reconnectNextAttemptSessionMs: reconnectPolicy.getNextAttemptSessionMs(),
   });
   try {
     await transport.connect(lastConnectRequest);
@@ -410,11 +382,11 @@ async function tryPendingReconnect(ctx: PluginContext): Promise<void> {
     await setAdapterRuntimeState(ctx, 'connected', undefined, 'Автопереподключение Zephyr выполнено');
   } catch (error) {
     lastDisconnectReason = normalizeError(error);
-    reconnectNextAttemptSessionMs = ctx.clock.nowSessionMs() + config.reconnectRetryDelayMs;
+    reconnectPolicy.schedule(ctx.clock.nowSessionMs());
     warnDebug('reconnect:error', {
       reconnectAttempt,
       message: lastDisconnectReason,
-      nextAttemptSessionMs: reconnectNextAttemptSessionMs,
+      nextAttemptSessionMs: reconnectPolicy.getNextAttemptSessionMs(),
     });
     await setAdapterRuntimeState(
       ctx,
@@ -446,7 +418,7 @@ async function emitRrSignalBatch(
     timestampsMs[index] = sample.timestampMs;
   });
   rrSamplesReceived += extraction.samples.length;
-  await ctx.emit(signalBatchEvent(ZephyrRrStreamId, ZephyrRrStreamId, values, timestampsMs, 's'));
+  await zephyrEmitter.emit(ctx, 'rr', values, { timestampsMs });
 }
 
 async function handleTransportPacket(ctx: PluginContext, rawData: Buffer): Promise<void> {
@@ -489,11 +461,11 @@ async function handleTransportPacket(ctx: PluginContext, rawData: Buffer): Promi
 async function handlePoll(ctx: PluginContext): Promise<void> {
   if (!transport) return;
 
-  if (runtimeState === 'connecting' && reconnectNextAttemptSessionMs !== null) {
+  if (currentRuntimeState() === 'connecting' && reconnectPolicy.getNextAttemptSessionMs() !== null) {
     await tryPendingReconnect(ctx);
   }
 
-  if (runtimeState === 'connected') {
+  if (zephyrState.isState('connected')) {
     const connectionSignal = transport.takeConnectionSignal();
     if (connectionSignal) {
       warnDebug('poll:connection-signal', { signal: connectionSignal });
@@ -505,7 +477,7 @@ async function handlePoll(ctx: PluginContext): Promise<void> {
     let packet = transport.readPacket();
     while (packet) {
       await handleTransportPacket(ctx, packet.data);
-      if (runtimeState !== 'connected') {
+      if (!zephyrState.isState('connected')) {
         emitTransportTelemetry(ctx);
         return;
       }
@@ -560,7 +532,9 @@ export default definePlugin({
       ...readZephyrBioHarnessEnvOverrides(process.env),
     });
     transport = createBleTransport(config);
-    runtimeState = 'disconnected';
+    zephyrState = createAdapterStateHolder({ adapterId: config.adapterId });
+    zephyrScanFlow = createScanFlow<ZephyrScanCandidateData>({ adapterId: config.adapterId });
+    reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
     scanInFlight = false;
     manualDisconnectRequested = false;
     lastConnectRequest = null;
@@ -569,8 +543,8 @@ export default definePlugin({
     resetPacketStats();
     resetRrStreamState();
     logDebug('init:config', config);
-    await ctx.emit(adapterStateEvent(config.adapterId, 'disconnected'));
-    await ctx.emit(adapterScanStateEvent(config.adapterId, false));
+    await zephyrState.emitCurrent(ctx);
+    await ctx.emit(zephyrScanFlow.createScanStateEvent(false));
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.adapterScanRequest) {
@@ -604,7 +578,9 @@ export default definePlugin({
       await transport.disconnect().catch(() => undefined);
       transport = null;
     }
-    runtimeState = 'disconnected';
+    zephyrState = createAdapterStateHolder({ adapterId: config.adapterId });
+    zephyrScanFlow = createScanFlow<ZephyrScanCandidateData>({ adapterId: config.adapterId });
+    reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
     scanInFlight = false;
     manualDisconnectRequested = false;
     lastConnectRequest = null;

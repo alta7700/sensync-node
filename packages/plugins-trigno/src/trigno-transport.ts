@@ -17,6 +17,8 @@ export const TrignoAuxStepBytes = TrignoChannelSlots * AuxFrameWidth * 4;
 export interface TrignoTcpSessionOptions {
   host: string;
   sensorSlot: number;
+  backwardsCompatibility: boolean;
+  upsampling: boolean;
   commandPort: number;
   emgPort: number;
   auxPort: number;
@@ -321,8 +323,17 @@ export class TrignoTcpSession {
     await client.request('TRIGGER START OFF', this.options.commandTimeoutMs);
     await client.request('TRIGGER STOP OFF', this.options.commandTimeoutMs);
     await client.request('ENDIAN LITTLE', this.options.commandTimeoutMs);
-    await client.request('BACKWARDS COMPATIBILITY ON', this.options.commandTimeoutMs);
-    await client.request('UPSAMPLE ON', this.options.commandTimeoutMs);
+    // По Trigno SDK Guide режим BC=ON меняет фактические частоты SDK data ports,
+    // а при BC=OFF порты остаются в "нативной" частотной схеме для текущего layout.
+    // Поэтому profile-флаги задаём явно из adapter config, а не хардкодим в transport.
+    await client.request(
+      `BACKWARDS COMPATIBILITY ${this.options.backwardsCompatibility ? 'ON' : 'OFF'}`,
+      this.options.commandTimeoutMs,
+    );
+    await client.request(
+      `UPSAMPLE ${this.options.upsampling ? 'ON' : 'OFF'}`,
+      this.options.commandTimeoutMs,
+    );
     await client.request(`SENSOR ${this.options.sensorSlot} SETMODE 7`, this.options.commandTimeoutMs);
   }
 

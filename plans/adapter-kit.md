@@ -44,7 +44,7 @@
 По сути там уже реализована схема:
 
 - внутренний источник данных определяется через `port + channel + frame`;
-- затем этот источник маппится во внешнее имя канала;
+- затем этот источник маппится во внешний `streamId`;
 - при этом задаются дополнительные свойства:
   - `fs`;
   - `scaler`;
@@ -101,6 +101,8 @@
 
 - `adapter-kit` — библиотека, а не новый runtime-plugin;
 - `adapter-kit` — набор composable helper-модулей, а не обязательный монолитный wrapper для каждого адаптера;
+- если речь идёт про runtime identity выходных данных, библиотека оперирует только термином `stream` и полем `streamId`;
+- термин `channel` допустим только для внутренних transport/source-структур вроде `port/channel/frame`;
 - device transport остаётся в конкретном пакете адаптера (`plugins-trigno`, `plugins-ble`, `plugins-ant-plus` и т.д.);
 - `adapter-kit` не знает о TCP/BLE/ANT+ деталях устройства;
 - UI schema и `modalForm` живут в `ui-gateway`, не в `adapter-kit`;
@@ -131,7 +133,7 @@
 
 Внешнему runtime нужен другой контракт:
 
-- `signal.batch` с конкретными `streamId` / `channelId`;
+- `signal.batch` с конкретными `streamId`;
 - понятные `units`;
 - фиксированный `sampleFormat`;
 - понятная timeline policy.
@@ -146,7 +148,6 @@
 outputs: {
   emg: {
     streamId: 'trigno.avanti',
-    channelId: 'trigno.avanti',
     sampleFormat: 'f32',
     units: 'V',
     source: {
@@ -278,7 +279,7 @@ outputs: {
   - timeline;
   - преобразование значений.
 
-Именно это позволит перестать разносить знания о каналах по нескольким файлам.
+Именно это позволит перестать разносить знания о runtime-потоках по нескольким файлам.
 
 ### 5. Политики `autoconnect`
 
@@ -419,7 +420,6 @@ const state = createAdapterStateMachine({ adapterId: 'trigno' });
 const outputs = createOutputRegistry({
   emg: {
     streamId: 'trigno.avanti',
-    channelId: 'trigno.avanti',
     sampleFormat: 'f32',
     units: 'V',
     source: { kind: 'frame', port: 'EMG', channel: 1, frame: 0 },
@@ -506,7 +506,7 @@ const emitSignal = createUniformSignalEmitter(outputs);
 
 ### Риск 2. Mapping сведут к строковым alias
 
-Если mapping ограничить только rename channel'ов, он не решит реальные задачи таймлайна, units и scaling.
+Если mapping ограничить только rename `streamId`, он не решит реальные задачи таймлайна, units и scaling.
 
 Снижение риска:
 

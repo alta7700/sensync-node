@@ -80,8 +80,8 @@ async function main(): Promise<void> {
           attempt: 1,
         },
         channels: [
-          { channelId: 'fake.a1', minSamples: 40, maxBufferedMs: 300 },
-          { channelId: 'fake.b', minSamples: 40, maxBufferedMs: 300 },
+          { streamId: 'fake.a1', minSamples: 40, maxBufferedMs: 300 },
+          { streamId: 'fake.b', minSamples: 40, maxBufferedMs: 300 },
         ],
       },
     ), 'smoke');

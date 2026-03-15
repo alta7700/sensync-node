@@ -3,12 +3,12 @@ import { definePlugin } from '@sensync2/plugin-sdk';
 import { signalBatchEvent } from './helpers.ts';
 
 interface RollingMinConfig {
-  sourceChannelId: string;
-  outputChannelId: string;
+  sourceStreamId: string;
+  outputStreamId: string;
 }
 
 const FlushTickType = 'processor.rolling-min.flush';
-let cfg: RollingMinConfig = { sourceChannelId: 'fake.a2', outputChannelId: 'metrics.fake.a2.rolling_min_1s' };
+let cfg: RollingMinConfig = { sourceStreamId: 'fake.a2', outputStreamId: 'metrics.fake.a2.rolling_min_1s' };
 let windowValues: number[] = [];
 
 export default definePlugin({
@@ -17,7 +17,7 @@ export default definePlugin({
     version: '0.1.0',
     required: false,
     subscriptions: [
-      { type: EventTypes.signalBatch, v: 1, kind: 'data', priority: 'data', filter: { channelIdPrefix: 'fake.a' } },
+      { type: EventTypes.signalBatch, v: 1, kind: 'data', priority: 'data', filter: { streamIdPrefix: 'fake.a' } },
       { type: FlushTickType, v: 1, kind: 'fact', priority: 'system' },
     ],
     mailbox: {
@@ -43,7 +43,7 @@ export default definePlugin({
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.signalBatch) {
-      if (event.payload.channelId !== cfg.sourceChannelId) return;
+      if (event.payload.streamId !== cfg.sourceStreamId) return;
       for (let i = 0; i < event.payload.values.length; i += 1) {
         windowValues.push(Number(event.payload.values[i]));
       }
@@ -61,7 +61,7 @@ export default definePlugin({
         if (value < min) min = value;
       }
       const values = new Float32Array([min]);
-      await ctx.emit(signalBatchEvent(cfg.outputChannelId, cfg.outputChannelId, values, ctx.clock.nowSessionMs(), 1000, 'f32', 'a.u.'));
+      await ctx.emit(signalBatchEvent(cfg.outputStreamId, values, ctx.clock.nowSessionMs(), 1000, 'f32', 'a.u.'));
 
       const metricEvent = defineRuntimeEventInput({
         type: 'metric.value.changed',

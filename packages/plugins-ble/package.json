@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@abandonware/noble": "^1.9.2-26",
+    "@sensync2/adapter-kit": "0.1.0",
     "@sensync2/core": "0.1.0",
     "@sensync2/plugin-sdk": "0.1.0"
   },

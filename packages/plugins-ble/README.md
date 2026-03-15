@@ -16,12 +16,13 @@ BLE worker-плагины и внутренний transport-слой для BLE-
   - `ble-central.ts` для `real`/`fake` BLE central lifecycle;
   - `zephyr-protocol.ts` для UUID, handshake и разбора пакетов Zephyr.
 - Адаптер работает через shared `adapter.scan.*`, `adapter.state.changed` и `signal.batch`, не вводя отдельный BLE bus-слой.
+- Lifecycle, scan cache, reconnect timer и irregular emit адаптера теперь собраны на `@sensync2/adapter-kit`.
 - В real scan `v1` пакет больше не режет список только по `localName`: в UI попадают все найденные BLE-кандидаты, а Zephyr-похожие устройства поднимаются выше по score.
 - Для Zephyr `RR` публикуется как отдельный поток `zephyr.rr`, поэтому его можно сразу рисовать в общих live-графиках и писать дальше в downstream pipeline.
 
 ## Взаимодействие
 
-- Использует только `@sensync2/core`, `@sensync2/plugin-sdk` и `@abandonware/noble`.
+- Использует `@sensync2/adapter-kit`, `@sensync2/core`, `@sensync2/plugin-sdk` и `@abandonware/noble`.
 - Поднимается из `apps/runtime` как обычный worker-плагин рядом с ANT+ адаптером в профиле `veloerg`.
 - UI-flow materialize'ит `packages/plugins-ui-gateway`.
 

@@ -22,7 +22,6 @@ async function createFixtureFile(): Promise<string> {
   try {
     const channels = file.create_group('channels', true);
     const group = channels.create_group('fake.a1', true);
-    createAttribute(group, 'channelId', 'fake.a1');
     createAttribute(group, 'streamId', 'fake.a1');
     createAttribute(group, 'sampleFormat', 'f32');
     createAttribute(group, 'frameKind', 'uniform-signal-batch');
@@ -54,7 +53,7 @@ describe('hdf5-simulation-boundary', () => {
     const config = resolveHdf5SimulationConfig({
       adapterId: 'fake-hdf5-simulation',
       filePath,
-      channelIds: ['fake.a1', 'fake.a1'],
+      streamIds: ['fake.a1', 'fake.a1'],
       batchMs: 25.8,
       speed: 2,
       readChunkSamples: 2.9,
@@ -63,7 +62,7 @@ describe('hdf5-simulation-boundary', () => {
     expect(config).toMatchObject({
       adapterId: 'fake-hdf5-simulation',
       filePath,
-      channelIds: ['fake.a1'],
+      streamIds: ['fake.a1'],
       batchMs: 25,
       speed: 2,
       readChunkSamples: 2,
@@ -74,7 +73,7 @@ describe('hdf5-simulation-boundary', () => {
       expect(session.channels).toHaveLength(1);
       const firstEvent = readSimulationWindowForChannel(session.channels[0]!, 25);
       expect(firstEvent).not.toBeNull();
-      expect(firstEvent?.payload.channelId).toBe('fake.a1');
+      expect(firstEvent?.payload.streamId).toBe('fake.a1');
       expect(firstEvent?.payload.sampleCount).toBe(3);
       expect(Array.from(firstEvent?.payload.values ?? [])).toEqual([1, 2, 3]);
     } finally {

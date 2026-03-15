@@ -5,11 +5,16 @@ import {
   EventTypes,
   type AdapterConnectRequestPayload,
   type AdapterDisconnectRequestPayload,
-  type AdapterStateChangedPayload,
-  type SignalBatchEvent,
 } from '@sensync2/core';
+import {
+  createAdapterStateHolder,
+  createOutputRegistry,
+  createReconnectPolicy,
+  createUniformSignalEmitter,
+} from '@sensync2/adapter-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 import {
+  buildTrignoExpectedStartSnapshot,
   buildTrignoConnectRequest,
   diffTrignoExpectedStartSnapshot,
   formatTrignoSnapshotMismatchMessage,
@@ -28,6 +33,13 @@ const TrignoEmgStreamId = 'trigno.avanti';
 const TrignoGyroXStreamId = 'trigno.avanti.gyro.x';
 const TrignoGyroYStreamId = 'trigno.avanti.gyro.y';
 const TrignoGyroZStreamId = 'trigno.avanti.gyro.z';
+const TrignoOutputs = createOutputRegistry({
+  emg: { streamId: TrignoEmgStreamId, units: 'V' },
+  gyroX: { streamId: TrignoGyroXStreamId, units: 'deg/s' },
+  gyroY: { streamId: TrignoGyroYStreamId, units: 'deg/s' },
+  gyroZ: { streamId: TrignoGyroZStreamId, units: 'deg/s' },
+});
+const trignoEmitter = createUniformSignalEmitter(TrignoOutputs);
 
 class TrignoStartBlockedError extends Error {
   constructor(message: string) {
@@ -43,11 +55,8 @@ interface StreamTimeline {
 }
 
 let config = resolveTrignoAdapterConfig(undefined);
-let runtimeState: AdapterStateChangedPayload['state'] = 'disconnected';
 let currentSession: TrignoTcpSession | null = null;
 let lastConnectRequest: TrignoConnectRequest | null = null;
-let reconnectNextAttemptSessionMs: number | null = null;
-let reconnectAttempt = 0;
 let reconnectReason: string | null = null;
 let manualDisconnectRequested = false;
 let shouldStream = false;
@@ -57,6 +66,8 @@ let lastEmgDataSessionMs: number | null = null;
 let lastAuxDataSessionMs: number | null = null;
 let emgTimeline: StreamTimeline = { nextT0Ms: null, dtMs: 1, sampleRateHz: 1 };
 let gyroTimeline: StreamTimeline = { nextT0Ms: null, dtMs: 1, sampleRateHz: 1 };
+let trignoState = createAdapterStateHolder({ adapterId: config.adapterId });
+let reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
 
 function trignoPollEvent() {
   return defineRuntimeEventInput({
@@ -65,24 +76,6 @@ function trignoPollEvent() {
     kind: 'fact',
     priority: 'system',
     payload: {},
-  });
-}
-
-function adapterStateEvent(
-  adapterId: string,
-  state: AdapterStateChangedPayload['state'],
-  message?: string,
-  requestId?: string,
-) {
-  const payload: AdapterStateChangedPayload = { adapterId, state };
-  if (message !== undefined) payload.message = message;
-  if (requestId !== undefined) payload.requestId = requestId;
-  return defineRuntimeEventInput({
-    type: EventTypes.adapterStateChanged,
-    v: 1,
-    kind: 'fact',
-    priority: 'system',
-    payload,
   });
 }
 
@@ -101,33 +94,6 @@ function statusReportedEvent(snapshot: TrignoStatusSnapshot, requestId?: string)
   });
 }
 
-function signalBatchEvent(
-  streamId: string,
-  values: Float32Array,
-  timeline: StreamTimeline,
-  t0Ms: number,
-  units: string,
-): Omit<SignalBatchEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
-  return defineRuntimeEventInput({
-    type: EventTypes.signalBatch,
-    v: 1,
-    kind: 'data',
-    priority: 'data',
-    payload: {
-      streamId,
-      channelId: streamId,
-      sampleFormat: 'f32',
-      frameKind: 'uniform-signal-batch',
-      t0Ms,
-      dtMs: timeline.dtMs,
-      sampleRateHz: timeline.sampleRateHz,
-      sampleCount: values.length,
-      values,
-      units,
-    },
-  });
-}
-
 function normalizeError(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
     return error.message;
@@ -136,9 +102,12 @@ function normalizeError(error: unknown): string {
 }
 
 function resetReconnectState(): void {
-  reconnectNextAttemptSessionMs = null;
-  reconnectAttempt = 0;
   reconnectReason = null;
+  reconnectPolicy.reset();
+}
+
+function currentRuntimeState() {
+  return trignoState.getState();
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -199,12 +168,11 @@ function markDataActivity(ctx: PluginContext, kind: 'emg' | 'aux'): void {
 
 async function setAdapterRuntimeState(
   ctx: PluginContext,
-  state: AdapterStateChangedPayload['state'],
+  state: Parameters<typeof trignoState.setState>[1],
   requestId?: string,
   message?: string,
 ): Promise<void> {
-  runtimeState = state;
-  await ctx.emit(adapterStateEvent(config.adapterId, state, message, requestId));
+  await trignoState.setState(ctx, state, requestId, message);
 }
 
 async function emitStatusSnapshot(ctx: PluginContext, snapshot: TrignoStatusSnapshot, requestId?: string): Promise<void> {
@@ -224,6 +192,8 @@ function sessionOptions(request: TrignoConnectRequest): TrignoTcpSessionOptions 
   return {
     host: request.host,
     sensorSlot: request.sensorSlot,
+    backwardsCompatibility: config.backwardsCompatibility,
+    upsampling: config.upsampling,
     commandPort: config.commandPort,
     emgPort: config.emgPort,
     auxPort: config.auxPort,
@@ -259,7 +229,7 @@ async function validateStartSnapshot(
   requestId?: string,
 ): Promise<TrignoStatusSnapshot> {
   const snapshot = await refreshStatusSnapshot(ctx, requestId);
-  const mismatches = diffTrignoExpectedStartSnapshot(snapshot);
+  const mismatches = diffTrignoExpectedStartSnapshot(snapshot, buildTrignoExpectedStartSnapshot(config));
   if (mismatches.length > 0) {
     throw new TrignoStartBlockedError(formatTrignoSnapshotMismatchMessage(mismatches));
   }
@@ -274,7 +244,11 @@ function nextBatchT0(ctx: PluginContext, timeline: StreamTimeline, sampleCount: 
 
 async function emitEmgBatch(ctx: PluginContext, values: Float32Array): Promise<void> {
   const t0Ms = nextBatchT0(ctx, emgTimeline, values.length);
-  await ctx.emit(signalBatchEvent(TrignoEmgStreamId, values, emgTimeline, t0Ms, 'V'));
+  await trignoEmitter.emit(ctx, 'emg', values, {
+    t0Ms,
+    dtMs: emgTimeline.dtMs,
+    sampleRateHz: emgTimeline.sampleRateHz,
+  });
 }
 
 async function emitGyroBatches(
@@ -283,9 +257,9 @@ async function emitGyroBatches(
 ): Promise<void> {
   const t0Ms = nextBatchT0(ctx, gyroTimeline, samples.x.length);
   await Promise.all([
-    ctx.emit(signalBatchEvent(TrignoGyroXStreamId, samples.x, gyroTimeline, t0Ms, 'deg/s')),
-    ctx.emit(signalBatchEvent(TrignoGyroYStreamId, samples.y, gyroTimeline, t0Ms, 'deg/s')),
-    ctx.emit(signalBatchEvent(TrignoGyroZStreamId, samples.z, gyroTimeline, t0Ms, 'deg/s')),
+    trignoEmitter.emit(ctx, 'gyroX', samples.x, { t0Ms, dtMs: gyroTimeline.dtMs, sampleRateHz: gyroTimeline.sampleRateHz }),
+    trignoEmitter.emit(ctx, 'gyroY', samples.y, { t0Ms, dtMs: gyroTimeline.dtMs, sampleRateHz: gyroTimeline.sampleRateHz }),
+    trignoEmitter.emit(ctx, 'gyroZ', samples.z, { t0Ms, dtMs: gyroTimeline.dtMs, sampleRateHz: gyroTimeline.sampleRateHz }),
   ]);
 }
 
@@ -343,7 +317,7 @@ async function stopStreaming(requestId: string | undefined): Promise<void> {
 
 async function handleConnect(ctx: PluginContext, payload: AdapterConnectRequestPayload): Promise<void> {
   try {
-    if (runtimeState === 'connecting' || runtimeState === 'connected' || runtimeState === 'disconnecting' || runtimeState === 'paused') {
+    if (trignoState.isState('connecting', 'connected', 'disconnecting', 'paused')) {
       throw new Error('Trigno уже подключён или находится в процессе connect/disconnect');
     }
 
@@ -374,7 +348,7 @@ async function handleDisconnect(ctx: PluginContext, payload: AdapterDisconnectRe
   shouldStream = false;
   resetReconnectState();
 
-  if (runtimeState === 'disconnected' && !currentSession) {
+  if (trignoState.isState('disconnected') && !currentSession) {
     return;
   }
 
@@ -392,11 +366,11 @@ async function handleStartRequest(ctx: PluginContext, payload: TrignoCommandRequ
     if (!currentSession) {
       throw new Error('Trigno не подключён');
     }
-    if (runtimeState !== 'paused' && runtimeState !== 'connected') {
+    if (!trignoState.isState('paused', 'connected')) {
       throw new Error('Trigno нельзя запустить в текущем состоянии');
     }
 
-    if (runtimeState === 'connected' && shouldStream) {
+    if (trignoState.isState('connected') && shouldStream) {
       return;
     }
 
@@ -418,7 +392,7 @@ async function handleStartRequest(ctx: PluginContext, payload: TrignoCommandRequ
 async function handleStopRequest(ctx: PluginContext, payload: TrignoCommandRequestPayload): Promise<void> {
   try {
     if (!currentSession) return;
-    if (!shouldStream && runtimeState === 'paused') return;
+    if (!shouldStream && trignoState.isState('paused')) return;
 
     await stopStreaming(payload.requestId);
     resetTimelines(lastStatusSnapshot);
@@ -451,13 +425,13 @@ async function scheduleReconnect(ctx: PluginContext, reason: string): Promise<vo
     return;
   }
 
-  if (reconnectNextAttemptSessionMs !== null) {
+  if (reconnectPolicy.getNextAttemptSessionMs() !== null) {
     return;
   }
 
   await closeCurrentSession();
   armConnectCooldown(ctx);
-  reconnectNextAttemptSessionMs = ctx.clock.nowSessionMs() + config.reconnectRetryDelayMs;
+  reconnectPolicy.schedule(ctx.clock.nowSessionMs());
   await setAdapterRuntimeState(ctx, 'connecting', undefined, `Автопереподключение Trigno: ${reason}`);
 }
 
@@ -471,32 +445,31 @@ async function failDisconnectedPausedSession(ctx: PluginContext, reason: string)
 }
 
 async function tryPendingReconnect(ctx: PluginContext): Promise<void> {
-  if (!lastConnectRequest || reconnectNextAttemptSessionMs === null) {
+  if (!lastConnectRequest || reconnectPolicy.getNextAttemptSessionMs() === null) {
     return;
   }
-  if (ctx.clock.nowSessionMs() < reconnectNextAttemptSessionMs) {
+  if (!reconnectPolicy.isReady(ctx.clock.nowSessionMs())) {
     return;
   }
 
-  reconnectAttempt += 1;
+  const reconnectAttempt = reconnectPolicy.getAttempt();
   try {
     await waitForConnectCooldown(ctx);
     currentSession = await openSession(ctx, lastConnectRequest);
-    reconnectNextAttemptSessionMs = null;
     reconnectReason = null;
     await startStreaming(ctx);
     resetReconnectState();
     await setAdapterRuntimeState(ctx, 'connected', undefined, 'Автопереподключение Trigno выполнено');
   } catch (error) {
     if (error instanceof TrignoStartBlockedError) {
-      reconnectNextAttemptSessionMs = null;
       reconnectReason = error.message;
+      reconnectPolicy.cancel();
       shouldStream = false;
       await setAdapterRuntimeState(ctx, 'paused', undefined, error.message);
       return;
     }
 
-    reconnectNextAttemptSessionMs = ctx.clock.nowSessionMs() + config.reconnectRetryDelayMs;
+    reconnectPolicy.schedule(ctx.clock.nowSessionMs());
     reconnectReason = normalizeError(error);
     await closeCurrentSession();
     armConnectCooldown(ctx);
@@ -513,7 +486,7 @@ async function handlePoll(ctx: PluginContext): Promise<void> {
   if (currentSession) {
     const disconnectReason = currentSession.takeDisconnectReason();
     if (disconnectReason) {
-      if (!shouldStream || runtimeState === 'paused') {
+      if (!shouldStream || trignoState.isState('paused')) {
         await failDisconnectedPausedSession(ctx, disconnectReason);
         return;
       }
@@ -522,7 +495,7 @@ async function handlePoll(ctx: PluginContext): Promise<void> {
     }
   }
 
-  if (shouldStream && runtimeState === 'connected') {
+  if (shouldStream && trignoState.isState('connected')) {
     const now = ctx.clock.nowSessionMs();
     const emgAgeMs = lastEmgDataSessionMs === null ? config.dataSilenceTimeoutMs + 1 : now - lastEmgDataSessionMs;
     const auxAgeMs = lastAuxDataSessionMs === null ? config.dataSilenceTimeoutMs + 1 : now - lastAuxDataSessionMs;
@@ -535,7 +508,7 @@ async function handlePoll(ctx: PluginContext): Promise<void> {
     }
   }
 
-  if (runtimeState === 'connecting' && reconnectNextAttemptSessionMs !== null) {
+  if (trignoState.isState('connecting') && reconnectPolicy.getNextAttemptSessionMs() !== null) {
     await tryPendingReconnect(ctx);
   }
 }
@@ -567,7 +540,8 @@ export default definePlugin({
   },
   async onInit(ctx) {
     config = resolveTrignoAdapterConfig(ctx.getConfig<TrignoAdapterConfig>());
-    runtimeState = 'disconnected';
+    trignoState = createAdapterStateHolder({ adapterId: config.adapterId });
+    reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
     currentSession = null;
     lastConnectRequest = null;
     lastStatusSnapshot = null;
@@ -578,7 +552,7 @@ export default definePlugin({
     resetTimelines(null);
     nextConnectAllowedSessionMs = null;
     startPolling(ctx);
-    await ctx.emit(adapterStateEvent(config.adapterId, 'disconnected'));
+    await trignoState.emitCurrent(ctx);
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.adapterConnectRequest) {
@@ -620,7 +594,8 @@ export default definePlugin({
     shouldStream = false;
     manualDisconnectRequested = true;
     await closeCurrentSession();
-    runtimeState = 'disconnected';
+    trignoState = createAdapterStateHolder({ adapterId: config.adapterId });
+    reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
     lastConnectRequest = null;
     lastStatusSnapshot = null;
     resetReconnectState();

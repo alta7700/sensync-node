@@ -84,9 +84,22 @@ Boundary-валидация payload:
 
 Правила:
 
+- `streamId` — единственный идентификатор data stream в runtime, UI, recorder и processor-слое.
 - `sampleCount` должен совпадать с длиной `values`.
 - Если присутствует `timestampsMs`, его длина должна совпадать с `sampleCount`.
 - Для irregular потоков клиент и runtime обязаны доверять `timestampsMs`, а не реконструировать время из `t0Ms`.
+- Отдельного public `channelId` в shared `signal.batch` контракте больше нет; если адаптеру нужен внутренний `channel`, это уже device-specific mapping, а не runtime identity.
+
+## 3.1 Runtime Startup Barrier
+
+После того как runtime зарегистрировал manifest'ы всех worker-плагинов в индексе подписок,
+он публикует shared fact `runtime.started`.
+
+Правила:
+
+- это system-event, а не UI-сообщение;
+- он нужен как безопасный барьер для startup-логики, которая не должна эмитить state/data раньше готовности подписчиков;
+- `auto-on-init` для adapter-логики в `v1` следует трактовать как "автоподключить после `runtime.started`", а не "выполнить прямо внутри `onInit()`".
 
 ## 4. Recording Events
 
@@ -100,7 +113,8 @@ Boundary-валидация payload:
   - выбирает writer по `writer`;
   - несёт `filenameTemplate`;
   - несёт пользовательские file-level `metadata`;
-  - фиксирует набор `channels[]` на всю длительность записи.
+  - фиксирует набор stream-конфигов в `channels[]` на всю длительность записи;
+  - имя поля `channels[]` историческое, но каждая запись внутри идентифицируется по `streamId`.
 - `recording.pause`
   - означает `flush` всех буферов и переход в `paused`;
   - в `v1` не меняет runtime subscriptions, только внутреннее состояние плагина.
@@ -122,8 +136,8 @@ Boundary-валидация payload:
   - `string`
   - `number`
   - `boolean`
-- запись выбирает каналы только по точному `channelId`;
-- `sampleFormat` одного `channelId` внутри одного файла менять нельзя;
+- запись выбирает потоки только по точному `streamId`;
+- `sampleFormat` одного `streamId` внутри одного файла менять нельзя;
 - динамические `subscribe/unsubscribe` на `pause/resume` пока не поддерживаются runtime и отложены на будущий этап.
 
 ## 5. Simulation Events
@@ -174,7 +188,8 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - `adapter.scan.candidates`
   - несёт итоговый список найденных устройств;
   - `scanId` живёт только в рамках одного scan;
-  - `connectFormData` внутри кандидата считается opaque payload-фрагментом для последующего `adapter.connect.request`.
+  - `connectFormData` внутри кандидата считается opaque payload-фрагментом для последующего `adapter.connect.request`;
+  - если scan реализован через `adapter-kit/scan-flow`, наружу обычно уходит только `{ candidateId }`, а plugin-specific данные остаются во внутреннем cache адаптера.
 
 Ограничения `v1`:
 
@@ -219,9 +234,11 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 1. Main runtime отправляет `plugin.init`.
 2. Worker импортирует модуль, вызывает `onInit`.
 3. Worker отвечает `plugin.ready`.
-4. Runtime начинает доставку `plugin.deliver`.
-5. После каждого успешно обработанного события worker отправляет `plugin.ack`.
-6. При остановке runtime отправляет `plugin.shutdown`.
+4. Runtime регистрирует manifest плагина в индексе подписок.
+5. После готовности всех worker'ов runtime может публиковать startup-barrier `runtime.started`.
+6. Runtime начинает обычную доставку `plugin.deliver`.
+7. После каждого успешно обработанного события worker отправляет `plugin.ack`.
+8. При остановке runtime отправляет `plugin.shutdown`.
 
 Ограничения `v1`:
 

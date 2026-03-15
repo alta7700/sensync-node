@@ -57,15 +57,15 @@ function makeFakePluginDescriptors(): PluginDescriptor[] {
       id: 'rolling-min-processor',
       modulePath: moduleFileUrl('packages/plugins-fake/src/rolling-min-processor.ts'),
       config: {
-        sourceChannelId: 'fake.a2',
-        outputChannelId: 'metrics.fake.a2.rolling_min_1s',
+        sourceStreamId: 'fake.a2',
+        outputStreamId: 'metrics.fake.a2.rolling_min_1s',
       },
     },
     {
       id: 'activity-detector-processor',
       modulePath: moduleFileUrl('packages/plugins-fake/src/activity-detector-processor.ts'),
       config: {
-        sourceChannelId: 'shapes.signal',
+        sourceStreamId: 'shapes.signal',
         threshold: 0.6,
       },
     },
@@ -98,7 +98,7 @@ function makeFakeHdf5SimulationPluginDescriptors(): PluginDescriptor[] {
       config: {
         adapterId: 'fake-hdf5-simulation',
         filePath: envOverrides.filePath,
-        channelIds: [...FakeSimulationChannelIds],
+        streamIds: [...FakeSimulationChannelIds],
         batchMs: envOverrides.batchMs,
         speed: envOverrides.speed,
         readChunkSamples: envOverrides.readChunkSamples,
@@ -139,6 +139,8 @@ function makeVeloergPluginDescriptors(): PluginDescriptor[] {
       config: {
         adapterId: 'trigno',
         mode: 'real',
+        backwardsCompatibility: false,
+        upsampling: false,
       },
     },
     {

@@ -68,9 +68,9 @@ async function recordFixture(outputDir: string): Promise<string> {
           profile: 'fake',
         },
         channels: [
-          { channelId: 'fake.a1', minSamples: 40, maxBufferedMs: 300 },
-          { channelId: 'fake.a2', minSamples: 40, maxBufferedMs: 300 },
-          { channelId: 'fake.b', minSamples: 40, maxBufferedMs: 300 },
+          { streamId: 'fake.a1', minSamples: 40, maxBufferedMs: 300 },
+          { streamId: 'fake.a2', minSamples: 40, maxBufferedMs: 300 },
+          { streamId: 'fake.b', minSamples: 40, maxBufferedMs: 300 },
         ],
       },
     ), 'smoke');
@@ -110,7 +110,7 @@ async function main(): Promise<void> {
         config: {
           adapterId: 'fake-hdf5-simulation',
           filePath,
-          channelIds: ['fake.a1', 'fake.a2', 'fake.b'],
+          streamIds: ['fake.a1', 'fake.a2', 'fake.b'],
           batchMs: 50,
           speed: 1,
           readChunkSamples: 128,

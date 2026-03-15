@@ -57,6 +57,13 @@ export class RuntimeHost implements RuntimeHostPublic {
     await Promise.all(hosts.map((host) => host.start()));
 
     this.runtimeState = 'running';
+    await this.publish({
+      type: EventTypes.runtimeStarted,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: {},
+    }, 'runtime');
 
     const telemetryIntervalMs = this.options.telemetryIntervalMs ?? 1000;
     this.telemetryTimer = setInterval(() => {

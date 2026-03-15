@@ -2,15 +2,18 @@ import { randomUUID } from 'node:crypto';
 import {
   defineRuntimeEventInput,
   EventTypes,
+  type AdapterScanCandidate,
   type AdapterConnectRequestPayload,
   type AdapterDisconnectRequestPayload,
-  type AdapterScanCandidate,
-  type AdapterScanCandidatesPayload,
   type AdapterScanRequestPayload,
-  type AdapterScanStateChangedPayload,
-  type AdapterStateChangedPayload,
-  type SignalBatchEvent,
 } from '@sensync2/core';
+import {
+  createAdapterStateHolder,
+  createOutputRegistry,
+  createReconnectPolicy,
+  createScanFlow,
+  createUniformSignalEmitter,
+} from '@sensync2/adapter-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 import {
   buildAntTransportConnectRequest,
@@ -35,7 +38,13 @@ import {
 
 interface AntTransportScanResult {
   scanId: string;
-  candidates: AdapterScanCandidate[];
+  candidates: Array<{
+    candidateId: string;
+    title: string;
+    subtitle?: string;
+    details?: Record<string, string | number | boolean | null>;
+    connectFormData: Record<string, unknown>;
+  }>;
 }
 
 interface AntTransport {
@@ -47,16 +56,25 @@ interface AntTransport {
   takeConnectionSignal(): string | null;
 }
 
+interface MoxyScanCandidateData {
+  profile?: string;
+  scanId?: string;
+  transportCandidateId?: string;
+  deviceId?: number;
+}
+
 const PacketPollType = 'ant-plus.packet.poll';
+const MoxyOutputs = createOutputRegistry({
+  smo2: { streamId: 'moxy.smo2', units: '%' },
+  thb: { streamId: 'moxy.thb', units: 'g/dL' },
+});
+const moxyEmitter = createUniformSignalEmitter(MoxyOutputs);
 let config = resolveAntPlusConfig(undefined);
 let transport: AntTransport | null = null;
-let runtimeState: AdapterStateChangedPayload['state'] = 'disconnected';
 let scanInFlight = false;
 let manualDisconnectRequested = false;
 let lastConnectRequest: AntTransportConnectRequest | null = null;
-let reconnectAttempt = 0;
 let reconnectReason: string | null = null;
-let reconnectNextAttemptSessionMs: number | null = null;
 let connectionStartedSessionMs: number | null = null;
 let lastEventCount: number | null = null;
 let lastMeasurementTimeMs: number | null = null;
@@ -74,6 +92,9 @@ let broadcastGapCount = 0;
 let approxMissingBroadcastsTotal = 0;
 let lastEventAdvance = 1;
 let lastProfileIntervalFieldMs: number | null = null;
+let antState = createAdapterStateHolder({ adapterId: config.adapterId });
+let antScanFlow = createScanFlow<MoxyScanCandidateData>({ adapterId: config.adapterId });
+let reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -119,94 +140,6 @@ async function closeStickSafely(stick: AntPlusStick | null): Promise<void> {
   } catch {
     // Игнорируем ошибки закрытия: при следующем scan/connect попробуем открыть новый stick.
   }
-}
-
-
-function adapterStateEvent(
-  adapterId: string,
-  state: AdapterStateChangedPayload['state'],
-  message?: string,
-  requestId?: string,
-) {
-  const payload: AdapterStateChangedPayload = { adapterId, state };
-  if (message !== undefined) payload.message = message;
-  if (requestId !== undefined) payload.requestId = requestId;
-  return defineRuntimeEventInput({
-    type: EventTypes.adapterStateChanged,
-    v: 1,
-    kind: 'fact',
-    priority: 'system',
-    payload,
-  });
-}
-
-function adapterScanStateEvent(
-  adapterId: string,
-  scanning: boolean,
-  requestId?: string,
-  scanId?: string,
-  message?: string,
-) {
-  const payload: AdapterScanStateChangedPayload = { adapterId, scanning };
-  if (requestId !== undefined) payload.requestId = requestId;
-  if (scanId !== undefined) payload.scanId = scanId;
-  if (message !== undefined) payload.message = message;
-  return defineRuntimeEventInput({
-    type: EventTypes.adapterScanStateChanged,
-    v: 1,
-    kind: 'fact',
-    priority: 'system',
-    payload,
-  });
-}
-
-function adapterScanCandidatesEvent(
-  adapterId: string,
-  scanId: string,
-  candidates: AdapterScanCandidate[],
-  requestId?: string,
-) {
-  const payload: AdapterScanCandidatesPayload = {
-    adapterId,
-    scanId,
-    candidates,
-  };
-  if (requestId !== undefined) payload.requestId = requestId;
-  return defineRuntimeEventInput({
-    type: EventTypes.adapterScanCandidates,
-    v: 1,
-    kind: 'fact',
-    priority: 'system',
-    payload,
-  });
-}
-
-function signalBatchEvent(
-  streamId: string,
-  channelId: string,
-  value: number,
-  t0Ms: number,
-  dtMs: number,
-  units: string,
-): Omit<SignalBatchEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'> {
-  return defineRuntimeEventInput({
-    type: EventTypes.signalBatch,
-    v: 1,
-    kind: 'data',
-    priority: 'data',
-    payload: {
-      streamId,
-      channelId,
-      sampleFormat: 'f32',
-      frameKind: 'uniform-signal-batch',
-      t0Ms,
-      dtMs,
-      sampleRateHz: 1000 / dtMs,
-      sampleCount: 1,
-      values: new Float32Array([value]),
-      units,
-    },
-  });
 }
 
 function emitMoxyQualityMetrics(ctx: PluginContext): void {
@@ -637,9 +570,58 @@ function resetPacketState(): void {
 }
 
 function resetReconnectState(): void {
-  reconnectAttempt = 0;
   reconnectReason = null;
-  reconnectNextAttemptSessionMs = null;
+  reconnectPolicy.reset();
+}
+
+function currentRuntimeState() {
+  return antState.getState();
+}
+
+function stringFormField(formData: Record<string, unknown> | undefined, key: string): string | undefined {
+  const rawValue = formData?.[key];
+  return typeof rawValue === 'string' && rawValue.trim().length > 0 ? rawValue.trim() : undefined;
+}
+
+function numberFormField(formData: Record<string, unknown> | undefined, key: string): number | undefined {
+  const rawValue = formData?.[key];
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    return rawValue;
+  }
+  if (typeof rawValue === 'string' && rawValue.trim().length > 0) {
+    const parsed = Number(rawValue);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function buildConnectRequestFromCandidate(formData: Record<string, unknown> | undefined): AntTransportConnectRequest {
+  const connectRequest = buildAntTransportConnectRequest(formData);
+  const selectedCandidateId = stringFormField(formData, 'candidateId');
+  const scannedCandidate = selectedCandidateId ? antScanFlow.getCandidateData(selectedCandidateId) : null;
+
+  if (selectedCandidateId && scannedCandidate === null && connectRequest.deviceId === undefined) {
+    throw new Error('Выбранное устройство не найдено в последнем scan');
+  }
+
+  if (scannedCandidate) {
+    if (connectRequest.profile === undefined && scannedCandidate.profile !== undefined) {
+      connectRequest.profile = scannedCandidate.profile;
+    }
+    if (scannedCandidate.scanId !== undefined) {
+      connectRequest.scanId = scannedCandidate.scanId;
+    }
+    if (scannedCandidate.transportCandidateId !== undefined) {
+      connectRequest.candidateId = scannedCandidate.transportCandidateId;
+    }
+    if (connectRequest.deviceId === undefined && scannedCandidate.deviceId !== undefined) {
+      connectRequest.deviceId = scannedCandidate.deviceId;
+    }
+  }
+
+  return connectRequest;
 }
 
 function startPolling(ctx: PluginContext): void {
@@ -663,19 +645,18 @@ function stopPolling(ctx: PluginContext): void {
 
 async function setAdapterRuntimeState(
   ctx: PluginContext,
-  nextState: AdapterStateChangedPayload['state'],
+  nextState: Parameters<typeof antState.setState>[1],
   requestId?: string,
   message?: string,
 ): Promise<void> {
-  runtimeState = nextState;
-  await ctx.emit(adapterStateEvent(config.adapterId, nextState, message, requestId));
+  await antState.setState(ctx, nextState, requestId, message);
 }
 
 async function scheduleAutoReconnect(ctx: PluginContext, reason: string): Promise<void> {
   if (!transport || !config.autoReconnect || manualDisconnectRequested || lastConnectRequest === null) {
     return;
   }
-  if (runtimeState === 'connecting' && reconnectNextAttemptSessionMs !== null) {
+  if (currentRuntimeState() === 'connecting' && reconnectPolicy.getNextAttemptSessionMs() !== null) {
     return;
   }
 
@@ -686,20 +667,20 @@ async function scheduleAutoReconnect(ctx: PluginContext, reason: string): Promis
   }
   resetPacketState();
   reconnectReason = reason;
-  reconnectAttempt = 0;
-  reconnectNextAttemptSessionMs = ctx.clock.nowSessionMs() + config.reconnectRetryDelayMs;
+  reconnectPolicy.reset();
+  reconnectPolicy.schedule(ctx.clock.nowSessionMs());
   await setAdapterRuntimeState(ctx, 'connecting', undefined, `Автопереподключение: ${reason}`);
 }
 
 async function tryPendingReconnect(ctx: PluginContext): Promise<void> {
-  if (!transport || reconnectNextAttemptSessionMs === null || lastConnectRequest === null || manualDisconnectRequested) {
+  if (!transport || reconnectPolicy.getNextAttemptSessionMs() === null || lastConnectRequest === null || manualDisconnectRequested) {
     return;
   }
-  if (ctx.clock.nowSessionMs() < reconnectNextAttemptSessionMs) {
+  if (!reconnectPolicy.isReady(ctx.clock.nowSessionMs())) {
     return;
   }
 
-  reconnectAttempt += 1;
+  const reconnectAttempt = reconnectPolicy.getAttempt();
   try {
     await transport.connect(lastConnectRequest);
     connectionStartedSessionMs = ctx.clock.nowSessionMs();
@@ -710,7 +691,7 @@ async function tryPendingReconnect(ctx: PluginContext): Promise<void> {
     resetReconnectState();
     await setAdapterRuntimeState(ctx, 'connected', undefined, 'Автопереподключение выполнено');
   } catch (error) {
-    reconnectNextAttemptSessionMs = ctx.clock.nowSessionMs() + config.reconnectRetryDelayMs;
+    reconnectPolicy.schedule(ctx.clock.nowSessionMs());
     await setAdapterRuntimeState(
       ctx,
       'connecting',
@@ -728,16 +709,32 @@ async function handleScan(ctx: PluginContext, payload: AdapterScanRequestPayload
     return;
   }
 
-  const scanRequest = buildAntTransportScanRequest(payload.formData, payload.timeoutMs);
-
+  const activeTransport = transport;
   scanInFlight = true;
-  await ctx.emit(adapterScanStateEvent(config.adapterId, true, payload.requestId));
   try {
-    const result = await transport.scan(scanRequest);
-    await ctx.emit(adapterScanCandidatesEvent(config.adapterId, result.scanId, result.candidates, payload.requestId));
-    await ctx.emit(adapterScanStateEvent(config.adapterId, false, payload.requestId, result.scanId));
+    await antScanFlow.handleScanRequest(ctx, payload, async (scanPayload) => {
+      const scanRequest = buildAntTransportScanRequest(scanPayload.formData, scanPayload.timeoutMs);
+      const result = await activeTransport.scan(scanRequest);
+      return result.candidates.map((candidate) => {
+        const profile = stringFormField(candidate.connectFormData, 'profile');
+        const deviceId = numberFormField(candidate.connectFormData, 'deviceId');
+        const candidateData: MoxyScanCandidateData = {
+          scanId: result.scanId,
+          transportCandidateId: stringFormField(candidate.connectFormData, 'candidateId') ?? candidate.candidateId,
+        };
+        if (profile !== undefined) candidateData.profile = profile;
+        if (deviceId !== undefined) candidateData.deviceId = deviceId;
+
+        return {
+          title: candidate.title,
+          ...(candidate.subtitle !== undefined ? { subtitle: candidate.subtitle } : {}),
+          ...(candidate.details !== undefined ? { details: candidate.details } : {}),
+          data: candidateData,
+        };
+      });
+    });
   } catch (error) {
-    await ctx.emit(adapterScanStateEvent(config.adapterId, false, payload.requestId, undefined, normalizeError(error)));
+    void error;
   } finally {
     scanInFlight = false;
   }
@@ -747,11 +744,11 @@ async function handleConnect(ctx: PluginContext, payload: AdapterConnectRequestP
   if (!transport) {
     throw new Error('ANT+ transport не инициализирован');
   }
-  if (runtimeState === 'connected' || runtimeState === 'connecting') {
+  if (currentRuntimeState() === 'connected' || currentRuntimeState() === 'connecting') {
     return;
   }
 
-  const connectRequest = buildAntTransportConnectRequest(payload.formData);
+  const connectRequest = buildConnectRequestFromCandidate(payload.formData);
 
   manualDisconnectRequested = false;
   lastConnectRequest = connectRequest;
@@ -777,7 +774,7 @@ async function handleDisconnect(ctx: PluginContext, payload: AdapterDisconnectRe
   if (!transport) {
     throw new Error('ANT+ transport не инициализирован');
   }
-  if (runtimeState !== 'connected' && runtimeState !== 'failed' && runtimeState !== 'connecting') {
+  if (!antState.isState('connected', 'failed', 'connecting')) {
     return;
   }
 
@@ -882,18 +879,24 @@ async function emitMoxyPacket(
   lastMeasurementTimeMs = sampleTimestampMs;
   emitMoxyQualityMetrics(ctx);
 
-  await ctx.emit(signalBatchEvent('moxy.smo2', 'moxy.smo2', packet.smo2, sampleTimestampMs, emittedDtMs, '%'));
-  await ctx.emit(signalBatchEvent('moxy.thb', 'moxy.thb', packet.thb, sampleTimestampMs, emittedDtMs, 'g/dL'));
+  await moxyEmitter.emit(ctx, 'smo2', new Float32Array([packet.smo2]), {
+    t0Ms: sampleTimestampMs,
+    dtMs: emittedDtMs,
+  });
+  await moxyEmitter.emit(ctx, 'thb', new Float32Array([packet.thb]), {
+    t0Ms: sampleTimestampMs,
+    dtMs: emittedDtMs,
+  });
 }
 
 async function handlePacketPoll(ctx: PluginContext): Promise<void> {
   if (!transport) return;
 
-  if (runtimeState === 'connecting' && reconnectNextAttemptSessionMs !== null) {
+  if (currentRuntimeState() === 'connecting' && reconnectPolicy.getNextAttemptSessionMs() !== null) {
     await tryPendingReconnect(ctx);
     return;
   }
-  if (runtimeState !== 'connected') return;
+  if (!antState.isState('connected')) return;
 
   const connectionSignal = transport.takeConnectionSignal();
   if (connectionSignal) {
@@ -974,15 +977,17 @@ export default definePlugin({
       ...readAntPlusEnvOverrides(process.env),
     });
     transport = createTransport();
-    runtimeState = 'disconnected';
+    antState = createAdapterStateHolder({ adapterId: config.adapterId });
+    antScanFlow = createScanFlow<MoxyScanCandidateData>({ adapterId: config.adapterId });
+    reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
     scanInFlight = false;
     manualDisconnectRequested = false;
     lastConnectRequest = null;
     connectionStartedSessionMs = null;
     resetReconnectState();
     resetPacketState();
-    await ctx.emit(adapterStateEvent(config.adapterId, 'disconnected'));
-    await ctx.emit(adapterScanStateEvent(config.adapterId, false));
+    await antState.emitCurrent(ctx);
+    await ctx.emit(antScanFlow.createScanStateEvent(false));
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.adapterScanRequest) {
@@ -1016,7 +1021,9 @@ export default definePlugin({
       await transport.disconnect();
       transport = null;
     }
-    runtimeState = 'disconnected';
+    antState = createAdapterStateHolder({ adapterId: config.adapterId });
+    antScanFlow = createScanFlow<MoxyScanCandidateData>({ adapterId: config.adapterId });
+    reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
     scanInFlight = false;
     manualDisconnectRequested = false;
     lastConnectRequest = null;

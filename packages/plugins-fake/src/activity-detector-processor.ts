@@ -3,11 +3,11 @@ import { definePlugin } from '@sensync2/plugin-sdk';
 import { signalBatchEvent } from './helpers.ts';
 
 interface ActivityDetectorConfig {
-  sourceChannelId: string;
+  sourceStreamId: string;
   threshold: number;
 }
 
-let cfg: ActivityDetectorConfig = { sourceChannelId: 'shapes.signal', threshold: 0.6 };
+let cfg: ActivityDetectorConfig = { sourceStreamId: 'shapes.signal', threshold: 0.6 };
 let active = false;
 
 export default definePlugin({
@@ -16,7 +16,7 @@ export default definePlugin({
     version: '0.1.0',
     required: false,
     subscriptions: [
-      { type: EventTypes.signalBatch, v: 1, kind: 'data', priority: 'data', filter: { channelIdPrefix: 'shapes.signal' } },
+      { type: EventTypes.signalBatch, v: 1, kind: 'data', priority: 'data', filter: { streamIdPrefix: 'shapes.signal' } },
     ],
     mailbox: {
       controlCapacity: 64,
@@ -40,7 +40,7 @@ export default definePlugin({
   },
   async onEvent(event, ctx) {
     if (event.type !== EventTypes.signalBatch) return;
-    if (event.payload.channelId !== cfg.sourceChannelId) return;
+    if (event.payload.streamId !== cfg.sourceStreamId) return;
 
     let hasActivity = false;
     for (let i = 0; i < event.payload.values.length; i += 1) {
@@ -61,7 +61,7 @@ export default definePlugin({
       }));
 
       const label = new Int16Array([active ? 1 : 0]);
-      await ctx.emit(signalBatchEvent('activity.label', 'activity.label', label, ctx.clock.nowSessionMs(), 0, 'i16'));
+      await ctx.emit(signalBatchEvent('activity.label', label, ctx.clock.nowSessionMs(), 0, 'i16'));
     }
   },
   async onShutdown() {

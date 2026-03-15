@@ -1,6 +1,6 @@
 import type { EventSubscription, PluginManifest, RuntimeEvent } from '@sensync2/core';
 
-function readPayloadField(event: RuntimeEvent, field: 'adapterId' | 'streamId' | 'channelId'): string | undefined {
+function readPayloadField(event: RuntimeEvent, field: 'adapterId' | 'streamId'): string | undefined {
   if (!('payload' in event) || !event.payload || typeof event.payload !== 'object') return undefined;
   const payload = event.payload as Record<string, unknown>;
   const raw = payload[field];
@@ -20,9 +20,9 @@ function matchesSubscription(event: RuntimeEvent, sub: EventSubscription): boole
   if (sub.filter.streamId && readPayloadField(event, 'streamId') !== sub.filter.streamId) {
     return false;
   }
-  if (sub.filter.channelIdPrefix) {
-    const channelId = readPayloadField(event, 'channelId');
-    if (!channelId || !channelId.startsWith(sub.filter.channelIdPrefix)) {
+  if (sub.filter.streamIdPrefix) {
+    const streamId = readPayloadField(event, 'streamId');
+    if (!streamId || !streamId.startsWith(sub.filter.streamIdPrefix)) {
       return false;
     }
   }

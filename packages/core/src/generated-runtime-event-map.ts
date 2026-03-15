@@ -1,7 +1,7 @@
 // Этот файл сгенерирован `npm run generate:runtime-event-map`.
 // Не редактируй его вручную: править нужно *.spec.ts и генератор.
 
-import type { AdapterConnectRequestPayload, AdapterDisconnectRequestPayload, AdapterScanCandidatesPayload, AdapterScanRequestPayload, AdapterScanStateChangedPayload, AdapterStateChangedPayload, CommandEvent, FactEvent, IntervalCommandPayload, RecordingErrorPayload, RecordingPausePayload, RecordingResumePayload, RecordingStartPayload, RecordingStateChangedPayload, RecordingStopPayload, RuntimeEventMap, ShapeGeneratedPayload, ShapeGenerateRequestPayload, SignalBatchEvent, SimulationPauseRequestPayload, SimulationResumeRequestPayload, SimulationSpeedSetRequestPayload, SimulationStateChangedPayload } from './events.ts';
+import type { AdapterConnectRequestPayload, AdapterDisconnectRequestPayload, AdapterScanCandidatesPayload, AdapterScanRequestPayload, AdapterScanStateChangedPayload, AdapterStateChangedPayload, CommandEvent, FactEvent, IntervalCommandPayload, RecordingErrorPayload, RecordingPausePayload, RecordingResumePayload, RecordingStartPayload, RecordingStateChangedPayload, RecordingStopPayload, RuntimeEventMap, RuntimeStartedPayload, ShapeGeneratedPayload, ShapeGenerateRequestPayload, SignalBatchEvent, SimulationPauseRequestPayload, SimulationResumeRequestPayload, SimulationSpeedSetRequestPayload, SimulationStateChangedPayload } from './events.ts';
 import type { RuntimeTelemetrySnapshotPayload, UiBinaryOutPayload, UiClientConnectedPayload, UiClientDisconnectedPayload, UiControlOutPayload } from './ui.ts';
 
 export type SignalBatchRuntimeEvent = SignalBatchEvent;
@@ -138,6 +138,12 @@ export type ActivityStateChangedEvent = FactEvent<{ active: boolean }, 'activity
   priority: 'system';
 };
 
+export type RuntimeStartedEvent = FactEvent<RuntimeStartedPayload, 'runtime.started'> & {
+  v: 1;
+  kind: 'fact';
+  priority: 'system';
+};
+
 export type RuntimeTelemetrySnapshotEvent = FactEvent<RuntimeTelemetrySnapshotPayload, 'runtime.telemetry.snapshot'> & {
   v: 1;
   kind: 'fact';
@@ -193,6 +199,7 @@ declare module './events.ts' {
     'interval.stop@1': IntervalStopEvent;
     'interval.state.changed@1': IntervalStateChangedEvent;
     'activity.state.changed@1': ActivityStateChangedEvent;
+    'runtime.started@1': RuntimeStartedEvent;
     'runtime.telemetry.snapshot@1': RuntimeTelemetrySnapshotEvent;
     'ui.client.connected@1': UiClientConnectedEvent;
     'ui.client.disconnected@1': UiClientDisconnectedEvent;

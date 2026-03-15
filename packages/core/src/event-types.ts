@@ -32,6 +32,7 @@ export const EventTypes = {
 
   activityStateChanged: 'activity.state.changed',
 
+  runtimeStarted: 'runtime.started',
   runtimeTelemetrySnapshot: 'runtime.telemetry.snapshot',
 
   uiClientConnected: 'ui.client.connected',

@@ -11,13 +11,15 @@
 - `trigno-boundary.ts`:
   - нормализует config и `formData`;
   - описывает plugin-specific UI-команды;
-  - фиксирует ожидаемый live snapshot для допуска `START`.
+  - фиксирует ожидаемый live snapshot для допуска `START`, включая `backwardsCompatibility` и `upsampling`.
 - `trigno-transport.ts`:
   - поднимает command/data sockets;
   - умеет читать banner и ASCII-ответы с terminator `\\r\\n\\r\\n`;
-  - собирает неполные TCP reads и режет raw потоки по fixed-size step layout.
+  - собирает неполные TCP reads и режет raw потоки по fixed-size step layout;
+  - применяет `BACKWARDS COMPATIBILITY` и `UPSAMPLE` из adapter config вместо хардкода.
 - `trigno-adapter.ts`:
   - реализует lifecycle `connect / start / stop / disconnect`;
+  - держит state holder, reconnect timer и uniform emit через `adapter-kit`;
   - публикует `signal.batch`;
   - держит watchdog и auto-reconnect только для активного сбора;
   - переводит несовпавший start snapshot в состояние `paused`, а не молча в `connected`.
@@ -28,3 +30,4 @@
 
 - `apps/runtime` использует пакет как обычный worker-plugin.
 - `packages/plugins-ui-gateway` использует exact `commandType` и `trigno.status.reported`.
+- `apps/runtime/src/default-plugins.ts` для профиля `veloerg` явно фиксирует `BC=OFF` и `UPSAMPLE=OFF`.

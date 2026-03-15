@@ -235,6 +235,16 @@ export const sharedRuntimeEventMapSpec: RuntimeEventMapCodegenSpec = {
       payload: { kind: 'inline', typeText: '{ active: boolean }' },
     },
     {
+      alias: 'RuntimeStartedEvent',
+      mode: 'compose',
+      envelope: 'fact',
+      type: EventTypes.runtimeStarted,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: { kind: 'named', importPath: './events.ts', typeName: 'RuntimeStartedPayload' },
+    },
+    {
       alias: 'RuntimeTelemetrySnapshotEvent',
       mode: 'compose',
       envelope: 'fact',

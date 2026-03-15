@@ -241,19 +241,19 @@ function validateChannels(channels: RecordingChannelConfig[]): Map<string, Chann
 
   const result = new Map<string, ChannelRuntimeState>();
   for (const item of channels) {
-    if (!item.channelId) {
-      throw new Error('channelId обязателен');
+    if (!item.streamId) {
+      throw new Error('streamId обязателен');
     }
     if (!(item.minSamples > 0)) {
-      throw new Error(`minSamples для ${item.channelId} должен быть > 0`);
+      throw new Error(`minSamples для ${item.streamId} должен быть > 0`);
     }
     if (!(item.maxBufferedMs > 0)) {
-      throw new Error(`maxBufferedMs для ${item.channelId} должен быть > 0`);
+      throw new Error(`maxBufferedMs для ${item.streamId} должен быть > 0`);
     }
-    if (result.has(item.channelId)) {
-      throw new Error(`Повторяющийся channelId в recording.start: ${item.channelId}`);
+    if (result.has(item.streamId)) {
+      throw new Error(`Повторяющийся streamId в recording.start: ${item.streamId}`);
     }
-    result.set(item.channelId, {
+    result.set(item.streamId, {
       config: item,
       sampleFormat: null,
       frameKind: null,
@@ -280,7 +280,7 @@ function materializeTimestamps(payload: SignalBatchEvent['payload']): Float64Arr
     return new Float64Array(payload.timestampsMs);
   }
   if (payload.dtMs === undefined) {
-    throw new Error(`Для channelId=${payload.channelId} отсутствуют и timestampsMs, и dtMs`);
+    throw new Error(`Для streamId=${payload.streamId} отсутствуют и timestampsMs, и dtMs`);
   }
 
   const out = new Float64Array(payload.sampleCount);
@@ -292,22 +292,22 @@ function materializeTimestamps(payload: SignalBatchEvent['payload']): Float64Arr
 
 function appendChunk(channel: ChannelRuntimeState, payload: SignalBatchEvent['payload']): void {
   if (!isSupportedValueArray(payload.values)) {
-    throw new Error(`Неподдерживаемый тип values для ${payload.channelId}`);
+    throw new Error(`Неподдерживаемый тип values для ${payload.streamId}`);
   }
   if (payload.sampleCount !== payload.values.length) {
-    throw new Error(`sampleCount не совпадает с длиной values для ${payload.channelId}`);
+    throw new Error(`sampleCount не совпадает с длиной values для ${payload.streamId}`);
   }
 
   const timestamps = materializeTimestamps(payload);
   if (timestamps.length !== payload.sampleCount) {
-    throw new Error(`timestamps length не совпадает с sampleCount для ${payload.channelId}`);
+    throw new Error(`timestamps length не совпадает с sampleCount для ${payload.streamId}`);
   }
 
   if (channel.sampleFormat === null) {
     channel.sampleFormat = payload.sampleFormat;
   } else if (channel.sampleFormat !== payload.sampleFormat) {
     throw new Error(
-      `sampleFormat для ${payload.channelId} изменился с ${channel.sampleFormat} на ${payload.sampleFormat}`,
+      `sampleFormat для ${payload.streamId} изменился с ${channel.sampleFormat} на ${payload.sampleFormat}`,
     );
   }
 
@@ -315,7 +315,7 @@ function appendChunk(channel: ChannelRuntimeState, payload: SignalBatchEvent['pa
     channel.frameKind = payload.frameKind;
   } else if (channel.frameKind !== payload.frameKind) {
     throw new Error(
-      `frameKind для ${payload.channelId} изменился с ${channel.frameKind} на ${payload.frameKind}`,
+      `frameKind для ${payload.streamId} изменился с ${channel.frameKind} на ${payload.frameKind}`,
     );
   }
 
@@ -338,7 +338,7 @@ function appendChunk(channel: ChannelRuntimeState, payload: SignalBatchEvent['pa
   const firstTs = timestamps[0];
   const lastTs = timestamps[timestamps.length - 1];
   if (firstTs === undefined || lastTs === undefined) {
-    throw new Error(`Пустой timestamps chunk для ${payload.channelId}`);
+    throw new Error(`Пустой timestamps chunk для ${payload.streamId}`);
   }
 
   if (channel.firstBufferedTsMs === null) {
@@ -368,15 +368,14 @@ function ensureChannelArtifacts(
   channel: ChannelRuntimeState,
 ): void {
   if (channel.sampleFormat === null || channel.frameKind === null || channel.streamId === null) {
-    throw new Error(`Канал ${channel.config.channelId} ещё не инициализирован данными`);
+    throw new Error(`Поток ${channel.config.streamId} ещё не инициализирован данными`);
   }
   if (channel.group && channel.timestampsDataset && channel.valuesDataset) {
     return;
   }
 
   const chunkSize = Math.max(channel.config.minSamples, 256);
-  const group = activeSession.channelsRoot.create_group(channel.config.channelId, pluginConfig.trackOrder ?? true);
-  createScalarAttribute(group, 'channelId', channel.config.channelId);
+  const group = activeSession.channelsRoot.create_group(channel.config.streamId, pluginConfig.trackOrder ?? true);
   createScalarAttribute(group, 'streamId', channel.streamId);
   createScalarAttribute(group, 'sampleFormat', channel.sampleFormat);
   createScalarAttribute(group, 'frameKind', channel.frameKind);
@@ -411,12 +410,12 @@ function ensureChannelArtifacts(
 function flushChannel(activeSession: RecordingSessionState, channel: ChannelRuntimeState): void {
   if (channel.bufferedSamples === 0) return;
   if (channel.sampleFormat === null) {
-    throw new Error(`Нельзя flush канала ${channel.config.channelId} без sampleFormat`);
+    throw new Error(`Нельзя flush потока ${channel.config.streamId} без sampleFormat`);
   }
 
   ensureChannelArtifacts(activeSession, channel);
   if (!channel.timestampsDataset || !channel.valuesDataset) {
-    throw new Error(`Datasets не созданы для ${channel.config.channelId}`);
+    throw new Error(`Datasets не созданы для ${channel.config.streamId}`);
   }
 
   const timestamps = concatFloat64Arrays(channel.timestampsChunks, channel.bufferedSamples);
@@ -591,7 +590,7 @@ async function stopRecording(ctx: PluginContext, payload: RecordingStopPayload):
 
 async function handleSignalBatch(ctx: PluginContext, event: SignalBatchEvent): Promise<void> {
   if (recorderState !== 'recording' || !session) return;
-  const channel = session.channels.get(event.payload.channelId);
+  const channel = session.channels.get(event.payload.streamId);
   if (!channel) return;
 
   try {

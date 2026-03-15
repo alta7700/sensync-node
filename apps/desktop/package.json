@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "wait-on http-get://localhost:5173 && NODE_OPTIONS='--import=tsx' electron --no-sandbox ./src/main.ts",
     "build": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@sensync2/core": "0.1.0",

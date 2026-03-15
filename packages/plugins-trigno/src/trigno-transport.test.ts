@@ -61,6 +61,8 @@ async function createMockTrignoServer(): Promise<MockTrignoServer> {
     aux: null as net.Socket | null,
   };
   const delayedWrites: NodeJS.Timeout[] = [];
+  let backwardsCompatibility = false;
+  let upsampling = false;
 
   const writeChunks = (socket: net.Socket, buffer: Buffer) => {
     const midpoint = Math.max(1, Math.min(buffer.length - 1, 37));
@@ -75,8 +77,6 @@ async function createMockTrignoServer(): Promise<MockTrignoServer> {
     ['TRIGGER START OFF', 'OK'],
     ['TRIGGER STOP OFF', 'OK'],
     ['ENDIAN LITTLE', 'OK'],
-    ['BACKWARDS COMPATIBILITY ON', 'OK'],
-    ['UPSAMPLE ON', 'OK'],
     ['SENSOR 1 SETMODE 7', 'SENSOR 1 SET TO MODE 7'],
     ['SENSOR 1 PAIRED?', 'YES'],
     ['SENSOR 1 MODE?', '7'],
@@ -84,8 +84,6 @@ async function createMockTrignoServer(): Promise<MockTrignoServer> {
     ['SENSOR 1 CHANNELCOUNT?', '4'],
     ['SENSOR 1 EMGCHANNELCOUNT?', '1'],
     ['SENSOR 1 AUXCHANNELCOUNT?', '3'],
-    ['BACKWARDS COMPATIBILITY?', 'YES'],
-    ['UPSAMPLING?', 'UPSAMPLING ON'],
     ['FRAME INTERVAL?', '0.0135'],
     ['MAX SAMPLES EMG?', '26'],
     ['MAX SAMPLES AUX?', '2'],
@@ -134,6 +132,46 @@ async function createMockTrignoServer(): Promise<MockTrignoServer> {
             socket.write(`OK${CommandTerminator}`);
           }, 50);
           delayedWrites.push(timeoutId);
+          endIndex = buffer.indexOf(CommandTerminator);
+          continue;
+        }
+
+        if (command === 'BACKWARDS COMPATIBILITY ON') {
+          backwardsCompatibility = true;
+          socket.write(`OK${CommandTerminator}`);
+          endIndex = buffer.indexOf(CommandTerminator);
+          continue;
+        }
+
+        if (command === 'BACKWARDS COMPATIBILITY OFF') {
+          backwardsCompatibility = false;
+          socket.write(`OK${CommandTerminator}`);
+          endIndex = buffer.indexOf(CommandTerminator);
+          continue;
+        }
+
+        if (command === 'UPSAMPLE ON') {
+          upsampling = true;
+          socket.write(`OK${CommandTerminator}`);
+          endIndex = buffer.indexOf(CommandTerminator);
+          continue;
+        }
+
+        if (command === 'UPSAMPLE OFF') {
+          upsampling = false;
+          socket.write(`OK${CommandTerminator}`);
+          endIndex = buffer.indexOf(CommandTerminator);
+          continue;
+        }
+
+        if (command === 'BACKWARDS COMPATIBILITY?') {
+          socket.write(`${backwardsCompatibility ? 'YES' : 'NO'}${CommandTerminator}`);
+          endIndex = buffer.indexOf(CommandTerminator);
+          continue;
+        }
+
+        if (command === 'UPSAMPLING?') {
+          socket.write(`${upsampling ? 'UPSAMPLING ON' : 'UPSAMPLING OFF'}${CommandTerminator}`);
           endIndex = buffer.indexOf(CommandTerminator);
           continue;
         }
@@ -209,6 +247,8 @@ describe('trigno-transport', () => {
     const session = new TrignoTcpSession({
       host: server.host,
       sensorSlot: 1,
+      backwardsCompatibility: false,
+      upsampling: false,
       commandPort: server.commandPort,
       emgPort: server.emgPort,
       auxPort: server.auxPort,
@@ -222,6 +262,8 @@ describe('trigno-transport', () => {
     await session.applyProfileConfig();
     const snapshot = await session.queryStatus();
     expect(snapshot.startIndex).toBe(2);
+    expect(snapshot.backwardsCompatibility).toBe(false);
+    expect(snapshot.upsampling).toBe(false);
     expect(snapshot.gyro.units).toBe('deg/s');
 
     await expect(session.start()).rejects.toThrow(/100ms/);
@@ -239,6 +281,8 @@ describe('trigno-transport', () => {
     const session = new TrignoTcpSession({
       host: server.host,
       sensorSlot: 1,
+      backwardsCompatibility: false,
+      upsampling: false,
       commandPort: server.commandPort,
       emgPort: server.emgPort,
       auxPort: server.auxPort,

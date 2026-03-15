@@ -6,9 +6,9 @@ export interface EventSubscription extends EventRef {
   kind?: EventKind;
   priority?: EventPriority;
   filter?: {
-    channelIdPrefix?: string;
     adapterId?: string;
     streamId?: string;
+    streamIdPrefix?: string;
   };
 }
 

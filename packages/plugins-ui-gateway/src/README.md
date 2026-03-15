@@ -18,6 +18,7 @@
   - отправляет `ui.init`, patch-сообщения и telemetry.
 - Control schema может задавать `commandVersion` / `submitEventVersion`; если они не указаны, renderer использует `v=1`.
 - Для `fake-hdf5-simulation` схема отдельная: по графикам она совместима с fake-демо, но управляющие кнопки уже относятся к simulation-источнику.
+- Для `fake` схема больше не рисует connect/disconnect для `fake-signal-adapter`: live source поднимается автоматически, manual-control остаётся только у `shapes`.
 - Для `veloerg` схема composite: отдельный Trigno control-блок и графики `EMG/Gyroscope`, плюс scan/connect/disconnect для Moxy и Zephyr.
 
 ## Взаимодействие

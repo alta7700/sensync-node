@@ -108,7 +108,7 @@
 - attrs каналов;
 - dataset shape/type;
 - монотонность timestamps;
-- фильтрация `channelIds`.
+- фильтрация `streamIds`.
 
 Что происходит:
 
