@@ -11,7 +11,7 @@ import {
   createOutputRegistry,
   createReconnectPolicy,
   createScanFlow,
-} from '@sensync2/adapter-kit';
+} from '@sensync2/plugin-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 import {
   buildBleTransportConnectRequest,

@@ -5,17 +5,17 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 Важно:
 
 - Это не общая спецификация `UiSchema`.
-- Это описание именно профильных demo-схем из [packages/plugins-ui-gateway/src/ui-gateway-plugin.ts](src/ui-gateway-plugin.ts).
+- Это описание именно профильных demo-схем из [packages/plugins-ui-gateway/src/profile-schemas.ts](src/profile-schemas.ts).
 
 ## 1. Launch profiles
 
-Сейчас `ui-gateway` поддерживает три concrete-схемы:
+Сейчас runtime profiles используют три concrete-схемы:
 
 - `fake`
 - `fake-hdf5-simulation`
 - `veloerg`
 
-`fake` — дефолтный dev-профиль.
+`fake` — дефолтный dev-профиль. Сама схема больше не выбирается внутри `ui-gateway`, а передаётся ему из `apps/runtime/src/profiles/README.md`.
 
 Важно:
 

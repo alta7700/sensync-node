@@ -16,7 +16,7 @@ ANT+ plugin worker'ы и transport-обёртки.
   - `fake` transport для scan/connect/data flow без железа.
 - Внешние ingress-границы вынесены в `src/ant-plus-boundary.ts`, чтобы env/formData/raw driver packets нормализовались до входа в runtime-логику адаптера.
 - В live-режиме таймлайн Moxy строится от первого пакета по реальной межпакетной дельте хоста.
-- Lifecycle, scan cache, reconnect timer и emit path адаптера теперь собраны на `@sensync2/adapter-kit`.
+- Lifecycle, scan cache, reconnect timer и emit path адаптера теперь собраны на `@sensync2/plugin-kit`.
 - Для `real` transport callback-очередь вычитывается коротким poll-интервалом, чтобы не собирать burst'ы по UI.
 - `measurementInterval` из ANT+ профиля сохраняется как диагностический сигнал и не считается надёжным источником времени для графика.
 - Адаптер публикует plugin metrics по качеству ANT+ канала: broadcast delta, gap count, max gap и diagnostic profile field.
@@ -32,7 +32,7 @@ ANT+ plugin worker'ы и transport-обёртки.
 ## Взаимодействие
 
 - Использует только `@sensync2/core` и `@sensync2/plugin-sdk`.
-- Использует `@sensync2/adapter-kit` для adapter-oriented helper'ов и `@sensync2/plugin-sdk` для worker lifecycle.
+- Использует `@sensync2/plugin-kit` для helper-layer и `@sensync2/plugin-sdk` для worker lifecycle.
 - Поднимается из `apps/runtime` как обычный worker-плагин.
 - UI-сценарий materialize'ит `packages/plugins-ui-gateway`.
 

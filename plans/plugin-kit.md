@@ -336,6 +336,11 @@ export function createSignalWindowStore(
 - `latestSamples(count)` возвращает склеенный slice из последних `count` сэмплов;
 - `windowMs(durationMs)` возвращает склеенный slice по временной границе;
 - `values` и `timestampsMs` в slice — это новые массивы, а не ссылка на внутреннее хранилище;
+- для `uniform-signal-batch` источник истины времени — `t0Ms + dtMs`;
+- для `irregular-signal-batch` и `label-batch` источник истины времени — `timestampsMs`;
+- `windowMs(durationMs)` для `irregular-signal-batch` и `label-batch` режет окно только по `timestampsMs`, а не реконструирует время из `t0Ms`;
+- `t1Ms` для `uniform-signal-batch` вычисляется по последнему сэмплу из равномерной сетки, а для `irregular-signal-batch` и `label-batch` равен последнему значению из `timestampsMs`;
+- `push(...)` должен отклонять `irregular-signal-batch` и `label-batch` без валидного `timestampsMs` длины `sampleCount`;
 - `v1` предполагает, что в рамках одного `streamId` не скачут `sampleFormat` и `frameKind`; если скачут, helper бросает ошибку.
 
 `v1` сознательно не делает:
@@ -530,10 +535,14 @@ export function createHandlerGroup<
 - `add(...)` позволяет подписать новый handler в runtime;
 - если `add(...)` вызван после `start(...)` и передан `ctx`, новый handler стартует сразу;
 - функция, возвращённая из `add(...)`, делает unsubscribe и вызывает `stop(...)` у этого handler'а.
+- `add(...)` не имеет права расширять runtime contract после `plugin.ready`;
+- значит `handler.manifest()` для динамически добавляемого handler'а должен быть пустым или быть подмножеством заранее объявленного superset manifest группы;
+- если `handler.manifest()` требует новых `subscriptions` или `emits`, которых нет в заранее materialized `group.manifest()`, `add(...)` обязан бросить ошибку локально;
+- dynamic add/remove относится только к локальной orchestration внутри уже объявленного manifest superset.
 
 ### Конкретные handler helper'ы `v1`
 
-В `v1` достаточно пяти builder'ов.
+В `v1` достаточно трёх builder'ов.
 
 #### `createFactStateProjectionHandler(...)`
 
@@ -566,8 +575,9 @@ export function createEveryEventHandler<
   TInputKey extends string,
   TStateKey extends string,
 >(options: {
-  input?: TInputKey;
-  event?: { type: string; v: number };
+  selector:
+    | { input: TInputKey; event?: never }
+    | { event: { type: string; v: number }; input?: never };
   when?: CompiledStateExpression<TStateKey>;
   run: (args: {
     event: RuntimeEvent;
@@ -579,66 +589,11 @@ export function createEveryEventHandler<
 
 Правило:
 
-- хотя бы один из `input` или `event` обязателен;
+- `selector` обязан быть ровно одного вида:
+  - либо `input`;
+  - либо `event`;
+- комбинация `input + event` в одном builder'е в `v1` запрещена;
 - если `when` задан и возвращает `false`, callback не вызывается.
-
-#### `createBatchCountHandler(...)`
-
-Срабатывает, когда по одному signal input накопилось `count` батчей.
-
-```ts
-export function createBatchCountHandler<
-  TInputKey extends string,
-  TStateKey extends string,
->(options: {
-  input: TInputKey;
-  count: number;
-  when?: CompiledStateExpression<TStateKey>;
-  run: (args: {
-    input: TInputKey;
-    count: number;
-    api: HandlerApi<TInputKey, TStateKey>;
-    ctx: PluginContext;
-  }) => Promise<void> | void;
-}): PluginHandler<TInputKey, TStateKey>;
-```
-
-Семантика:
-
-- счётчик хранится внутри handler'а;
-- при каждом совпавшем batch счётчик увеличивается на 1;
-- когда счётчик достигает `count`, вызывается `run(...)`;
-- после срабатывания счётчик сбрасывается в 0.
-
-#### `createAnyBatchCountHandler(...)`
-
-Срабатывает, когда выполняется любой из нескольких batch-count сценариев.
-
-```ts
-export function createAnyBatchCountHandler<
-  TInputKey extends string,
-  TStateKey extends string,
->(options: {
-  any: Array<{ input: TInputKey; count: number }>;
-  when?: CompiledStateExpression<TStateKey>;
-  run: (args: {
-    matchedInput: TInputKey;
-    api: HandlerApi<TInputKey, TStateKey>;
-    ctx: PluginContext;
-  }) => Promise<void> | void;
-}): PluginHandler<TInputKey, TStateKey>;
-```
-
-Семантика:
-
-- handler держит отдельный счётчик на каждое правило из `any`;
-- если сработало любое правило, выполняется `run(...)`;
-- после срабатывания сбрасываются все счётчики этого handler'а.
-
-Это покрывает кейс:
-
-- “накопится 3 батча этого input”
-- “или 1 батч другого input”
 
 #### `createIntervalHandler(...)`
 
@@ -803,6 +758,7 @@ const plugin = definePlugin({
 - prefix-input-map для signal path;
 - history-store для facts;
 - generic rule engine для любых событий;
+- batch-count handler'ы;
 - автоматическое временное выравнивание signal windows;
 - ресемплинг;
 - shared event contract для всех interval/timer helper'ов;
@@ -887,10 +843,11 @@ const plugin = definePlugin({
 9. `HandlerGroup` умеет:
    - запускать и останавливать handler'ы;
    - динамически добавлять и удалять handler'ы;
-   - исполнять все совпавшие handler'ы по порядку объявления.
-10. `createBatchCountHandler(...)` сбрасывает счётчик после срабатывания.
-11. `createAnyBatchCountHandler(...)` покрывает кейс “3 батча этого или 1 батч другого”.
-12. `createIntervalHandler(...)` сам завершает свои timer'ы и не требует фиксированной точки старта.
+   - исполнять все совпавшие handler'ы по порядку объявления;
+   - запрещать `add(...)`, который требует manifest contract вне заранее объявленного superset.
+10. `createEveryEventHandler(...)` принимает ровно один selector и не допускает двусмысленного `input + event`.
+11. `createIntervalHandler(...)` сам завершает свои timer'ы и не требует фиксированной точки старта.
+12. `SignalWindowStore` явно и корректно работает с `uniform`, `irregular` и `label` временем.
 13. `rolling-min-processor` и `activity-detector-processor` можно перевести на helper'ы без потери поведения.
 
 ## Риски

@@ -1,6 +1,18 @@
 import { defineRuntimeEventInput, EventTypes } from '@sensync2/core';
 import { definePlugin } from '@sensync2/plugin-sdk';
-import { signalBatchEvent } from './helpers.ts';
+import {
+  applyManifestFragment,
+  buildManifestFragmentFromInputs,
+  createHandlerGroup,
+  createInputMap,
+  createInputRuntime,
+  createIntervalHandler,
+  createOutputRegistry,
+  createUniformSignalEmitter,
+  signalInput,
+  type HandlerGroup,
+  type InputRuntime,
+} from '@sensync2/plugin-kit';
 
 interface RollingMinConfig {
   sourceStreamId: string;
@@ -9,72 +21,105 @@ interface RollingMinConfig {
 
 const FlushTickType = 'processor.rolling-min.flush';
 let cfg: RollingMinConfig = { sourceStreamId: 'fake.a2', outputStreamId: 'metrics.fake.a2.rolling_min_1s' };
-let windowValues: number[] = [];
+let inputs: InputRuntime<'source'> | null = null;
+let handlers: HandlerGroup<'source', never> | null = null;
+let emitRollingMin: ReturnType<typeof createUniformSignalEmitter<'output'>> | null = null;
+
+const baseManifest = {
+  id: 'rolling-min-processor',
+  version: '0.1.0',
+  required: false,
+  subscriptions: [],
+  mailbox: {
+    controlCapacity: 64,
+    dataCapacity: 256,
+    dataPolicy: 'fail-fast' as const,
+  },
+  emits: [
+    { type: FlushTickType, v: 1 },
+    { type: EventTypes.signalBatch, v: 1 },
+    { type: 'metric.value.changed', v: 1 },
+  ],
+};
+
+const manifest = {
+  ...baseManifest,
+  subscriptions: [...baseManifest.subscriptions],
+  emits: [...baseManifest.emits],
+};
+
+function resetManifest(): void {
+  manifest.subscriptions = [...baseManifest.subscriptions];
+  manifest.emits = [...baseManifest.emits];
+}
 
 export default definePlugin({
-  manifest: {
-    id: 'rolling-min-processor',
-    version: '0.1.0',
-    required: false,
-    subscriptions: [
-      { type: EventTypes.signalBatch, v: 1, kind: 'data', priority: 'data', filter: { streamIdPrefix: 'fake.a' } },
-      { type: FlushTickType, v: 1, kind: 'fact', priority: 'system' },
-    ],
-    mailbox: {
-      controlCapacity: 64,
-      dataCapacity: 256,
-      dataPolicy: 'fail-fast',
-    },
-    emits: [
-      { type: FlushTickType, v: 1 },
-      { type: EventTypes.signalBatch, v: 1 },
-      { type: 'metric.value.changed', v: 1 },
-    ],
-  },
+  manifest,
   async onInit(ctx) {
     cfg = { ...cfg, ...(ctx.getConfig<RollingMinConfig>() ?? {}) };
-    ctx.setTimer('rolling-min.flush', 1000, () => defineRuntimeEventInput({
-      type: FlushTickType,
-      v: 1,
-      kind: 'fact',
-      priority: 'system',
-      payload: {},
+    resetManifest();
+
+    const inputMap = createInputMap({
+      source: signalInput({
+        streamId: cfg.sourceStreamId,
+        retain: { by: 'samples', value: 2000 },
+      }),
+    });
+    inputs = createInputRuntime(inputMap);
+    emitRollingMin = createUniformSignalEmitter(createOutputRegistry({
+      output: { streamId: cfg.outputStreamId, units: 'a.u.' },
     }));
+
+    handlers = createHandlerGroup({
+      inputs,
+      states: {} as Record<never, never>,
+      handlers: [
+        createIntervalHandler({
+          timerId: 'rolling-min.flush',
+          tickEvent: { type: FlushTickType, v: 1 },
+          everyMs: 1000,
+          run: async ({ api, ctx: handlerCtx }) => {
+            const window = api.inputs.signal('source').latestSamples(2000);
+            if (!window || window.sampleCount === 0 || !emitRollingMin) return;
+
+            let min = Number.POSITIVE_INFINITY;
+            for (const value of window.values) {
+              if (Number(value) < min) {
+                min = Number(value);
+              }
+            }
+
+            await emitRollingMin.emit(
+              handlerCtx,
+              'output',
+              new Float32Array([min]),
+              { t0Ms: handlerCtx.clock.nowSessionMs(), dtMs: 1000 },
+            );
+
+            await handlerCtx.emit(defineRuntimeEventInput({
+              type: 'metric.value.changed',
+              v: 1,
+              kind: 'fact',
+              priority: 'system',
+              payload: { key: 'rollingMin.fakeA', value: min },
+            }));
+          },
+        }),
+      ],
+    });
+
+    applyManifestFragment(manifest, buildManifestFragmentFromInputs(inputMap));
+    applyManifestFragment(manifest, handlers.manifest());
+    await handlers.start(ctx);
   },
   async onEvent(event, ctx) {
-    if (event.type === EventTypes.signalBatch) {
-      if (event.payload.streamId !== cfg.sourceStreamId) return;
-      for (let i = 0; i < event.payload.values.length; i += 1) {
-        windowValues.push(Number(event.payload.values[i]));
-      }
-      const maxKeep = 2000;
-      if (windowValues.length > maxKeep) {
-        windowValues = windowValues.slice(windowValues.length - maxKeep);
-      }
-      return;
-    }
-
-    if (event.type === FlushTickType) {
-      if (windowValues.length === 0) return;
-      let min = Number.POSITIVE_INFINITY;
-      for (const value of windowValues) {
-        if (value < min) min = value;
-      }
-      const values = new Float32Array([min]);
-      await ctx.emit(signalBatchEvent(cfg.outputStreamId, values, ctx.clock.nowSessionMs(), 1000, 'f32', 'a.u.'));
-
-      const metricEvent = defineRuntimeEventInput({
-        type: 'metric.value.changed',
-        v: 1,
-        kind: 'fact',
-        priority: 'system',
-        payload: { key: 'rollingMin.fakeA', value: min },
-      });
-      await ctx.emit(metricEvent);
-    }
+    await handlers?.dispatch(event, ctx);
   },
   async onShutdown(ctx) {
-    ctx.clearTimer('rolling-min.flush');
-    windowValues = [];
+    await handlers?.stop(ctx);
+    inputs?.clear();
+    inputs = null;
+    handlers = null;
+    emitRollingMin = null;
   },
 });

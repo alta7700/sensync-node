@@ -9,7 +9,7 @@
 ## Как работает
 
 - `core` задаёт типы и wire-контракты.
-- `adapter-kit` даёт переиспользуемые adapter-oriented helper'ы поверх `core` и `plugin-sdk`.
+- `plugin-kit` даёт переиспользуемые helper'ы для adapter и processor authoring поверх `core` и `plugin-sdk`.
 - `plugin-sdk` задаёт модель worker-плагина.
 - `plugins-*` реализуют доменную логику поверх этих контрактов.
 - `plugins-ant-plus` отвечает за ANT+ scan/connect/data flow и transport boundary к stick.

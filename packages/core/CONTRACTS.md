@@ -189,7 +189,7 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
   - несёт итоговый список найденных устройств;
   - `scanId` живёт только в рамках одного scan;
   - `connectFormData` внутри кандидата считается opaque payload-фрагментом для последующего `adapter.connect.request`;
-  - если scan реализован через `adapter-kit/scan-flow`, наружу обычно уходит только `{ candidateId }`, а plugin-specific данные остаются во внутреннем cache адаптера.
+  - если scan реализован через `plugin-kit/scan-flow`, наружу обычно уходит только `{ candidateId }`, а plugin-specific данные остаются во внутреннем cache адаптера.
 
 Ограничения `v1`:
 

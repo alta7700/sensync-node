@@ -72,7 +72,8 @@
 Файлы:
 
 - [apps/runtime/src/launch-profile-boundary.ts](apps/runtime/src/launch-profile-boundary.ts)
-- [apps/runtime/src/default-plugins.ts](apps/runtime/src/default-plugins.ts)
+- [apps/runtime/src/profiles/index.ts](apps/runtime/src/profiles/index.ts)
+- [apps/runtime/src/profiles/README.md](apps/runtime/src/profiles/README.md)
 
 Что считается boundary:
 
@@ -84,7 +85,7 @@
 
 - env читается и нормализуется отдельно;
 - путь к HDF5-файлу валидируется до построения композиции плагинов;
-- `default-plugins.ts` работает уже с нормализованными значениями.
+- profile-модули в `apps/runtime/src/profiles/*` работают уже с нормализованными значениями.
 
 Что уже trusted:
 

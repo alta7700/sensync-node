@@ -15,7 +15,7 @@ UI gateway plugin.
 - В fake-профиле manual connect для `fake-signal-adapter` больше не показывается: источник автостартует сам, а UI управляет только `shapes`, interval и recording.
 - При подключении UI-клиента отправляет `ui.init` и текущий снимок состояния.
 - В materialized control-потоке теперь различаются `ui.warning` и `ui.error`.
-- Concrete-схема зависит от launch profile (`fake`, `fake-hdf5-simulation` или `veloerg`).
+- Concrete `UiSchema` теперь строится вне плагина в runtime launch profile и передаётся в `ui-gateway` уже готовой.
 - В `veloerg` схема теперь composite:
   - отдельный control-блок Trigno с modal form `host + sensorSlot`;
   - явный layout с левой колонкой control-виджетов и отдельной правой панелью статуса;

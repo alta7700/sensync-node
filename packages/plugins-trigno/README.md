@@ -26,14 +26,14 @@ TCP-интеграция с `Delsys Trigno` для live-профиля `veloerg`
   - `trigno.avanti.gyro.y`
   - `trigno.avanti.gyro.z`
 - Таймлайн после каждого `START` переякоривается к текущему `session time`, а дальше идёт по фиксированному `dtMs`.
-- Lifecycle, reconnect timer и uniform emit адаптера теперь собраны на `@sensync2/adapter-kit`, но transport/boundary по-прежнему остаются локальными для Trigno.
+- Lifecycle, reconnect timer и uniform emit адаптера теперь собраны на `@sensync2/plugin-kit`, но transport/boundary по-прежнему остаются локальными для Trigno.
 - Watchdog следит за тишиной по обоим data ports и в `connected` состоянии запускает auto-reconnect.
 - В `paused` состоянии reconnect отключён намеренно: оператор должен явно решить, что делать дальше.
 - Схема `BC/UPSAMPLE` задокументирована в `Trigno SDK User Guide`, разделы `6.1.2` и `6.3.3-6.3.4`; внутри репозитория её краткая прикладная версия зафиксирована в [CONTRACTS.md](CONTRACTS.md).
 
 ## Взаимодействие
 
-- Использует `@sensync2/adapter-kit`, `@sensync2/core` и `@sensync2/plugin-sdk`.
+- Использует `@sensync2/plugin-kit`, `@sensync2/core` и `@sensync2/plugin-sdk`.
 - Экспортирует plugin-specific runtime contracts и `trignoUiCommandBoundaryGuards`.
 - Подключается в `apps/runtime` как часть профиля `veloerg`.
 - Concrete UI materialization живёт в `packages/plugins-ui-gateway`.

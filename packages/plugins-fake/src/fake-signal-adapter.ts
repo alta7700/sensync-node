@@ -6,7 +6,7 @@ import {
   resolveAutoconnectDecision,
   runAutoconnect,
   type AdapterAutoconnectDecision,
-} from '@sensync2/adapter-kit';
+} from '@sensync2/plugin-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 
 interface FakeSignalAdapterConfig {

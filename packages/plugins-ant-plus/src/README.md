@@ -10,7 +10,7 @@
 
 - `ant-plus-adapter.ts`:
   - реализует scan/connect/disconnect lifecycle;
-  - держит scan cache, state holder, reconnect timer и uniform emit через `adapter-kit`;
+  - держит scan cache, state holder, reconnect timer и uniform emit через `plugin-kit`;
   - поднимает transport;
   - преобразует profile packets в `signal.batch`;
   - для live Moxy считает timestamps по реальной межпакетной дельте, а не по `measurementInterval` профиля;
@@ -29,4 +29,4 @@
 ## Взаимодействие
 
 - На runtime event-уровне опирается на `packages/core`.
-- Подключается в launch profiles из `apps/runtime/src/default-plugins.ts`.
+- Подключается в launch profiles из `apps/runtime/src/profiles/*`.

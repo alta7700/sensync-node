@@ -8,7 +8,7 @@
 - `apps/desktop` — Electron main process и IPC bridge между runtime и renderer.
 - `apps/client` — schema-driven React UI, который получает control-сообщения и binary batches.
 - `packages/core` — типы runtime-событий, plugin manifest, UI schema и binary UI wire.
-- `packages/adapter-kit` — переиспользуемые helper'ы для adapter lifecycle, output-map, uniform emit, autoconnect и scan cache.
+- `packages/plugin-kit` — composable helper'ы для adapter и processor plugin'ов: lifecycle, input/output map, signal emit, scan flow, локальные store и handler composition.
 - `packages/plugin-sdk` — API для plugin worker'ов.
 - `packages/plugins-ant-plus` — ANT+ адаптеры и transport boundary для Moxy и будущих ANT+ профилей.
 - `packages/plugins-ble` — BLE transport boundary и Zephyr BioHarness 3 адаптер.
@@ -36,8 +36,12 @@ npm run dev
 - `npm run dev:runtime:veloerg` — standalone runtime для composite `veloerg` профиля.
 - `npm run build` — сборка всех workspace-пакетов.
 - `npm run test` — тесты по workspace'ам.
+- `npm run coverage` — V8 coverage по workspace'ам. Отчёты пишутся в `coverage/` внутри каждого пакета.
+- `npm run smoke` — все текущие smoke-сценарии одной командой.
+- `npm run smoke:fake-profile` — smoke launch profile `fake`.
 - `npm run smoke:hdf5-recorder` — smoke без UI для recorder-плагина.
 - `npm run smoke:fake-hdf5-simulation` — smoke без UI для fake-ориентированной HDF5 simulation.
+- `npm run verify` — полный верхнеуровневый прогон: `test + build + smoke`.
 
 ## Launch profiles
 

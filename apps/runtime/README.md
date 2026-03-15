@@ -22,9 +22,9 @@ Node runtime и хост plugin worker'ов.
   - plugin `emit` должен быть объявлен в `manifest.emits`.
 - Неизвестные или запрещённые события не маршрутизируются и materialize'ятся в `ui.warning`.
 - UI ingress сначала проходит через exact typed `UiCommandMessage` + boundary guards, а затем через helper `uiCommandMessageToRuntimeEventInput(...)` превращается во внутренний `RuntimeEventInput`.
-- Env/file boundary launch profiles теперь вынесен в `apps/runtime/src/launch-profile-boundary.ts`, чтобы `default-plugins.ts` не смешивал композицию плагинов с разбором внешнего окружения.
+- Env/file boundary launch profiles теперь вынесен в `apps/runtime/src/launch-profile-boundary.ts`, а source of truth по профилям лежит в `apps/runtime/src/profiles/README.md` и соседних profile-модулях.
 - Если adapter-worker падает, а в `PluginDescriptor.config` есть `adapterId`, runtime синтетически публикует `adapter.state.changed = failed`, чтобы UI не оставался с устаревшим состоянием подключения.
-- `default-plugins.ts` задаёт launch profiles:
+- `apps/runtime/src/profiles/README.md` и отдельные profile-модули задают launch profiles:
   - `fake`;
   - `fake-hdf5-simulation`;
   - `veloerg`.

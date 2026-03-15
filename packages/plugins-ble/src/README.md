@@ -10,7 +10,7 @@
 
 - `zephyr-bioharness-3-adapter.ts`:
   - реализует scan/connect/disconnect lifecycle;
-  - держит opaque `candidateId` cache, state holder, reconnect timer и irregular emit через `adapter-kit`;
+  - держит opaque `candidateId` cache, state holder, reconnect timer и irregular emit через `plugin-kit`;
   - управляет reconnect и watchdog по тишине notifications;
   - публикует shared adapter-события, `signal.batch` для `zephyr.rr` и telemetry.
 - `ble-boundary.ts` изолирует внешний boundary:
@@ -27,5 +27,5 @@
 ## Взаимодействие
 
 - На runtime event-уровне пакет опирается на `packages/core`.
-- Подключается в launch profiles из `apps/runtime/src/default-plugins.ts`.
+- Подключается в launch profiles из `apps/runtime/src/profiles/*`.
 - Для отладки real BLE path поддерживает `SENSYNC2_ZEPHYR_BIOHARNESS_LOG_BLE=1`, чтобы печатать discovery/connect и packet debug-логи.

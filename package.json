@@ -22,14 +22,19 @@
     "dev:desktop:fake-hdf5-simulation": "SENSYNC2_PROFILE=fake-hdf5-simulation npm --workspace @sensync2/desktop run dev",
     "dev:desktop:veloerg": "SENSYNC2_PROFILE=veloerg npm --workspace @sensync2/desktop run dev",
     "generate:runtime-event-map": "tsx ./scripts/generate_runtime_event_map.ts",
+    "smoke": "npm run smoke:fake-profile && npm run smoke:hdf5-recorder && npm run smoke:fake-hdf5-simulation",
+    "smoke:fake-profile": "tsx ./scripts/smoke_fake_profile.ts",
     "smoke:hdf5-recorder": "tsx ./scripts/smoke_hdf5_recorder.ts",
     "smoke:fake-hdf5-simulation": "tsx ./scripts/smoke_fake_hdf5_simulation.ts",
     "build": "npm run --workspaces build",
-    "test": "npm run --workspaces test"
+    "test": "npm run --workspaces test",
+    "coverage": "npm run --workspaces test -- --coverage --coverage.provider=v8 --coverage.reporter=text --coverage.reporter=text-summary --coverage.reporter=html --coverage.reporter=json-summary",
+    "verify": "npm run test && npm run build && npm run smoke"
   },
   "devDependencies": {
     "@esbuild/darwin-arm64": "^0.27.3",
     "@types/node": "^24.6.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "concurrently": "^9.2.1",
     "electron": "^37.4.0",
     "tsx": "^4.20.6",

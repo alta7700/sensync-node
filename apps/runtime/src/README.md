@@ -15,10 +15,11 @@
 - `workspace-event-registry.ts` — единый registry событий workspace-уровня и валидация `(type, v)`/manifest.
 - `workspace-ui-command-boundary.ts` — агрегатор shared и plugin-specific UI guards для ingress из renderer.
 - `session-clock.ts` — относительное время сессии.
-- `default-plugins.ts` — описание launch profiles и их plugin-композиций.
-- `default-plugins.ts` также фиксирует transport-sensitive режимы устройств, например `BC=OFF + UPSAMPLE=OFF` для Trigno в профиле `veloerg`.
+- `profiles/index.ts` — registry launch profiles и thin API `resolve/build`.
+- `profiles/*.ts` — отдельные profile-модули, которые собирают plugin composition и готовую `UiSchema`.
+- `profiles/shared.ts` — общие helper'ы для profile composition, например descriptor `ui-gateway`.
 - `launch-profile-boundary.ts` — boundary для `process.env` и file-path validation при сборке launch profiles.
-- `main.ts` — standalone-точка входа, которая выбирает профиль через `SENSYNC2_PROFILE`.
+- `main.ts` — standalone-точка входа, которая выбирает профиль через `SENSYNC2_PROFILE` и строит `ResolvedLaunchProfile`.
 - `runtime-host.ts` использует `uiCommandMessageToRuntimeEventInput(...)` из `packages/core`, чтобы не держать локальный bridge-cast между UI boundary и внутренним `RuntimeEventInput`.
 
 ## Взаимодействие
@@ -27,4 +28,4 @@
 - Работает уже не со строковыми "псевдо-ивентами", а с exact union `RuntimeEvent`, который собирается из shared/plugin-specific event map.
 - Загружает plugin modules через `packages/plugin-sdk`.
 - Наружу отдаёт API класса `RuntimeHost`, который использует `apps/desktop`.
-- В `default-plugins.ts` зафиксированы базовый профиль `fake`, переходная композиция `fake-hdf5-simulation` и composite-профиль `veloerg` для ANT+/Moxy, BLE/Zephyr и TCP/Trigno.
+- В `profiles/*` зафиксированы базовый профиль `fake`, переходная композиция `fake-hdf5-simulation` и composite-профиль `veloerg` для ANT+/Moxy, BLE/Zephyr и TCP/Trigno.

@@ -6,9 +6,11 @@ import {
   type RuntimeEventInput,
   type UiControlMessage,
   type UiControlsWidget,
+  type UiSchema,
 } from '@sensync2/core';
 import { TrignoEventTypes } from '@sensync2/plugins-trigno';
 import plugin from './ui-gateway-plugin.ts';
+import { buildFakeUiSchema, buildVeloergUiSchema } from './profile-schemas.ts';
 
 interface CapturedEvent {
   event: RuntimeEventInput;
@@ -16,7 +18,7 @@ interface CapturedEvent {
 
 type UiInitMessage = Extract<UiControlMessage, { type: 'ui.init' }>;
 
-function createTestContext(profile: 'veloerg' | 'fake' = 'veloerg') {
+function createTestContext(schema: UiSchema = buildVeloergUiSchema()) {
   const emitted: CapturedEvent[] = [];
   return {
     emitted,
@@ -33,7 +35,7 @@ function createTestContext(profile: 'veloerg' | 'fake' = 'veloerg') {
       clearTimer() {},
       telemetry() {},
       getConfig() {
-        return { profile };
+        return { schema };
       },
     },
   };
@@ -58,7 +60,7 @@ afterEach(async () => {
 
 describe('ui-gateway-plugin', () => {
   it('не показывает manual connect control для fake auto-source', async () => {
-    const { ctx, emitted } = createTestContext('fake');
+    const { ctx, emitted } = createTestContext(buildFakeUiSchema());
     await plugin.onInit(ctx as never);
     await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
       type: EventTypes.uiClientConnected,
@@ -88,7 +90,7 @@ describe('ui-gateway-plugin', () => {
   });
 
   it('материализует Trigno controls и графики в veloerg schema', async () => {
-    const { ctx, emitted } = createTestContext('veloerg');
+    const { ctx, emitted } = createTestContext(buildVeloergUiSchema());
     await plugin.onInit(ctx as never);
     await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
       type: EventTypes.uiClientConnected,
@@ -208,7 +210,7 @@ describe('ui-gateway-plugin', () => {
   });
 
   it('патчит Trigno status flags в UI', async () => {
-    const { ctx, emitted } = createTestContext('veloerg');
+    const { ctx, emitted } = createTestContext(buildVeloergUiSchema());
     await plugin.onInit(ctx as never);
     await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
       type: TrignoEventTypes.statusReported,
