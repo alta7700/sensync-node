@@ -5,6 +5,7 @@ import {
   type AdapterScanCandidatesPayload,
   type AdapterScanStateChangedPayload,
   type AdapterStateChangedPayload,
+  type CommandRejectedPayload,
   type RecordingErrorPayload,
   type RecordingStateChangedPayload,
   type RuntimeTelemetrySnapshotPayload,
@@ -12,14 +13,16 @@ import {
   type SimulationStateChangedPayload,
   type UiBinaryOutPayload,
   type UiControlMessage,
+  type UiDerivedFlagRule,
   type UiControlOutPayload,
   type UiFlagPatch,
   type UiFlagSnapshot,
+  type UiFlagValue,
   type UiFormOption,
   type UiSchema,
   type UiStreamDeclaration,
 } from '@sensync2/core';
-import { definePlugin } from '@sensync2/plugin-sdk';
+import { definePlugin, type TimelineResetCommitContext } from '@sensync2/plugin-sdk';
 import { TrignoEventTypes, type TrignoStatusReportedPayload } from '@sensync2/plugins-trigno';
 import { buildFakeUiSchema } from './profile-schemas.ts';
 
@@ -33,8 +36,16 @@ let currentSchema: UiSchema = buildFakeUiSchema();
 let flags: UiFlagSnapshot = {};
 let flagVersion = 0;
 let nextStreamNumericId = 1;
+let currentTimelineId = 'timeline-initializing';
+let timelineStartSessionMs = 0;
 const streamsById = new Map<string, UiStreamDeclaration>();
 const formOptionsBySourceId = new Map<string, UiFormOption[]>();
+const derivedFlagRulesByStreamId = new Map<string, CompiledDerivedFlagRule[]>();
+
+interface CompiledDerivedFlagRule {
+  flagKey: string;
+  valueMap: Map<number, UiFlagValue>;
+}
 
 function emitControl(message: UiControlMessage, clientId?: string) {
   const payload: UiControlOutPayload = { message };
@@ -64,6 +75,92 @@ function patchFlags(patch: UiFlagPatch): { patch: UiFlagPatch; version: number }
   flags = { ...flags, ...patch };
   flagVersion += 1;
   return { patch, version: flagVersion };
+}
+
+function latestNumericValue(event: SignalBatchEvent): number | null {
+  const values = event.payload.values;
+  if (values.length === 0) return null;
+  return Number(values[values.length - 1]);
+}
+
+function isPluginSourcePluginId(sourcePluginId: string): boolean {
+  return sourcePluginId !== 'runtime' && sourcePluginId !== 'external-ui';
+}
+
+function parseDiscreteValueMap(
+  rule: Extract<UiDerivedFlagRule, { kind: 'latest-discrete-signal-value-map' }>,
+): Map<number, UiFlagValue> {
+  const parsed = new Map<number, UiFlagValue>();
+  for (const [rawValue, mappedFlagValue] of Object.entries(rule.valueMap)) {
+    if (!/^-?\d+$/.test(rawValue)) {
+      throw new Error(
+        `UiSchema derived flag "${rule.flagKey}" использует недопустимый ключ "${rawValue}": ` +
+        'latest-discrete-signal-value-map принимает только целочисленные значения',
+      );
+    }
+    const numericValue = Number(rawValue);
+    if (!Number.isSafeInteger(numericValue)) {
+      throw new Error(
+        `UiSchema derived flag "${rule.flagKey}" использует небезопасный integer-ключ "${rawValue}"`,
+      );
+    }
+    parsed.set(numericValue, mappedFlagValue);
+  }
+  return parsed;
+}
+
+function compileDerivedFlags(schema: UiSchema): UiFlagSnapshot {
+  derivedFlagRulesByStreamId.clear();
+  const initialFlags: UiFlagSnapshot = {};
+  const seenFlagKeys = new Set<string>();
+
+  for (const rule of schema.derivedFlags ?? []) {
+    if (seenFlagKeys.has(rule.flagKey)) {
+      throw new Error(`UiSchema содержит дублирующее derived flag правило для "${rule.flagKey}"`);
+    }
+    seenFlagKeys.add(rule.flagKey);
+    initialFlags[rule.flagKey] = rule.initialValue;
+    registerDerivedFlagRule(rule);
+  }
+
+  return initialFlags;
+}
+
+function registerDerivedFlagRule(rule: UiDerivedFlagRule) {
+  switch (rule.kind) {
+    case 'latest-discrete-signal-value-map': {
+      const compiledRule: CompiledDerivedFlagRule = {
+        flagKey: rule.flagKey,
+        valueMap: parseDiscreteValueMap(rule),
+      };
+      const rules = derivedFlagRulesByStreamId.get(rule.sourceStreamId) ?? [];
+      rules.push(compiledRule);
+      derivedFlagRulesByStreamId.set(rule.sourceStreamId, rules);
+      return;
+    }
+  }
+}
+
+function deriveFlagPatchFromSignal(event: SignalBatchEvent): UiFlagPatch | null {
+  const rules = derivedFlagRulesByStreamId.get(event.payload.streamId);
+  if (!rules || rules.length === 0) {
+    return null;
+  }
+  const lastValue = latestNumericValue(event);
+  if (lastValue === null || !Number.isInteger(lastValue)) {
+    return null;
+  }
+
+  const patch: UiFlagPatch = {};
+  for (const rule of rules) {
+    const nextValue = rule.valueMap.get(lastValue);
+    if (nextValue === undefined || flags[rule.flagKey] === nextValue) {
+      continue;
+    }
+    patch[rule.flagKey] = nextValue;
+  }
+
+  return Object.keys(patch).length > 0 ? patch : null;
 }
 
 function ensureStream(event: SignalBatchEvent): { declared?: UiStreamDeclaration; stream: UiStreamDeclaration } {
@@ -126,7 +223,7 @@ export default definePlugin({
       { type: EventTypes.adapterScanStateChanged, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.adapterScanCandidates, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.adapterStateChanged, v: 1, kind: 'fact', priority: 'system' },
-      { type: EventTypes.intervalStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.commandRejected, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.activityStateChanged, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.recordingStateChanged, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.recordingError, v: 1, kind: 'fact', priority: 'system' },
@@ -153,6 +250,9 @@ export default definePlugin({
     if (cfg?.schema) {
       currentSchema = cfg.schema;
     }
+    flags = compileDerivedFlags(currentSchema);
+    currentTimelineId = ctx.currentTimelineId();
+    timelineStartSessionMs = ctx.timelineStartSessionMs();
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.uiClientConnected) {
@@ -166,6 +266,8 @@ export default definePlugin({
         clock: {
           timeDomain: 'session',
           sessionStartWallMs: ctx.clock.sessionStartWallMs(),
+          timelineId: currentTimelineId,
+          timelineStartSessionMs,
         },
       };
       await ctx.emit(emitControl(initMsg, clientId));
@@ -225,17 +327,21 @@ export default definePlugin({
       return;
     }
 
-    if (event.type === EventTypes.intervalStateChanged) {
-      const payload = event.payload;
-      const { patch, version } = patchFlags({ 'interval.active': payload.active });
-      await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
-      return;
-    }
-
     if (event.type === EventTypes.activityStateChanged) {
       const payload = event.payload;
       const { patch, version } = patchFlags({ 'activity.active': payload.active });
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      return;
+    }
+
+    if (event.type === EventTypes.commandRejected) {
+      const payload: CommandRejectedPayload = event.payload;
+      await ctx.emit(emitControl({
+        type: 'ui.warning',
+        code: payload.code,
+        message: payload.message,
+        ...(isPluginSourcePluginId(event.sourcePluginId) ? { pluginId: event.sourcePluginId } : {}),
+      }));
       return;
     }
 
@@ -303,6 +409,11 @@ export default definePlugin({
     }
 
     if (event.type === EventTypes.signalBatch) {
+      const derivedFlagPatch = deriveFlagPatchFromSignal(event);
+      if (derivedFlagPatch) {
+        const { patch, version } = patchFlags(derivedFlagPatch);
+        await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      }
       const { declared, stream } = ensureStream(event);
       if (declared) {
         await ctx.emit(emitControl({ type: 'ui.stream.declare', stream: declared }));
@@ -310,6 +421,25 @@ export default definePlugin({
       const frame = encodeUiSignalBatchFrameFromEvent(event, stream.numericId);
       await ctx.emit(emitBinary(frame));
     }
+  },
+  async onTimelineResetCommit(input: TimelineResetCommitContext, ctx) {
+    currentTimelineId = input.nextTimelineId;
+    timelineStartSessionMs = input.timelineStartSessionMs;
+    flags = compileDerivedFlags(currentSchema);
+    flagVersion += 1;
+    formOptionsBySourceId.clear();
+
+    await ctx.emit(emitControl({
+      type: 'ui.timeline.reset',
+      timelineId: currentTimelineId,
+      timelineStartSessionMs,
+      clearBuffers: true,
+    }));
+    await ctx.emit(emitControl({
+      type: 'ui.flags.patch',
+      patch: { ...flags },
+      version: flagVersion,
+    }));
   },
   async onShutdown() {
     streamsById.clear();
@@ -319,5 +449,8 @@ export default definePlugin({
     nextStreamNumericId = 1;
     sessionId = 'sensync2-local';
     currentSchema = buildFakeUiSchema();
+    currentTimelineId = 'timeline-initializing';
+    timelineStartSessionMs = 0;
+    derivedFlagRulesByStreamId.clear();
   },
 });

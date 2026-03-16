@@ -7,6 +7,8 @@ import {
 import type { PluginContext } from '@sensync2/plugin-sdk';
 import type {
   IrregularSignalTiming,
+  LabelSignalTiming,
+  LabelSignalValues,
   OutputDescriptor,
   OutputRegistry,
   UniformSignalTiming,
@@ -14,9 +16,9 @@ import type {
 } from './types.ts';
 
 export function inferSampleFormat(values: UniformSignalValues): SampleFormat {
-  if (values instanceof Float32Array) return 'f32';
-  if (values instanceof Float64Array) return 'f64';
-  if (values instanceof Int16Array) return 'i16';
+  if (values.BYTES_PER_ELEMENT === 4) return 'f32';
+  if (values.BYTES_PER_ELEMENT === 8) return 'f64';
+  if (values.BYTES_PER_ELEMENT === 2) return 'i16';
   throw new Error('Неподдерживаемый тип values для signal.batch');
 }
 
@@ -79,6 +81,36 @@ export function createIrregularSignalEvent(
   });
 }
 
+export function createLabelSignalEvent(
+  descriptor: OutputDescriptor,
+  values: LabelSignalValues,
+  timing: LabelSignalTiming,
+): RuntimeEventInputOf<typeof EventTypes.signalBatch, 1> {
+  if (timing.timestampsMs.length !== values.length) {
+    throw new Error(`timestampsMs должен совпадать с длиной values для ${descriptor.streamId}`);
+  }
+
+  const payload: RuntimeEventInputOf<typeof EventTypes.signalBatch, 1>['payload'] = {
+    streamId: descriptor.streamId,
+    sampleFormat: inferSampleFormat(values),
+    frameKind: 'label-batch',
+    t0Ms: timing.timestampsMs[0] ?? 0,
+    sampleCount: values.length,
+    values,
+    timestampsMs: timing.timestampsMs,
+  };
+
+  if (descriptor.units !== undefined) payload.units = descriptor.units;
+
+  return defineRuntimeEventInput({
+    type: EventTypes.signalBatch,
+    v: 1,
+    kind: 'data',
+    priority: 'data',
+    payload,
+  });
+}
+
 export function createUniformSignalEmitter<TOutputKey extends string>(
   registry: OutputRegistry<TOutputKey>,
 ) {
@@ -88,6 +120,19 @@ export function createUniformSignalEmitter<TOutputKey extends string>(
     },
     async emit(ctx: PluginContext, outputKey: TOutputKey, values: UniformSignalValues, timing: UniformSignalTiming): Promise<void> {
       await ctx.emit(createUniformSignalEvent(registry.get(outputKey), values, timing));
+    },
+  };
+}
+
+export function createLabelSignalEmitter<TOutputKey extends string>(
+  registry: OutputRegistry<TOutputKey>,
+) {
+  return {
+    createEvent(outputKey: TOutputKey, values: LabelSignalValues, timing: LabelSignalTiming) {
+      return createLabelSignalEvent(registry.get(outputKey), values, timing);
+    },
+    async emit(ctx: PluginContext, outputKey: TOutputKey, values: LabelSignalValues, timing: LabelSignalTiming): Promise<void> {
+      await ctx.emit(createLabelSignalEvent(registry.get(outputKey), values, timing));
     },
   };
 }

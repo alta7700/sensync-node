@@ -135,6 +135,7 @@ async function boot(): Promise<void> {
 
   runtime = new RuntimeHost({
     plugins: launchProfile.plugins,
+    ...(launchProfile.timelineReset ? { timelineReset: launchProfile.timelineReset } : {}),
     uiSinks: {
       onControl(payload) {
         broadcastControl(payload.message, payload.clientId);

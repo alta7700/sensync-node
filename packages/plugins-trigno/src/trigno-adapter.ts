@@ -106,10 +106,6 @@ function resetReconnectState(): void {
   reconnectPolicy.reset();
 }
 
-function currentRuntimeState() {
-  return trignoState.getState();
-}
-
 async function sleep(ms: number): Promise<void> {
   if (ms <= 0) return;
   await new Promise((resolve) => setTimeout(resolve, ms));

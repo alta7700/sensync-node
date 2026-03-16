@@ -56,12 +56,19 @@
 
 - runtime находит guard по `(type, v)` уже не только среди shared-команд `core`, но и в workspace-агрегате plugin-specific guards;
 - guard проверяет payload;
+- shared-команда `label.mark.request` проходит этот же ingress как обычная UI-команда, а не как особый shortcut для interval-сценария;
+- shared-команда `timeline.reset.request` тоже валидируется тем же boundary, но затем перехватывается `RuntimeHost` до обычного `publish()` и уходит в special reset coordinator;
 - только после этого сообщение превращается в внутренний `RuntimeEventInput`.
 
 Что уже trusted:
 
 - `RuntimeEventInput`, прошедший boundary guard;
 - дальнейшая маршрутизация в шине.
+
+Отдельная оговорка:
+
+- `timeline reset` не является "обычным runtime event flow" даже после boundary-валидации;
+- worker-side запрос reset проходит через специальное сообщение `plugin.timeline-reset.request`, а не через `ctx.emit(...)`.
 
 ### 2. Launch profile / env ingress
 

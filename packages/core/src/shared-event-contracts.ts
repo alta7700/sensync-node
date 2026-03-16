@@ -141,22 +141,22 @@ export const SharedEventContracts = {
     priority: 'control',
     visibility: 'shared',
   }),
-  intervalStart: defineEventContract({
-    type: EventTypes.intervalStart,
+  labelMarkRequest: defineEventContract({
+    type: EventTypes.labelMarkRequest,
     v: 1,
     kind: 'command',
     priority: 'control',
     visibility: 'shared',
   }),
-  intervalStop: defineEventContract({
-    type: EventTypes.intervalStop,
+  timelineResetRequest: defineEventContract({
+    type: EventTypes.timelineResetRequest,
     v: 1,
     kind: 'command',
     priority: 'control',
     visibility: 'shared',
   }),
-  intervalStateChanged: defineEventContract({
-    type: EventTypes.intervalStateChanged,
+  commandRejected: defineEventContract({
+    type: EventTypes.commandRejected,
     v: 1,
     kind: 'fact',
     priority: 'system',

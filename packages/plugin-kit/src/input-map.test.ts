@@ -13,7 +13,7 @@ describe('input-map', () => {
         retain: { by: 'samples', value: 2000 },
       }),
       interval: factInput({
-        event: { type: 'interval.state.changed', v: 1 },
+        event: { type: 'activity.state.changed', v: 1 },
       }),
     });
 
@@ -24,7 +24,7 @@ describe('input-map', () => {
     });
     expect(inputs.get('interval')).toEqual({
       kind: 'fact',
-      event: { type: 'interval.state.changed', v: 1 },
+      event: { type: 'activity.state.changed', v: 1 },
       retain: 'latest',
     });
   });
@@ -38,8 +38,8 @@ describe('input-map', () => {
 
   it('запрещает дубли fact event refs', () => {
     expect(() => createInputMap({
-      a: factInput({ event: { type: 'interval.state.changed', v: 1 } }),
-      b: factInput({ event: { type: 'interval.state.changed', v: 1 } }),
+      a: factInput({ event: { type: 'activity.state.changed', v: 1 } }),
+      b: factInput({ event: { type: 'activity.state.changed', v: 1 } }),
     })).toThrow(/повторяется/);
   });
 });

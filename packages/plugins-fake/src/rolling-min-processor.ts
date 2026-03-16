@@ -8,6 +8,7 @@ import {
   createInputRuntime,
   createIntervalHandler,
   createOutputRegistry,
+  createTimelineResetParticipant,
   createUniformSignalEmitter,
   signalInput,
   type HandlerGroup,
@@ -24,6 +25,18 @@ let cfg: RollingMinConfig = { sourceStreamId: 'fake.a2', outputStreamId: 'metric
 let inputs: InputRuntime<'source'> | null = null;
 let handlers: HandlerGroup<'source', never> | null = null;
 let emitRollingMin: ReturnType<typeof createUniformSignalEmitter<'output'>> | null = null;
+const timelineResetParticipant = createTimelineResetParticipant({
+  onPrepare: async (_input, ctx) => {
+    await handlers?.stop(ctx);
+  },
+  onAbort: async (_input, ctx) => {
+    await handlers?.start(ctx);
+  },
+  onCommit: async (_input, ctx) => {
+    inputs?.clear();
+    await handlers?.start(ctx);
+  },
+});
 
 const baseManifest = {
   id: 'rolling-min-processor',
@@ -110,6 +123,7 @@ export default definePlugin({
 
     applyManifestFragment(manifest, buildManifestFragmentFromInputs(inputMap));
     applyManifestFragment(manifest, handlers.manifest());
+    timelineResetParticipant.initialize(ctx.currentTimelineId());
     await handlers.start(ctx);
   },
   async onEvent(event, ctx) {
@@ -121,5 +135,14 @@ export default definePlugin({
     inputs = null;
     handlers = null;
     emitRollingMin = null;
+  },
+  async onTimelineResetPrepare(input, ctx) {
+    await timelineResetParticipant.onPrepare(input, ctx);
+  },
+  async onTimelineResetAbort(input, ctx) {
+    await timelineResetParticipant.onAbort(input, ctx);
+  },
+  async onTimelineResetCommit(input, ctx) {
+    await timelineResetParticipant.onCommit(input, ctx);
   },
 });

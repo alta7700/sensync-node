@@ -11,6 +11,20 @@ export const fakeProfile: LaunchProfileDefinition = {
     return {
       id: 'fake',
       title: 'Fake demo',
+      timelineReset: {
+        enabled: true,
+        requesters: ['external-ui'],
+        participants: [
+          'ui-gateway',
+          'fake-signal-adapter',
+          'shape-generator-adapter',
+          'rolling-min-processor',
+          'activity-detector-processor',
+        ],
+        prepareTimeoutMs: 2_000,
+        commitTimeoutMs: 2_000,
+        recorderPolicy: 'reject-if-recording',
+      },
       plugins: [
         {
           id: 'fake-signal-adapter',
@@ -31,9 +45,16 @@ export const fakeProfile: LaunchProfileDefinition = {
           },
         },
         {
-          id: 'interval-label-adapter',
-          modulePath: moduleFileUrl('packages/plugins-fake/src/interval-label-adapter.ts'),
-          config: {},
+          id: 'label-generator-adapter',
+          modulePath: moduleFileUrl('packages/plugins-labels/src/label-generator-adapter.ts'),
+          config: {
+            labels: {
+              interval: {
+                streamId: 'interval.label',
+                sampleFormat: 'i16',
+              },
+            },
+          },
         },
         {
           id: 'rolling-min-processor',

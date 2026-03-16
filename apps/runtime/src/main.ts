@@ -6,6 +6,7 @@ async function main(): Promise<void> {
   const launchProfile = buildLaunchProfile(profile, process.env);
   const runtime = new RuntimeHost({
     plugins: launchProfile.plugins,
+    ...(launchProfile.timelineReset ? { timelineReset: launchProfile.timelineReset } : {}),
     uiSinks: {
       onControl(payload) {
         console.log('[UI control]', payload.message.type);

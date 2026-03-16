@@ -13,6 +13,7 @@ export type EventKind = 'command' | 'fact' | 'data' | 'system';
  */
 export interface RuntimeEventBase<TType extends EventType = EventType> {
   seq: EventSeq;
+  timelineId: string;
   type: TType;
   v: EventVersion;
   tsMonoMs: number;
@@ -74,7 +75,7 @@ export interface RuntimeEventMap {}
 export type RuntimeEvent = RuntimeEventMap[keyof RuntimeEventMap];
 export type RuntimeEventInput = RuntimeEvent extends infer TEvent
   ? TEvent extends RuntimeEvent
-    ? Omit<TEvent, 'seq' | 'tsMonoMs' | 'sourcePluginId'>
+    ? Omit<TEvent, 'seq' | 'timelineId' | 'tsMonoMs' | 'sourcePluginId'>
     : never
   : never;
 export type RuntimeEventOf<
@@ -84,7 +85,7 @@ export type RuntimeEventOf<
 export type RuntimeEventInputOf<
   TType extends RuntimeEvent['type'],
   TVersion extends Extract<RuntimeEvent, { type: TType }>['v'] = Extract<RuntimeEvent, { type: TType }>['v'],
-> = Omit<RuntimeEventOf<TType, TVersion>, 'seq' | 'tsMonoMs' | 'sourcePluginId'>;
+> = Omit<RuntimeEventOf<TType, TVersion>, 'seq' | 'timelineId' | 'tsMonoMs' | 'sourcePluginId'>;
 
 /**
  * Сохраняет точный literal-тип события при создании input-объектов для `emit()` и runtime publish.
@@ -96,12 +97,14 @@ export function defineRuntimeEventInput<TEvent extends RuntimeEventInput>(event:
 export function attachRuntimeEventEnvelope<TEvent extends RuntimeEventInput>(
   event: TEvent,
   seq: EventSeq,
+  timelineId: string,
   tsMonoMs: number,
   sourcePluginId: RuntimeEvent['sourcePluginId'],
 ): RuntimeEventOf<TEvent['type'], TEvent['v']> {
   return {
     ...event,
     seq,
+    timelineId,
     tsMonoMs,
     sourcePluginId,
   } as unknown as RuntimeEventOf<TEvent['type'], TEvent['v']>;
@@ -201,8 +204,27 @@ export interface ShapeGeneratedPayload {
   shapeName: string;
 }
 
-export interface IntervalCommandPayload {
+export interface LabelMarkRequestPayload {
+  labelId: string;
+  value: number;
+  atTimeMs?: number;
   requestId?: string;
+}
+
+export interface TimelineResetRequestPayload {
+  reason?: string;
+  requestId?: string;
+}
+
+export type CommandRejectedDetailValue = string | number | boolean | null;
+
+export interface CommandRejectedPayload {
+  commandType: string;
+  commandVersion: number;
+  code: string;
+  message: string;
+  requestId?: string;
+  details?: Record<string, CommandRejectedDetailValue>;
 }
 
 export type RecordingMetadataScalar = string | number | boolean;
@@ -257,8 +279,8 @@ export interface RecordingErrorPayload {
  * Это нужно при fan-out в несколько worker'ов в `v1`.
  */
 export function cloneSignalValues(values: SignalValues): SignalValues {
-  if (values instanceof Float32Array) return new Float32Array(values);
-  if (values instanceof Float64Array) return new Float64Array(values);
+  if (values.BYTES_PER_ELEMENT === 4) return new Float32Array(values);
+  if (values.BYTES_PER_ELEMENT === 8) return new Float64Array(values);
   return new Int16Array(values);
 }
 

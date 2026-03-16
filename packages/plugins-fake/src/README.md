@@ -10,11 +10,10 @@
 
 - `fake-signal-adapter.ts` — синтетические каналы `fake.*`, собранные через `plugin-kit` и запускаемые по `auto-on-init`, но только после общего runtime-барьера `runtime.started`.
 - `shape-generator-adapter.ts` — генерация управляемых форм `shapes.signal`; подключение остаётся manual.
-- `interval-label-adapter.ts` — метки интервалов.
 - `rolling-min-processor.ts` — пример таймерного процессора.
 - `activity-detector-processor.ts` — пример derived state/plugin processor.
 - `event-contracts.ts` — plugin-specific события пакета (`fake.scheduler.tick`, `shape.scheduler.tick`, `processor.rolling-min.flush`, `metric.value.changed`).
-- `helpers.ts` — локальные helper'ы для оставшихся простых сценариев; базовый lifecycle/uniform emit и processor helper-layer уехали в `@sensync2/plugin-kit`.
+- Generic label-потоки больше не живут здесь: `interval.label` теперь публикует отдельный `@sensync2/plugins-labels`.
 
 ## Взаимодействие
 

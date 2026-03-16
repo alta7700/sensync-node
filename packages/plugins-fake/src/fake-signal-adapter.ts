@@ -2,6 +2,7 @@ import { EventTypes } from '@sensync2/core';
 import {
   createAdapterStateHolder,
   createOutputRegistry,
+  createTimelineResetParticipant,
   createUniformSignalEmitter,
   resolveAutoconnectDecision,
   runAutoconnect,
@@ -46,6 +47,27 @@ let autoconnectDecision: AdapterAutoconnectDecision = {
   kind: 'manual',
   shouldAutoconnect: false,
 };
+const timelineResetParticipant = createTimelineResetParticipant({
+  onPrepare: (_input, ctx) => {
+    stopStreaming(ctx);
+  },
+  onAbort: async (_input, ctx) => {
+    if (!fakeState.isState('connected')) {
+      return;
+    }
+    await startStreaming(ctx);
+  },
+  onCommit: async (input, ctx) => {
+    if (fakeState.isState('connected')) {
+      resetStreamProgress();
+      connectionStartSessionMs = input.timelineStartSessionMs;
+      await startStreaming(ctx);
+    } else {
+      stopStreaming(ctx);
+    }
+    await fakeState.emitCurrent(ctx);
+  },
+});
 
 function gcd(a: number, b: number): number {
   let x = Math.abs(Math.trunc(a));
@@ -204,6 +226,7 @@ export default definePlugin({
     rebuildStreams();
     fakeState = createAdapterStateHolder({ adapterId: 'fake' });
     autoconnectDecision = resolveAutoconnectDecision({ kind: 'auto-on-init' });
+    timelineResetParticipant.initialize(ctx.currentTimelineId());
     await fakeState.emitCurrent(ctx);
   },
   async onEvent(event, ctx) {
@@ -239,5 +262,14 @@ export default definePlugin({
     stopStreaming(ctx);
     fakeState = createAdapterStateHolder({ adapterId: 'fake' });
     autoconnectDecision = { kind: 'manual', shouldAutoconnect: false };
+  },
+  async onTimelineResetPrepare(input, ctx) {
+    await timelineResetParticipant.onPrepare(input, ctx);
+  },
+  async onTimelineResetAbort(input, ctx) {
+    await timelineResetParticipant.onAbort(input, ctx);
+  },
+  async onTimelineResetCommit(input, ctx) {
+    await timelineResetParticipant.onCommit(input, ctx);
   },
 });

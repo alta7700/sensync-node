@@ -12,4 +12,5 @@ export * from './signal-emit.ts';
 export * from './signal-window.ts';
 export * from './state-cell.ts';
 export * from './state-expression.ts';
+export * from './timeline-reset.ts';
 export * from './types.ts';

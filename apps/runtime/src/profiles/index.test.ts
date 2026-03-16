@@ -52,6 +52,38 @@ describe('launch profiles registry', () => {
     expect(config.schema.pages[0]?.title).toBe('Main');
   });
 
+  it('в fake-профиле подключает generic label-generator для interval.label', () => {
+    const profile = buildLaunchProfile('fake');
+    const generator = profile.plugins.find((plugin) => plugin.id === 'label-generator-adapter');
+
+    expect(generator).toBeDefined();
+    expect(generator?.config).toMatchObject({
+      labels: {
+        interval: {
+          streamId: 'interval.label',
+          sampleFormat: 'i16',
+        },
+      },
+    });
+  });
+
+  it('в fake-профиле включает profile-level timeline reset', () => {
+    const profile = buildLaunchProfile('fake');
+
+    expect(profile.timelineReset).toMatchObject({
+      enabled: true,
+      requesters: ['external-ui'],
+      participants: [
+        'ui-gateway',
+        'fake-signal-adapter',
+        'shape-generator-adapter',
+        'rolling-min-processor',
+        'activity-detector-processor',
+      ],
+      recorderPolicy: 'reject-if-recording',
+    });
+  });
+
   it('в veloerg-профиле передает готовую veloerg schema в ui-gateway', () => {
     const config = uiGatewayConfig('veloerg');
     expect(config.schema.pages[0]?.title).toBe('Veloerg');

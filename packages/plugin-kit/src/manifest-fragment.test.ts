@@ -15,7 +15,7 @@ describe('manifest-fragment', () => {
         retain: { by: 'samples', value: 100 },
       }),
       fact: factInput({
-        event: { type: 'interval.state.changed', v: 1 },
+        event: { type: 'activity.state.changed', v: 1 },
       }),
     });
 
@@ -29,7 +29,7 @@ describe('manifest-fragment', () => {
           filter: { streamId: 'fake.a2' },
         },
         {
-          type: 'interval.state.changed',
+          type: 'activity.state.changed',
           v: 1,
         },
       ],

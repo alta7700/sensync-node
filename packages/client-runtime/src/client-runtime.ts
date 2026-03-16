@@ -213,7 +213,20 @@ export class ClientRuntime {
   }
 
   getVisibleWindow(streamId: string, rangeMs: number): StreamWindowData {
-    return this.bufferStore.getVisibleWindow(streamId, rangeMs, this.latestSessionMs);
+    const window = this.bufferStore.getVisibleWindow(streamId, rangeMs, this.latestSessionMs);
+    if (!this.clock || window.length === 0) {
+      return window;
+    }
+
+    const relativeX = new Float64Array(window.length);
+    for (let index = 0; index < window.length; index += 1) {
+      relativeX[index] = window.x[index]! - this.clock.timelineStartSessionMs;
+    }
+    return {
+      x: relativeX,
+      y: window.y,
+      length: window.length,
+    };
   }
 
   private handleControl(message: UiControlMessage): void {
@@ -222,7 +235,7 @@ export class ClientRuntime {
       this.clock = message.clock;
       this.schema = message.schema;
       this.flags = message.flags;
-      this.latestSessionMs = 0;
+      this.latestSessionMs = message.clock.timelineStartSessionMs;
       this.streamsById.clear();
       this.streamsByNumericId.clear();
       this.formOptionsBySourceId.clear();
@@ -230,6 +243,22 @@ export class ClientRuntime {
       this.bufferStore.clear();
       for (const stream of message.streams) {
         this.registerStream(stream);
+      }
+      this.notifyUpdate();
+      return;
+    }
+
+    if (message.type === 'ui.timeline.reset') {
+      if (this.clock) {
+        this.clock = {
+          ...this.clock,
+          timelineId: message.timelineId,
+          timelineStartSessionMs: message.timelineStartSessionMs,
+        };
+      }
+      this.latestSessionMs = message.timelineStartSessionMs;
+      if (message.clearBuffers) {
+        this.bufferStore.clear();
       }
       this.notifyUpdate();
       return;

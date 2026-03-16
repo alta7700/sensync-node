@@ -8,8 +8,11 @@
 - Любой модуль, который говорит на языке runtime или UI, должен опираться на этот пакет.
 - Здесь же теперь живут shared-контракты для adapter scan flow и schema-driven modal forms.
 - Здесь же теперь живут shared event contracts, версии событий и boundary-guards для UI ingress.
+- Здесь же теперь живёт generic shared-команда `label.mark.request` для label-stream сценариев вроде interval/lactate.
+- Здесь же теперь живёт shared fact `command.rejected` для мягких отказов команд, которые нужно донести до UI без падения worker'а.
 - Здесь же теперь живут exact union `UiCommandMessage`, расширяемая карта `UiCommandBoundaryEventMap` и допустимые `commandType/submitEventType` для schema-driven UI.
 - Здесь же теперь живёт declarative layout-модель `UiPage.layout`, чтобы renderer не угадывал сложную раскладку по `widgetRows`.
+- Здесь же теперь живут declarative `UiSchema.derivedFlags`, чтобы UI мог выводить локальные флаги из live-потоков без отдельного runtime fact.
 - Здесь же теперь живут helper'ы `createUiCommandMessage(...)` и `uiCommandMessageToRuntimeEventInput(...)`, чтобы bridge-cast не дублировался по runtime и client-runtime.
 
 ## Как работает

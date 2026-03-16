@@ -17,9 +17,29 @@ export interface SessionClockApi {
   sessionStartWallMs(): number;
 }
 
+export interface TimelineResetPrepareContext {
+  resetId: string;
+  currentTimelineId: string;
+  nextTimelineId: string;
+  requestedAtSessionMs: number;
+}
+
+export interface TimelineResetAbortContext {
+  resetId: string;
+  currentTimelineId: string;
+}
+
+export interface TimelineResetCommitContext {
+  resetId: string;
+  nextTimelineId: string;
+  timelineStartSessionMs: number;
+}
+
 export interface PluginContext {
   pluginId: string;
   clock: SessionClockApi;
+  currentTimelineId(): string;
+  timelineStartSessionMs(): number;
   emit<TEvent extends RuntimeEventInput>(event: TEvent): Promise<void>;
   setTimer(
     timerId: string,
@@ -29,12 +49,16 @@ export interface PluginContext {
   clearTimer(timerId: string): void;
   telemetry(metric: PluginMetric): void;
   getConfig<T = unknown>(): T;
+  requestTimelineReset(reason?: string): void;
 }
 
 export interface PluginModule {
   manifest: PluginManifest;
   onInit(ctx: PluginContext): Promise<void>;
   onEvent(event: RuntimeEvent, ctx: PluginContext): Promise<void>;
+  onTimelineResetPrepare?(input: TimelineResetPrepareContext, ctx: PluginContext): Promise<void>;
+  onTimelineResetAbort?(input: TimelineResetAbortContext, ctx: PluginContext): Promise<void>;
+  onTimelineResetCommit?(input: TimelineResetCommitContext, ctx: PluginContext): Promise<void>;
   onShutdown(ctx: PluginContext): Promise<void>;
 }
 

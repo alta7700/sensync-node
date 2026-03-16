@@ -14,6 +14,7 @@
 - `packages/plugins-ble` — BLE transport boundary и Zephyr BioHarness 3 адаптер.
 - `packages/plugins-trigno` — TCP transport boundary и live-адаптер `Delsys Trigno`.
 - `packages/plugins-fake` — synthetic demo-плагины и процессоры.
+- `packages/plugins-labels` — generic label-generator плагины для interval/lactate и похожих сценариев.
 - `packages/plugins-hdf5` — recorder-плагин и прямой simulation-адаптер для нового HDF5 формата.
 - `packages/plugins-ui-gateway` — материализация runtime-событий в UI schema/control/binary поток.
 - `packages/client-runtime` — буферы и browser-side runtime для графиков и флагов.
@@ -35,13 +36,15 @@ npm run dev
 - `npm run dev:runtime:fake-hdf5-simulation` — standalone runtime для fake simulation из HDF5.
 - `npm run dev:runtime:veloerg` — standalone runtime для composite `veloerg` профиля.
 - `npm run build` — сборка всех workspace-пакетов.
+- `npm run lint` — единый ESLint-прогон по monorepo.
+- `npm run lint:fix` — автоисправления ESLint там, где они безопасны.
 - `npm run test` — тесты по workspace'ам.
 - `npm run coverage` — V8 coverage по workspace'ам. Отчёты пишутся в `coverage/` внутри каждого пакета.
 - `npm run smoke` — все текущие smoke-сценарии одной командой.
 - `npm run smoke:fake-profile` — smoke launch profile `fake`.
 - `npm run smoke:hdf5-recorder` — smoke без UI для recorder-плагина.
 - `npm run smoke:fake-hdf5-simulation` — smoke без UI для fake-ориентированной HDF5 simulation.
-- `npm run verify` — полный верхнеуровневый прогон: `test + build + smoke`.
+- `npm run verify` — полный верхнеуровневый прогон: `lint + test + build + smoke`.
 
 ## Launch profiles
 
@@ -50,7 +53,7 @@ npm run dev
 - `fake`
   - synthetic fake adapter с автостартом `fake-signal` после общего runtime-барьера `runtime.started`;
   - shape generator;
-  - interval labels;
+  - generic label generator c `interval.label`;
   - demo processors;
   - `hdf5-recorder`;
   - `ui-gateway` с fake-схемой.

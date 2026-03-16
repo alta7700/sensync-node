@@ -11,6 +11,8 @@ import type {
   UiChartSeries,
   UiChartWidget,
   UiControlAction,
+  UiCommandEventType,
+  UiCommandEventVersion,
   UiControlWhen,
   UiFormOption,
   UiControlsWidget,
@@ -44,8 +46,8 @@ function useRuntimeSnapshot() {
 
 interface ResolvedControlAction {
   label: string;
-  commandType: string | undefined;
-  commandVersion: number;
+  commandType: UiCommandEventType | undefined;
+  commandVersion: UiCommandEventVersion;
   payload: Record<string, unknown> | undefined;
   modalForm: UiModalForm | undefined;
   disabled: boolean;
@@ -957,7 +959,7 @@ function ChartWidgetCanvas({ widget }: { widget: UiChartWidget }) {
 
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [widget.series, widget.timeWindowMs, widget.yAxis?.min, widget.yAxis?.max]);
+  }, [widget.series, timeWindowMs, widget.yAxis?.min, widget.yAxis?.max]);
 
   return (
     <section style={panelStyle}>
@@ -1475,22 +1477,22 @@ const modalPrimaryButtonStyle: React.CSSProperties = {
 };
 
 export function App() {
-  const { snapshot, rev } = useRuntimeSnapshot();
+  const { snapshot } = useRuntimeSnapshot();
   const [modal, setModal] = useState<ModalState | null>(null);
-  const page = useMemo(() => snapshot.schema?.pages[0], [snapshot.schema, rev]);
+  const page = useMemo(() => snapshot.schema?.pages[0], [snapshot.schema]);
   const widgetsById = useMemo(() => {
     if (!snapshot.schema || !page) return new Map<string, UiWidget>();
     return new Map(snapshot.schema.widgets.map((widget) => [widget.id, widget]));
-  }, [snapshot.schema, page, rev]);
+  }, [snapshot.schema, page]);
   const widgetRows = useMemo(() => {
-    if (!snapshot.schema || !page) return [];
+    if (!page) return [];
     const rows = page.widgetRows && page.widgetRows.length > 0
       ? page.widgetRows
       : page.widgetIds.map((id) => [id]);
     return rows
       .map((row) => row.map((id) => widgetsById.get(id)).filter(Boolean) as UiWidget[])
       .filter((row) => row.length > 0);
-  }, [snapshot.schema, page, rev, widgetsById]);
+  }, [page, widgetsById]);
 
   function openModal(form: UiModalForm): void {
     setModal({

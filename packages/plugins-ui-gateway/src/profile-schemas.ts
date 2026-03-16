@@ -18,6 +18,19 @@ const FakeRecordingChannels = [
 ] as const;
 const SimulationSpeedOptions = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 6, 8] as const;
 
+const FakeDerivedFlags: NonNullable<UiSchema['derivedFlags']> = [
+  {
+    kind: 'latest-discrete-signal-value-map',
+    flagKey: 'interval.active',
+    sourceStreamId: 'interval.label',
+    initialValue: false,
+    valueMap: {
+      1: true,
+      0: false,
+    },
+  },
+];
+
 
 function scanCandidatesSourceId(adapterId: string): string {
   return `adapter.${adapterId}.scan.candidates`;
@@ -277,6 +290,10 @@ function makeTrignoConnectModalForm(adapterId: string): UiModalForm {
 export function buildFakeUiSchema(): UiSchema {
   return {
     version: 1,
+    derivedFlags: FakeDerivedFlags.map((rule) => ({
+      ...rule,
+      valueMap: { ...rule.valueMap },
+    })),
     pages: [
       {
         id: 'main',
@@ -396,8 +413,11 @@ export function buildFakeUiSchema(): UiSchema {
                   ],
                 },
                 label: 'Старт интервала',
-                commandType: EventTypes.intervalStart,
-                payload: {},
+                commandType: EventTypes.labelMarkRequest,
+                payload: {
+                  labelId: 'interval',
+                  value: 1,
+                },
                 disabled: false,
               },
               {
@@ -408,8 +428,38 @@ export function buildFakeUiSchema(): UiSchema {
                   ],
                 },
                 label: 'Стоп интервала',
-                commandType: EventTypes.intervalStop,
-                payload: {},
+                commandType: EventTypes.labelMarkRequest,
+                payload: {
+                  labelId: 'interval',
+                  value: 0,
+                },
+                disabled: false,
+              },
+            ],
+          },
+          {
+            id: 'timeline-reset',
+            kind: 'button',
+            label: 'Сброс timeline недоступен',
+            disabled: true,
+            variants: [
+              {
+                when: {
+                  and: [
+                    { flag: 'adapter.fake.state', eq: 'connected' },
+                    { flag: 'adapter.shapes.state', eq: 'connected' },
+                    {
+                      or: [
+                        { flag: 'recording.local.state', eq: 'idle' },
+                        { flag: 'recording.local.state', eq: 'failed' },
+                        { flag: 'recording.local.state', eq: null },
+                      ],
+                    },
+                  ],
+                },
+                label: 'Сбросить timeline',
+                commandType: EventTypes.timelineResetRequest,
+                payload: { reason: 'manual_fake_reset' },
                 disabled: false,
               },
             ],

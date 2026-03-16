@@ -3,7 +3,7 @@ import type {
   AdapterConnectRequestPayload,
   AdapterDisconnectRequestPayload,
   AdapterScanRequestPayload,
-  IntervalCommandPayload,
+  LabelMarkRequestPayload,
   RecordingChannelConfig,
   RecordingMetadataScalar,
   RecordingPausePayload,
@@ -16,6 +16,7 @@ import type {
   SimulationSpeedSetRequestPayload,
   RuntimeEventInput,
   RuntimeEventInputOf,
+  TimelineResetRequestPayload,
 } from './events.ts';
 import type { EventRef } from './event-contracts.ts';
 
@@ -133,9 +134,18 @@ function isShapeGeneratePayload(input: unknown): input is ShapeGenerateRequestPa
   return isOptionalString(input.shapeName);
 }
 
-function isIntervalCommandPayload(input: unknown): input is IntervalCommandPayload {
+function isLabelMarkRequestPayload(input: unknown): input is LabelMarkRequestPayload {
   if (!isRecord(input)) return false;
-  return isOptionalString(input.requestId);
+  return typeof input.labelId === 'string'
+    && typeof input.value === 'number'
+    && Number.isFinite(input.value)
+    && isOptionalNumber(input.atTimeMs)
+    && isOptionalString(input.requestId);
+}
+
+function isTimelineResetRequestPayload(input: unknown): input is TimelineResetRequestPayload {
+  if (!isRecord(input)) return false;
+  return isOptionalString(input.reason) && isOptionalString(input.requestId);
 }
 
 export const sharedUiCommandBoundaryGuards = [
@@ -194,15 +204,15 @@ export const sharedUiCommandBoundaryGuards = [
     v: 1,
     isPayload: isShapeGeneratePayload,
   }),
-  defineUiCommandBoundaryGuard<RuntimeEventInputOf<typeof EventTypes.intervalStart, 1>>({
-    type: EventTypes.intervalStart,
+  defineUiCommandBoundaryGuard<RuntimeEventInputOf<typeof EventTypes.labelMarkRequest, 1>>({
+    type: EventTypes.labelMarkRequest,
     v: 1,
-    isPayload: isIntervalCommandPayload,
+    isPayload: isLabelMarkRequestPayload,
   }),
-  defineUiCommandBoundaryGuard<RuntimeEventInputOf<typeof EventTypes.intervalStop, 1>>({
-    type: EventTypes.intervalStop,
+  defineUiCommandBoundaryGuard<RuntimeEventInputOf<typeof EventTypes.timelineResetRequest, 1>>({
+    type: EventTypes.timelineResetRequest,
     v: 1,
-    isPayload: isIntervalCommandPayload,
+    isPayload: isTimelineResetRequestPayload,
   }),
 ] as const;
 
@@ -231,8 +241,8 @@ export interface UiCommandBoundaryEventMap {
   'recording.resume@1': SharedUiCommandBoundaryEntry<typeof EventTypes.recordingResume, 1>;
   'recording.stop@1': SharedUiCommandBoundaryEntry<typeof EventTypes.recordingStop, 1>;
   'shape.generate.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.shapeGenerateRequest, 1>;
-  'interval.start@1': SharedUiCommandBoundaryEntry<typeof EventTypes.intervalStart, 1>;
-  'interval.stop@1': SharedUiCommandBoundaryEntry<typeof EventTypes.intervalStop, 1>;
+  'label.mark.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.labelMarkRequest, 1>;
+  'timeline.reset.request@1': SharedUiCommandBoundaryEntry<typeof EventTypes.timelineResetRequest, 1>;
 }
 
 export type UiCommandBoundaryKnownEvent = UiCommandBoundaryEventMap[keyof UiCommandBoundaryEventMap];

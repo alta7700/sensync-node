@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  defineRuntimeEventInput,
   EventTypes,
   type AdapterScanCandidate,
   type AdapterConnectRequestPayload,
@@ -74,7 +73,6 @@ let transport: AntTransport | null = null;
 let scanInFlight = false;
 let manualDisconnectRequested = false;
 let lastConnectRequest: AntTransportConnectRequest | null = null;
-let reconnectReason: string | null = null;
 let connectionStartedSessionMs: number | null = null;
 let lastEventCount: number | null = null;
 let lastMeasurementTimeMs: number | null = null;
@@ -570,7 +568,6 @@ function resetPacketState(): void {
 }
 
 function resetReconnectState(): void {
-  reconnectReason = null;
   reconnectPolicy.reset();
 }
 
@@ -666,7 +663,6 @@ async function scheduleAutoReconnect(ctx: PluginContext, reason: string): Promis
     // Игнорируем ошибки текущего транспорта: цель здесь дойти до следующей попытки connect.
   }
   resetPacketState();
-  reconnectReason = reason;
   reconnectPolicy.reset();
   reconnectPolicy.schedule(ctx.clock.nowSessionMs());
   await setAdapterRuntimeState(ctx, 'connecting', undefined, `Автопереподключение: ${reason}`);

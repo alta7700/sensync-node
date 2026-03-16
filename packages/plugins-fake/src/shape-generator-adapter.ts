@@ -5,6 +5,7 @@ import {
 import {
   createAdapterStateHolder,
   createOutputRegistry,
+  createTimelineResetParticipant,
   createUniformSignalEmitter,
 } from '@sensync2/plugin-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
@@ -26,6 +27,29 @@ let streamStartSessionMs = 0;
 let pendingShape: Float32Array | null = null;
 let pendingOffset = 0;
 let shapeState = createAdapterStateHolder({ adapterId: 'shapes' });
+const timelineResetParticipant = createTimelineResetParticipant({
+  onPrepare: (_input, ctx) => {
+    stopStreaming(ctx);
+  },
+  onAbort: async (_input, ctx) => {
+    if (!shapeState.isState('connected')) {
+      return;
+    }
+    await startStreaming(ctx);
+  },
+  onCommit: async (input, ctx) => {
+    producedSamples = 0;
+    streamStartSessionMs = input.timelineStartSessionMs;
+    pendingShape = null;
+    pendingOffset = 0;
+    if (shapeState.isState('connected')) {
+      await startStreaming(ctx);
+    } else {
+      stopStreaming(ctx);
+    }
+    await shapeState.emitCurrent(ctx);
+  },
+});
 
 function buildShape(shapeName: string, sampleRateHz: number): Float32Array {
   const durationSec = 2;
@@ -144,6 +168,7 @@ export default definePlugin({
   async onInit(ctx) {
     cfg = { ...cfg, ...(ctx.getConfig<ShapeGeneratorConfig>() ?? {}) };
     shapeState = createAdapterStateHolder({ adapterId: 'shapes' });
+    timelineResetParticipant.initialize(ctx.currentTimelineId());
     await shapeState.emitCurrent(ctx);
   },
   async onEvent(event, ctx) {
@@ -185,5 +210,14 @@ export default definePlugin({
     shapeState = createAdapterStateHolder({ adapterId: 'shapes' });
     pendingShape = null;
     pendingOffset = 0;
+  },
+  async onTimelineResetPrepare(input, ctx) {
+    await timelineResetParticipant.onPrepare(input, ctx);
+  },
+  async onTimelineResetAbort(input, ctx) {
+    await timelineResetParticipant.onAbort(input, ctx);
+  },
+  async onTimelineResetCommit(input, ctx) {
+    await timelineResetParticipant.onCommit(input, ctx);
   },
 });

@@ -28,6 +28,8 @@ function createTestContext(schema: UiSchema = buildVeloergUiSchema()) {
         nowSessionMs: () => 0,
         sessionStartWallMs: () => 123,
       },
+      currentTimelineId: () => 'timeline-test',
+      timelineStartSessionMs: () => 0,
       emit: async (event: RuntimeEventInput) => {
         emitted.push({ event });
       },
@@ -37,12 +39,13 @@ function createTestContext(schema: UiSchema = buildVeloergUiSchema()) {
       getConfig() {
         return { schema };
       },
+      requestTimelineReset() {},
     },
   };
 }
 
 function toRuntimeEvent<TEvent extends RuntimeEventInput>(event: TEvent) {
-  return attachRuntimeEventEnvelope(event, 1n, 0, 'runtime');
+  return attachRuntimeEventEnvelope(event, 1n, 'timeline-test', 0, 'runtime');
 }
 
 function extractControlMessage(emitted: CapturedEvent[]): UiControlMessage | null {
@@ -83,10 +86,150 @@ describe('ui-gateway-plugin', () => {
     if (!controlsWidget || controlsWidget.kind !== 'controls') {
       throw new Error('Не найден controls-main');
     }
+    expect(message.flags['interval.active']).toBe(false);
+    expect(message.schema.derivedFlags).toEqual([
+      {
+        kind: 'latest-discrete-signal-value-map',
+        flagKey: 'interval.active',
+        sourceStreamId: 'interval.label',
+        initialValue: false,
+        valueMap: {
+          1: true,
+          0: false,
+        },
+      },
+    ]);
 
     const controlIds = controlsWidget.controls.map((control) => control.id);
     expect(controlIds).not.toContain('toggle-fake');
     expect(controlIds).toContain('toggle-shapes');
+
+    const intervalControl = controlsWidget.controls.find((control) => control.id === 'toggle-interval');
+    expect(intervalControl?.variants?.[0]).toMatchObject({
+      commandType: EventTypes.labelMarkRequest,
+      payload: { labelId: 'interval', value: 1 },
+    });
+    expect(intervalControl?.variants?.[1]).toMatchObject({
+      commandType: EventTypes.labelMarkRequest,
+      payload: { labelId: 'interval', value: 0 },
+    });
+  });
+
+  it('деривит interval.active из потока interval.label', async () => {
+    const { ctx, emitted } = createTestContext(buildFakeUiSchema());
+    await plugin.onInit(ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.signalBatch,
+      v: 1,
+      kind: 'data',
+      priority: 'data',
+      payload: {
+        streamId: 'interval.label',
+        sampleFormat: 'i16',
+        frameKind: 'label-batch',
+        t0Ms: 120,
+        sampleCount: 1,
+        values: new Int16Array([1]),
+        timestampsMs: new Float64Array([120]),
+      },
+    })), ctx as never);
+
+    const lastPatch = emitted
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<RuntimeEventInput, { type: typeof EventTypes.uiControlOut }> => {
+        return event.type === EventTypes.uiControlOut;
+      })
+      .map((event) => event.payload.message)
+      .filter((message): message is Extract<UiControlMessage, { type: 'ui.flags.patch' }> => {
+        return message.type === 'ui.flags.patch';
+      })
+      .at(-1);
+
+    expect(lastPatch?.patch['interval.active']).toBe(true);
+  });
+
+  it('на timeline reset commit выпускает ui.timeline.reset и сбрасывает derived flags', async () => {
+    const { ctx, emitted } = createTestContext(buildFakeUiSchema());
+    await plugin.onInit(ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.signalBatch,
+      v: 1,
+      kind: 'data',
+      priority: 'data',
+      payload: {
+        streamId: 'interval.label',
+        sampleFormat: 'i16',
+        frameKind: 'label-batch',
+        t0Ms: 120,
+        sampleCount: 1,
+        values: new Int16Array([1]),
+        timestampsMs: new Float64Array([120]),
+      },
+    })), ctx as never);
+
+    await plugin.onTimelineResetCommit?.({
+      resetId: 'reset-1',
+      nextTimelineId: 'timeline-next',
+      timelineStartSessionMs: 500,
+    }, ctx as never);
+
+    const messages = emitted
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<RuntimeEventInput, { type: typeof EventTypes.uiControlOut }> => {
+        return event.type === EventTypes.uiControlOut;
+      })
+      .map((event) => event.payload.message);
+
+    expect(messages).toContainEqual({
+      type: 'ui.timeline.reset',
+      timelineId: 'timeline-next',
+      timelineStartSessionMs: 500,
+      clearBuffers: true,
+    });
+    expect(messages).toContainEqual({
+      type: 'ui.flags.patch',
+      patch: {
+        'interval.active': false,
+      },
+      version: expect.any(Number),
+    });
+  });
+
+  it('materializeит command.rejected в ui.warning', async () => {
+    const { ctx, emitted } = createTestContext(buildFakeUiSchema());
+    await plugin.onInit(ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.commandRejected,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: {
+        commandType: EventTypes.labelMarkRequest,
+        commandVersion: 1,
+        code: 'unknown_label',
+        message: 'Label "missing" не найден в конфиге',
+        details: { labelId: 'missing' },
+      },
+    })), ctx as never);
+
+    const warningMessage = emitted
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<RuntimeEventInput, { type: typeof EventTypes.uiControlOut }> => {
+        return event.type === EventTypes.uiControlOut;
+      })
+      .map((event) => event.payload.message)
+      .find((message): message is Extract<UiControlMessage, { type: 'ui.warning' }> => {
+        return message.type === 'ui.warning';
+      });
+
+    expect(warningMessage).toEqual({
+      type: 'ui.warning',
+      code: 'unknown_label',
+      message: 'Label "missing" не найден в конфиге',
+    });
   });
 
   it('материализует Trigno controls и графики в veloerg schema', async () => {

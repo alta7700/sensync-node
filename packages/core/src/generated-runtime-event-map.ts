@@ -1,7 +1,7 @@
 // Этот файл сгенерирован `npm run generate:runtime-event-map`.
 // Не редактируй его вручную: править нужно *.spec.ts и генератор.
 
-import type { AdapterConnectRequestPayload, AdapterDisconnectRequestPayload, AdapterScanCandidatesPayload, AdapterScanRequestPayload, AdapterScanStateChangedPayload, AdapterStateChangedPayload, CommandEvent, FactEvent, IntervalCommandPayload, RecordingErrorPayload, RecordingPausePayload, RecordingResumePayload, RecordingStartPayload, RecordingStateChangedPayload, RecordingStopPayload, RuntimeEventMap, RuntimeStartedPayload, ShapeGeneratedPayload, ShapeGenerateRequestPayload, SignalBatchEvent, SimulationPauseRequestPayload, SimulationResumeRequestPayload, SimulationSpeedSetRequestPayload, SimulationStateChangedPayload } from './events.ts';
+import type { AdapterConnectRequestPayload, AdapterDisconnectRequestPayload, AdapterScanCandidatesPayload, AdapterScanRequestPayload, AdapterScanStateChangedPayload, AdapterStateChangedPayload, CommandEvent, CommandRejectedPayload, FactEvent, LabelMarkRequestPayload, RecordingErrorPayload, RecordingPausePayload, RecordingResumePayload, RecordingStartPayload, RecordingStateChangedPayload, RecordingStopPayload, RuntimeStartedPayload, ShapeGeneratedPayload, ShapeGenerateRequestPayload, SignalBatchEvent, SimulationPauseRequestPayload, SimulationResumeRequestPayload, SimulationSpeedSetRequestPayload, SimulationStateChangedPayload, TimelineResetRequestPayload } from './events.ts';
 import type { RuntimeTelemetrySnapshotPayload, UiBinaryOutPayload, UiClientConnectedPayload, UiClientDisconnectedPayload, UiControlOutPayload } from './ui.ts';
 
 export type SignalBatchRuntimeEvent = SignalBatchEvent;
@@ -114,19 +114,19 @@ export type ShapeGeneratedEvent = FactEvent<ShapeGeneratedPayload, 'shape.genera
   priority: 'control';
 };
 
-export type IntervalStartEvent = CommandEvent<IntervalCommandPayload, 'interval.start'> & {
+export type LabelMarkRequestEvent = CommandEvent<LabelMarkRequestPayload, 'label.mark.request'> & {
   v: 1;
   kind: 'command';
   priority: 'control';
 };
 
-export type IntervalStopEvent = CommandEvent<IntervalCommandPayload, 'interval.stop'> & {
+export type TimelineResetRequestEvent = CommandEvent<TimelineResetRequestPayload, 'timeline.reset.request'> & {
   v: 1;
   kind: 'command';
   priority: 'control';
 };
 
-export type IntervalStateChangedEvent = FactEvent<{ active: boolean }, 'interval.state.changed'> & {
+export type CommandRejectedEvent = FactEvent<CommandRejectedPayload, 'command.rejected'> & {
   v: 1;
   kind: 'fact';
   priority: 'system';
@@ -195,9 +195,9 @@ declare module './events.ts' {
     'recording.error@1': RecordingErrorEvent;
     'shape.generate.request@1': ShapeGenerateRequestEvent;
     'shape.generated@1': ShapeGeneratedEvent;
-    'interval.start@1': IntervalStartEvent;
-    'interval.stop@1': IntervalStopEvent;
-    'interval.state.changed@1': IntervalStateChangedEvent;
+    'label.mark.request@1': LabelMarkRequestEvent;
+    'timeline.reset.request@1': TimelineResetRequestEvent;
+    'command.rejected@1': CommandRejectedEvent;
     'activity.state.changed@1': ActivityStateChangedEvent;
     'runtime.started@1': RuntimeStartedEvent;
     'runtime.telemetry.snapshot@1': RuntimeTelemetrySnapshotEvent;

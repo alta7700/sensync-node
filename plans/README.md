@@ -19,3 +19,4 @@
 - `plugin-multi-instance.md`
 - `processor-kit.md`
 - `test-coverage.md`
+- `timeline-reset.md`

@@ -5,6 +5,8 @@ export interface PluginWorkerInitMessage {
   kind: 'plugin.init';
   pluginModulePath: string;
   pluginConfig?: unknown;
+  currentTimelineId: string;
+  timelineStartSessionMs: number;
   /**
    * Монотонная отметка старта сессии в наносекундах (`process.hrtime.bigint()` в main runtime).
    * Используется в worker'ах для вычисления времени с начала сессии без привязки к локали.
@@ -26,9 +28,33 @@ export interface PluginWorkerShutdownMessage {
   kind: 'plugin.shutdown';
 }
 
+export interface PluginWorkerTimelineResetPrepareMessage {
+  kind: 'plugin.timeline-reset.prepare';
+  resetId: string;
+  currentTimelineId: string;
+  nextTimelineId: string;
+  requestedAtSessionMs: number;
+}
+
+export interface PluginWorkerTimelineResetAbortMessage {
+  kind: 'plugin.timeline-reset.abort';
+  resetId: string;
+  currentTimelineId: string;
+}
+
+export interface PluginWorkerTimelineResetCommitMessage {
+  kind: 'plugin.timeline-reset.commit';
+  resetId: string;
+  nextTimelineId: string;
+  timelineStartSessionMs: number;
+}
+
 export type MainToPluginWorkerMessage =
   | PluginWorkerInitMessage
   | PluginWorkerDeliverMessage
+  | PluginWorkerTimelineResetPrepareMessage
+  | PluginWorkerTimelineResetAbortMessage
+  | PluginWorkerTimelineResetCommitMessage
   | PluginWorkerShutdownMessage;
 
 export interface PluginWorkerReadyMessage {
@@ -39,6 +65,7 @@ export interface PluginWorkerReadyMessage {
 export interface PluginWorkerEmitMessage {
   kind: 'plugin.emit';
   event: RuntimeEventInput;
+  timelineId: string;
 }
 
 export interface PluginWorkerAckMessage {
@@ -72,9 +99,38 @@ export interface PluginWorkerClearTimerMessage {
   timerId: PluginTimerToken;
 }
 
+export interface PluginWorkerTimelineResetRequestMessage {
+  kind: 'plugin.timeline-reset.request';
+  requestedByPluginId: string;
+  reason?: string;
+}
+
+export interface PluginWorkerTimelineResetReadyMessage {
+  kind: 'plugin.timeline-reset.ready';
+  resetId: string;
+  pluginId: string;
+}
+
+export interface PluginWorkerTimelineResetFailedMessage {
+  kind: 'plugin.timeline-reset.failed';
+  resetId: string;
+  pluginId: string;
+  message: string;
+}
+
+export interface PluginWorkerTimelineResetCommittedMessage {
+  kind: 'plugin.timeline-reset.committed';
+  resetId: string;
+  pluginId: string;
+}
+
 export type PluginToMainWorkerMessage =
   | PluginWorkerReadyMessage
   | PluginWorkerEmitMessage
+  | PluginWorkerTimelineResetRequestMessage
+  | PluginWorkerTimelineResetReadyMessage
+  | PluginWorkerTimelineResetFailedMessage
+  | PluginWorkerTimelineResetCommittedMessage
   | PluginWorkerAckMessage
   | PluginWorkerTelemetryMessage
   | PluginWorkerErrorMessage

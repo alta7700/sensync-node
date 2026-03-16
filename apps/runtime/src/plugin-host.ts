@@ -18,7 +18,11 @@ interface QueuedItem {
 
 interface PluginHostCallbacks {
   onReady: (pluginId: string, manifest: PluginManifest) => void;
-  onEmit: (pluginId: string, event: RuntimeEventInput) => Promise<void>;
+  onEmit: (pluginId: string, event: RuntimeEventInput, timelineId: string) => Promise<void>;
+  onTimelineResetRequest: (pluginId: string, reason?: string) => Promise<void>;
+  onTimelineResetReady: (resetId: string, pluginId: string) => void;
+  onTimelineResetFailed: (resetId: string, pluginId: string, message: string) => void;
+  onTimelineResetCommitted: (resetId: string, pluginId: string) => void;
   onError: (pluginId: string, error: Error) => void;
   onMetric: (pluginId: string, metric: PluginMetric) => void;
 }
@@ -38,15 +42,26 @@ export class PluginHost {
   private controlQueue: QueuedItem[] = [];
   private dataQueue: QueuedItem[] = [];
   private inFlightSeq: bigint | null = null;
+  private quiescing = false;
+  private drainedResolvers = new Set<() => void>();
 
   private telemetry: QueueTelemetry;
   private handlerMsTotal = 0;
   private clockInfo: RuntimeSessionClockInfo;
+  private currentTimelineId: string;
+  private timelineStartSessionMs: number;
 
-  constructor(descriptor: PluginDescriptor, callbacks: PluginHostCallbacks, clockInfo: RuntimeSessionClockInfo) {
+  constructor(
+    descriptor: PluginDescriptor,
+    callbacks: PluginHostCallbacks,
+    clockInfo: RuntimeSessionClockInfo,
+    timelineState: { currentTimelineId: string; timelineStartSessionMs: number },
+  ) {
     this.descriptor = descriptor;
     this.callbacks = callbacks;
     this.clockInfo = clockInfo;
+    this.currentTimelineId = timelineState.currentTimelineId;
+    this.timelineStartSessionMs = timelineState.timelineStartSessionMs;
     this.telemetry = {
       pluginId: descriptor.id,
       controlDepth: 0,
@@ -90,6 +105,8 @@ export class PluginHost {
       kind: 'plugin.init',
       pluginModulePath: this.descriptor.modulePath,
       pluginConfig: this.descriptor.config,
+      currentTimelineId: this.currentTimelineId,
+      timelineStartSessionMs: this.timelineStartSessionMs,
       sessionStartMonoNs: this.clockInfo.sessionStartMonoNs,
       sessionStartWallMs: this.clockInfo.sessionStartWallMs,
     });
@@ -131,12 +148,19 @@ export class PluginHost {
     };
   }
 
+  forceFail(message: string): void {
+    this.fail(new Error(message));
+  }
+
   enqueue(event: RuntimeEvent): { ok: true } | { ok: false; reason: string } {
     if (!this.manifest) {
       return { ok: false, reason: `plugin ${this.descriptor.id} еще не готов` };
     }
     if (this.state !== 'running') {
       return { ok: false, reason: `plugin ${this.descriptor.id} state=${this.state}` };
+    }
+    if (this.quiescing) {
+      return { ok: false, reason: `plugin ${this.descriptor.id} quiescing` };
     }
 
     if (event.priority === 'control' || event.priority === 'system') {
@@ -176,6 +200,54 @@ export class PluginHost {
     return { ok: true };
   }
 
+  async quiesceAndDrain(): Promise<void> {
+    this.quiescing = true;
+    if (this.inFlightSeq === null) {
+      this.controlQueue = [];
+      this.dataQueue = [];
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      this.drainedResolvers.add(resolve);
+    });
+    this.controlQueue = [];
+    this.dataQueue = [];
+  }
+
+  resume(): void {
+    this.quiescing = false;
+    this.pump();
+  }
+
+  sendTimelineResetPrepare(input: {
+    resetId: string;
+    currentTimelineId: string;
+    nextTimelineId: string;
+    requestedAtSessionMs: number;
+  }): void {
+    this.post({
+      kind: 'plugin.timeline-reset.prepare',
+      ...input,
+    });
+  }
+
+  sendTimelineResetAbort(input: { resetId: string; currentTimelineId: string }): void {
+    this.post({
+      kind: 'plugin.timeline-reset.abort',
+      ...input,
+    });
+  }
+
+  sendTimelineResetCommit(input: { resetId: string; nextTimelineId: string; timelineStartSessionMs: number }): void {
+    this.currentTimelineId = input.nextTimelineId;
+    this.timelineStartSessionMs = input.timelineStartSessionMs;
+    this.post({
+      kind: 'plugin.timeline-reset.commit',
+      ...input,
+    });
+  }
+
   private post(message: MainToPluginWorkerMessage, transferList?: readonly TransferListItem[]): void {
     if (!this.worker) {
       throw new Error(`Plugin worker ${this.descriptor.id} не запущен`);
@@ -188,7 +260,7 @@ export class PluginHost {
   }
 
   private pump(): void {
-    if (!this.worker || this.state !== 'running' || this.inFlightSeq !== null) return;
+    if (!this.worker || this.state !== 'running' || this.inFlightSeq !== null || this.quiescing) return;
 
     const next = this.controlQueue.shift() ?? this.dataQueue.shift();
     if (!next) return;
@@ -224,7 +296,27 @@ export class PluginHost {
     }
 
     if (message.kind === 'plugin.emit') {
-      await this.callbacks.onEmit(this.descriptor.id, message.event);
+      await this.callbacks.onEmit(this.descriptor.id, message.event, message.timelineId);
+      return;
+    }
+
+    if (message.kind === 'plugin.timeline-reset.request') {
+      await this.callbacks.onTimelineResetRequest(this.descriptor.id, message.reason);
+      return;
+    }
+
+    if (message.kind === 'plugin.timeline-reset.ready') {
+      this.callbacks.onTimelineResetReady(message.resetId, message.pluginId);
+      return;
+    }
+
+    if (message.kind === 'plugin.timeline-reset.failed') {
+      this.callbacks.onTimelineResetFailed(message.resetId, message.pluginId, message.message);
+      return;
+    }
+
+    if (message.kind === 'plugin.timeline-reset.committed') {
+      this.callbacks.onTimelineResetCommitted(message.resetId, message.pluginId);
       return;
     }
 
@@ -233,6 +325,7 @@ export class PluginHost {
         this.callbacks.onError(this.descriptor.id, new Error(`ACK seq mismatch for ${this.descriptor.id}`));
       }
       this.inFlightSeq = null;
+      this.resolveDrained();
       this.telemetry.handled += 1;
       this.handlerMsTotal += message.handledMs;
       this.pump();
@@ -256,9 +349,21 @@ export class PluginHost {
     if (this.state === 'failed' || this.state === 'stopped') return;
     this.state = 'failed';
     this.lastError = error.message;
+    this.inFlightSeq = null;
+    this.resolveDrained();
     this.readyRejecter?.(error);
     this.readyResolver = null;
     this.readyRejecter = null;
     this.callbacks.onError(this.descriptor.id, error);
+  }
+
+  private resolveDrained(): void {
+    if (this.inFlightSeq !== null) {
+      return;
+    }
+    for (const resolve of this.drainedResolvers) {
+      resolve();
+    }
+    this.drainedResolvers.clear();
   }
 }

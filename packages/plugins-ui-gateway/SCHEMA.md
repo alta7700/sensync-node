@@ -21,6 +21,7 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 - `fake-signal-adapter` теперь auto-connect'ится на `onInit`, поэтому `adapter.fake.state` обычно быстро переходит в `connected` без отдельного клика.
 - `shape-generator-adapter` manual по-прежнему требует явного `adapter.connect.request`.
+- Для derived UI-флагов схема теперь использует `UiSchema.derivedFlags`, а не hidden special-case внутри `ui-gateway`.
 
 ## 2. Профиль `fake`
 
@@ -59,10 +60,12 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 - `toggle-interval`
   - если `adapter.fake.state = connected` и `interval.active = false`
     - label: `Старт интервала`
-    - команда: `interval.start`
+    - команда: `label.mark.request`
+    - payload: `{ labelId: "interval", value: 1 }`
   - если `adapter.fake.state = connected` и `interval.active = true`
     - label: `Стоп интервала`
-    - команда: `interval.stop`
+    - команда: `label.mark.request`
+    - payload: `{ labelId: "interval", value: 0 }`
 - `toggle-recording`
   - если `adapter.fake.state = connected` и `recording.local.state ∈ { idle, failed }`
     - label: `Начать запись`
@@ -76,6 +79,11 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 - `stop-recording`
   - видима только если `recording.local.state ∈ { recording, paused, stopping }`
   - основная команда: `recording.stop`
+- `timeline-reset`
+  - если `adapter.fake.state = connected`, `adapter.shapes.state = connected` и запись не активна
+    - label: `Сбросить timeline`
+    - команда: `timeline.reset.request`
+    - payload: `{ reason: "manual_fake_reset" }`
 
 Особенность demo:
 
@@ -96,6 +104,11 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 - `adapter.fake.state`
 - `adapter.shapes.state`
 - `interval.active`
+  - initial default: `false`
+  - задаётся через `schema.derivedFlags`
+  - дальше materialize'ится по последней метке `interval.label`
+- `adapter.fake.state` и `adapter.shapes.state`
+  - после timeline reset переизлучаются participant-плагинами как persistent snapshots нового timeline
 - `activity.active`
 - `recording.local.state`
 - `recording.local.filePath`
@@ -116,6 +129,20 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 - `1` = start
 - `0` = end
+- это не shared runtime-контракт, а семантика именно fake profile UI.
+
+Derived flag для interval:
+
+- `kind = latest-discrete-signal-value-map`
+- `sourceStreamId = interval.label`
+- `flagKey = interval.active`
+- `initialValue = false`
+- `valueMap = { "1": true, "0": false }`
+
+Важно:
+
+- это правило предназначено только для дискретных integer-like значений;
+- если профилю понадобится derived flag по непрерывному `f32/f64` сигналу, нужен уже другой rule-kind, а не exact-match по float.
 
 #### Fake A2
 
@@ -364,7 +391,7 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 - flags patch для simulation state;
 - `ui.form.options.patch` для runtime-driven options локальных форм;
 - `ui.error` для recorder error, scan failure и adapter `failed`;
-- `ui.warning` для мягких проблем ingress/runtime-contract слоя;
+- `ui.warning` для мягких проблем ingress/runtime-contract слоя и `command.rejected`;
 - `ui.stream.declare` при первом появлении stream;
 - `ui.init` при подключении клиента.
 

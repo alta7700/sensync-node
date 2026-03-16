@@ -15,7 +15,7 @@ describe('input-runtime', () => {
         retain: { by: 'samples', value: 100 },
       }),
       interval: factInput({
-        event: { type: 'interval.state.changed', v: 1 },
+        event: { type: 'activity.state.changed', v: 1 },
       }),
     }));
 
@@ -33,14 +33,14 @@ describe('input-runtime', () => {
         sampleCount: 2,
         values: new Float32Array([1, 2]),
       },
-    }), 1n, 0, 'external-ui'));
+    }), 1n, 'timeline-test', 0, 'external-ui'));
     const factUpdated = runtime.route(attachRuntimeEventEnvelope(defineRuntimeEventInput({
-      type: 'interval.state.changed',
+      type: 'activity.state.changed',
       v: 1,
       kind: 'fact',
       priority: 'system',
       payload: { active: true },
-    }), 2n, 0, 'external-ui'));
+    }), 2n, 'timeline-test', 0, 'external-ui'));
 
     expect(signalUpdated).toEqual(['source']);
     expect(factUpdated).toEqual(['interval']);

@@ -1,4 +1,4 @@
-import type { PluginDescriptor } from '../types.ts';
+import type { PluginDescriptor, TimelineResetRuntimeOptions } from '../types.ts';
 
 export const LaunchProfiles = ['fake', 'fake-hdf5-simulation', 'veloerg'] as const;
 export type LaunchProfile = (typeof LaunchProfiles)[number];
@@ -11,6 +11,7 @@ export interface ResolvedLaunchProfile {
   id: LaunchProfile;
   title: string;
   plugins: PluginDescriptor[];
+  timelineReset?: TimelineResetRuntimeOptions;
 }
 
 export interface LaunchProfileDefinition {

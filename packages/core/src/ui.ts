@@ -10,6 +10,27 @@ export interface UiSchema {
   version: number;
   pages: UiPage[];
   widgets: UiWidget[];
+  /**
+   * Декларативные правила вычисления флагов из live-потоков.
+   * Нужны для UI-сценариев, где отдельный runtime fact избыточен.
+   */
+  derivedFlags?: UiDerivedFlagRule[];
+}
+
+export type UiDerivedFlagRule = UiDerivedLatestDiscreteSignalValueMapFlagRule;
+
+/**
+ * Берёт последнее дискретное значение из указанного потока и маппит его в UI-флаг.
+ *
+ * Правило предназначено именно для integer-like значений (`0/1`, enum-коды и т.п.).
+ * Для непрерывных `f32/f64` сигналов нужен отдельный rule-kind с явной стратегией сравнения.
+ */
+export interface UiDerivedLatestDiscreteSignalValueMapFlagRule {
+  kind: 'latest-discrete-signal-value-map';
+  flagKey: string;
+  sourceStreamId: string;
+  initialValue: UiFlagValue;
+  valueMap: Record<string, UiFlagValue>;
 }
 
 export interface UiPage {
@@ -297,10 +318,20 @@ export interface UiSessionClockInfo {
    * Абсолютное время старта сессии (wall-clock) только для метаданных/отчетов.
    */
   sessionStartWallMs: number;
+  /**
+   * Идентификатор текущего timeline epoch внутри одной runtime-сессии.
+   */
+  timelineId: string;
+  /**
+   * Абсолютный `session time` старт текущего timeline.
+   * Renderer/client-runtime вычитают его из входных timestamp для показа "с нуля".
+   */
+  timelineStartSessionMs: number;
 }
 
 export type UiControlMessage =
   | { type: 'ui.init'; sessionId: string; schema: UiSchema; streams: UiStreamDeclaration[]; flags: UiFlagSnapshot; clock: UiSessionClockInfo }
+  | { type: 'ui.timeline.reset'; timelineId: string; timelineStartSessionMs: number; clearBuffers: true }
   | { type: 'ui.schema.patch'; patch: UiSchemaPatch }
   | { type: 'ui.flags.patch'; patch: UiFlagPatch; version: number }
   | { type: 'ui.form.options.patch'; sourceId: string; options: UiFormOption[] }

@@ -137,6 +137,8 @@ function createHarness(config: Record<string, unknown>): TestHarness {
       nowSessionMs: () => sessionMs,
       sessionStartWallMs: () => 1_700_000_000_000,
     },
+    currentTimelineId: () => 'timeline-test',
+    timelineStartSessionMs: () => 0,
     emit: async (event) => {
       emitted.push(event);
     },
@@ -150,6 +152,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
       metrics.push(metric);
     },
     getConfig: <T>() => config as T,
+    requestTimelineReset: () => {},
   };
 
   function toRuntimeEvent(event: RuntimeEventInput): RuntimeEvent {
@@ -158,6 +161,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
     return {
       ...event,
       seq: nextSeq,
+      timelineId: 'timeline-test',
       tsMonoMs: sessionMs,
       sourcePluginId: 'external-ui',
     } as RuntimeEvent;

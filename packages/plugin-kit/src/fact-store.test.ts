@@ -10,16 +10,16 @@ import { factInput } from './input-map.ts';
 describe('fact-store', () => {
   it('хранит latest event целиком', () => {
     const store = createFactStore(factInput({
-      event: { type: 'interval.state.changed', v: 1 },
+      event: { type: 'activity.state.changed', v: 1 },
     }));
 
     expect(store.push(attachRuntimeEventEnvelope(defineRuntimeEventInput({
-      type: 'interval.state.changed',
+      type: 'activity.state.changed',
       v: 1,
       kind: 'fact',
       priority: 'system',
       payload: { active: true },
-    }), 1n, 10, 'test'))).toBe(true);
+    }), 1n, 'timeline-test', 10, 'test'))).toBe(true);
 
     expect(store.latest()?.payload).toEqual({ active: true });
     expect(store.latestPayload()).toEqual({ active: true });
@@ -27,7 +27,7 @@ describe('fact-store', () => {
 
   it('возвращает false на несовпадающем событии', () => {
     const store = createFactStore(factInput({
-      event: { type: 'interval.state.changed', v: 1 },
+      event: { type: 'activity.state.changed', v: 1 },
     }));
 
     expect(store.push(attachRuntimeEventEnvelope(defineRuntimeEventInput({
@@ -36,7 +36,7 @@ describe('fact-store', () => {
       kind: 'fact',
       priority: 'system',
       payload: {},
-    }), 1n, 10, 'test'))).toBe(false);
+    }), 1n, 'timeline-test', 10, 'test'))).toBe(false);
     expect(store.latest()).toBeNull();
   });
 });

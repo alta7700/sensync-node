@@ -34,6 +34,7 @@
 - `v` — версия события внутри registry.
 - `kind` — логическая категория (`command`, `fact`, `data`, `system`).
 - `priority` — класс очереди (`control`, `data`, `system`).
+- `timelineId` — идентификатор текущего timeline epoch внутри одной runtime-сессии.
 
 ## 2.1 Event Registry
 
@@ -100,6 +101,32 @@ Boundary-валидация payload:
 - это system-event, а не UI-сообщение;
 - он нужен как безопасный барьер для startup-логики, которая не должна эмитить state/data раньше готовности подписчиков;
 - `auto-on-init` для adapter-логики в `v1` следует трактовать как "автоподключить после `runtime.started`", а не "выполнить прямо внутри `onInit()`".
+
+## 3.2 Timeline Reset
+
+Profile-level `timeline reset` — это отдельный coordinator protocol, а не обычное событие общей шины.
+
+Shared ingress:
+
+- UI отправляет `timeline.reset.request`;
+- `RuntimeHost` перехватывает эту команду до `publish()` и запускает special reset protocol;
+- plugin-side reset request идёт отдельным worker-protocol сообщением, а не через `ctx.emit(...)`.
+
+Инварианты `v1`:
+
+- глобальный `SessionClock` не сбрасывается;
+- `timelineId` меняется только после успешного `prepare` всего worker-cohort reset barrier;
+- profile `participants` задают lifecycle/policy subset, но новый `timelineId` обязан быть разослан всем worker'ам, чтобы non-participant emit path не оставался на устаревшем timeline;
+- `timelineStartSessionMs` фиксирует "ноль" нового теста внутри той же runtime-сессии;
+- старые queued events не должны проходить safe-point после входа в `prepare`;
+- `plugin.emit` обязан нести `timelineId`, а runtime обязан дропать emit с устаревшим timeline;
+- reset запрещён, если recorder находится в `recording` или `paused`.
+
+UI-модель:
+
+- `ui.init.clock` теперь обязан нести `timelineId` и `timelineStartSessionMs`;
+- `ui.timeline.reset` очищает только timeline-local client state;
+- renderer показывает X как `absoluteSessionMs - timelineStartSessionMs`.
 
 ## 4. Recording Events
 
@@ -197,6 +224,43 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - ошибки поиска могут materialize'иться в `ui.error`, а не в отдельную scan-state machine;
 - список кандидатов не должен сериализоваться через flags patch.
 
+## 5.2 Label Mark Events
+
+Generic label-stream'ы управляются shared command `label.mark.request`.
+
+Текущий `v1` контракт:
+
+- `label.mark.request`
+  - адресует внутренний `labelId`, а не внешний `streamId`;
+  - несёт numeric `value`;
+  - может нести `atTimeMs` в `session time`;
+  - не определяет сам, какой `streamId` или `sampleFormat` использовать, это уже responsibility конкретного plugin config.
+
+Правила:
+
+- `atTimeMs`, если задан, трактуется только как `session time`;
+- для одного `labelId` время меток должно быть неубывающим;
+- interval/open-close semantics не являются частью shared-команды и задаются уже profile/UI-слоем.
+
+## 5.3 Command Rejected Events
+
+Мягкие отказы команд, которые не должны валить worker, materialize'ятся через shared fact `command.rejected`.
+
+Текущий `v1` контракт:
+
+- `command.rejected`
+  - несёт `commandType` и `commandVersion`, чтобы было ясно, какая команда была отклонена;
+  - несёт machine-readable `code` и user-visible `message`;
+  - может нести `requestId`;
+  - может нести plugin-specific `details`.
+
+Правила:
+
+- `command.rejected` не означает падение plugin worker'а;
+- это именно warning-path, а не hard failure;
+- UI/materializer может показывать такие события как `ui.warning`;
+- telemetry может идти параллельно, но не заменяет user-visible сигнал о reject.
+
 ## 6. Plugin Manifest
 
 Контракт описан в [packages/core/src/plugin.ts](src/plugin.ts).
@@ -258,6 +322,14 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 Правила:
 
 - `pages[].widgetIds` — полный набор виджетов страницы.
+- `derivedFlags[]`
+  - описывает локальные UI-флаги, которые materialize'ятся не из отдельного runtime fact, а из других уже известных UI-данных;
+  - в `v1` поддерживается только правило `latest-discrete-signal-value-map`;
+  - `initialValue` попадает в `ui.init.flags` ещё до первого live-batch;
+  - `sourceStreamId` должен совпадать с точным `streamId`, prefix-механики здесь нет;
+  - `latest-discrete-signal-value-map` предназначен только для integer-like значений (`0/1`, enum-коды и т.п.);
+  - `valueMap` обязан использовать только целочисленные ключи;
+  - непрерывные `f32/f64` сравнения по exact value в это правило не входят и требуют отдельного rule-kind.
 - `pages[].layout`
   - если задан, renderer должен использовать именно это дерево layout;
   - `row` задаёт горизонтальную группу;

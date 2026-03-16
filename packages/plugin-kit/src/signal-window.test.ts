@@ -15,7 +15,7 @@ function makeSignalEvent(payload: RuntimeEventOf<typeof EventTypes.signalBatch, 
     kind: 'data',
     priority: 'data',
     payload,
-  }), 1n, 0, 'external-ui');
+  }), 1n, 'timeline-test', 0, 'external-ui');
 }
 
 describe('signal-window', () => {

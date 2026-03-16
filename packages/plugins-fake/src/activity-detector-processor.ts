@@ -9,6 +9,7 @@ import {
   createInputRuntime,
   createOutputRegistry,
   createStateCell,
+  createTimelineResetParticipant,
   createUniformSignalEmitter,
   signalInput,
   type HandlerGroup,
@@ -26,6 +27,26 @@ let inputs: InputRuntime<'source'> | null = null;
 let handlers: HandlerGroup<'source', 'active'> | null = null;
 let states: { active: StateCell<boolean> } | null = null;
 let emitActivityLabel: ReturnType<typeof createUniformSignalEmitter<'label'>> | null = null;
+const timelineResetParticipant = createTimelineResetParticipant({
+  onPrepare: async (_input, ctx) => {
+    await handlers?.stop(ctx);
+  },
+  onAbort: async (_input, ctx) => {
+    await handlers?.start(ctx);
+  },
+  onCommit: async (_input, ctx) => {
+    inputs?.clear();
+    states?.active.clear();
+    await handlers?.start(ctx);
+    await ctx.emit(defineRuntimeEventInput({
+      type: EventTypes.activityStateChanged,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: { active: false },
+    }));
+  },
+});
 
 const baseManifest = {
   id: 'activity-detector-processor',
@@ -117,6 +138,7 @@ export default definePlugin({
 
     applyManifestFragment(manifest, buildManifestFragmentFromInputs(inputMap));
     applyManifestFragment(manifest, handlers.manifest());
+    timelineResetParticipant.initialize(ctx.currentTimelineId());
     await handlers.start(ctx);
 
     await ctx.emit(defineRuntimeEventInput({
@@ -138,5 +160,14 @@ export default definePlugin({
     emitActivityLabel = null;
     states?.active.clear();
     states = null;
+  },
+  async onTimelineResetPrepare(input, ctx) {
+    await timelineResetParticipant.onPrepare(input, ctx);
+  },
+  async onTimelineResetAbort(input, ctx) {
+    await timelineResetParticipant.onAbort(input, ctx);
+  },
+  async onTimelineResetCommit(input, ctx) {
+    await timelineResetParticipant.onCommit(input, ctx);
   },
 });

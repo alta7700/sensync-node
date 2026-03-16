@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createOutputRegistry } from './output-map.ts';
 import {
   createIrregularSignalEmitter,
+  createLabelSignalEmitter,
   createUniformSignalEmitter,
   inferSampleFormat,
 } from './signal-emit.ts';
@@ -52,5 +53,29 @@ describe('signal-emit', () => {
       units: 's',
     });
     expect(Array.from(event.payload.timestampsMs ?? new Float64Array())).toEqual([100, 880]);
+  });
+
+  it('собирает label-batch без dtMs и sampleRateHz', () => {
+    const registry = createOutputRegistry({
+      interval: { streamId: 'interval.label', units: 'label' },
+    });
+    const emitter = createLabelSignalEmitter(registry);
+    const event = emitter.createEvent(
+      'interval',
+      new Int16Array([1, 0]),
+      { timestampsMs: new Float64Array([150, 450]) },
+    );
+
+    expect(event.payload).toMatchObject({
+      streamId: 'interval.label',
+      sampleFormat: 'i16',
+      frameKind: 'label-batch',
+      t0Ms: 150,
+      sampleCount: 2,
+      units: 'label',
+    });
+    expect('dtMs' in event.payload).toBe(false);
+    expect('sampleRateHz' in event.payload).toBe(false);
+    expect(Array.from(event.payload.timestampsMs ?? new Float64Array())).toEqual([150, 450]);
   });
 });

@@ -27,6 +27,8 @@ function createHarness(): TestHarness {
       nowSessionMs: () => 0,
       sessionStartWallMs: () => 0,
     },
+    currentTimelineId: () => 'timeline-test',
+    timelineStartSessionMs: () => 0,
     emit: async () => {},
     setTimer: (timerId, _intervalMs, eventFactory) => {
       timers.set(timerId, eventFactory);
@@ -36,6 +38,7 @@ function createHarness(): TestHarness {
     },
     telemetry: () => {},
     getConfig: <T>() => undefined as T,
+    requestTimelineReset: () => {},
   };
 
   return {
@@ -47,7 +50,7 @@ function createHarness(): TestHarness {
 describe('handlers', () => {
   it('проецирует latest fact в state cell и исполняет input selector', async () => {
     const inputs = createInputRuntime(createInputMap({
-      interval: factInput({ event: { type: 'interval.state.changed', v: 1 } }),
+      interval: factInput({ event: { type: 'activity.state.changed', v: 1 } }),
       source: signalInput({ streamId: 'fake.a2', retain: { by: 'samples', value: 10 } }),
     }));
     const states = {
@@ -76,13 +79,14 @@ describe('handlers', () => {
 
     await group.dispatch({
       ...defineRuntimeEventInput({
-        type: 'interval.state.changed',
+        type: 'activity.state.changed',
         v: 1,
         kind: 'fact',
         priority: 'system',
         payload: { active: true },
       }),
       seq: 1n,
+      timelineId: 'timeline-test',
       tsMonoMs: 0,
       sourcePluginId: 'external-ui',
     }, harness.ctx);
@@ -103,6 +107,7 @@ describe('handlers', () => {
         },
       }),
       seq: 2n,
+      timelineId: 'timeline-test',
       tsMonoMs: 0,
       sourcePluginId: 'external-ui',
     }, harness.ctx);
@@ -140,7 +145,7 @@ describe('handlers', () => {
         kind: 'fact',
         priority: 'system',
         payload: {},
-      }), 1n, 0, 'external-ui'), harness.ctx);
+      }), 1n, 'timeline-test', 0, 'external-ui'), harness.ctx);
 
     expect(calls).toEqual(['tick']);
 

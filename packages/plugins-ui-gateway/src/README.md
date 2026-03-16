@@ -11,8 +11,9 @@
 - `ui-gateway-plugin.ts`:
   - получает готовую `UiSchema` из launch profile;
   - следит за stream registry и numeric IDs;
-  - обновляет flags;
+  - обновляет flags, включая declarative `derivedFlags` из `UiSchema`;
   - materialize'ит dynamic options для локальных форм;
+  - переводит shared `command.rejected` в `ui.warning`;
   - кодирует `signal.batch` в binary UI frames;
   - отправляет `ui.init`, patch-сообщения и telemetry.
 - `profile-schemas.ts`:
@@ -21,6 +22,7 @@
 - Control schema может задавать `commandVersion` / `submitEventVersion`; если они не указаны, renderer использует `v=1`.
 - Для `fake-hdf5-simulation` схема отдельная: по графикам она совместима с fake-демо, но управляющие кнопки уже относятся к simulation-источнику.
 - Для `fake` схема больше не рисует connect/disconnect для `fake-signal-adapter`: live source поднимается автоматически, manual-control остаётся только у `shapes`.
+- Interval toggle в `fake` теперь отправляет generic `label.mark.request`, а не interval-specific команды.
 - Для `veloerg` схема composite: отдельный Trigno control-блок и графики `EMG/Gyroscope`, плюс scan/connect/disconnect для Moxy и Zephyr.
 
 ## Взаимодействие

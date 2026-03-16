@@ -5,13 +5,20 @@ import type {
   FrameKind,
   PluginManifest,
   RuntimeEvent,
+  RuntimeEventInput,
   RuntimeEventOf,
   AdapterStateChangedPayload,
   SampleFormat,
   SignalBatchEvent,
+  SignalBatchPayload,
   SignalValues,
 } from '@sensync2/core';
-import type { PluginContext } from '@sensync2/plugin-sdk';
+import type {
+  PluginContext,
+  TimelineResetAbortContext,
+  TimelineResetCommitContext,
+  TimelineResetPrepareContext,
+} from '@sensync2/plugin-sdk';
 
 export type AdapterRuntimeState = AdapterStateChangedPayload['state'];
 
@@ -31,6 +38,7 @@ export interface OutputRegistry<TOutputKey extends string = string> {
 }
 
 export type UniformSignalValues = SignalBatchEvent['payload']['values'];
+export type LabelSignalValues = UniformSignalValues;
 
 export interface UniformSignalTiming {
   t0Ms: number;
@@ -42,6 +50,10 @@ export interface IrregularSignalTiming {
   timestampsMs: Float64Array;
   t0Ms?: number;
   sampleRateHz?: number;
+}
+
+export interface LabelSignalTiming {
+  timestampsMs: Float64Array;
 }
 
 export type AdapterAutoconnectPolicy<TProfile = unknown> =
@@ -207,3 +219,30 @@ export interface MutablePluginManifest extends PluginManifest {
   subscriptions: EventSubscription[];
   emits?: EventRef[];
 }
+
+export interface TimelineResettableResource {
+  prepare?(): Promise<void> | void;
+  abort?(): Promise<void> | void;
+  commit?(): Promise<void> | void;
+}
+
+export interface TimelineResetParticipantController {
+  initialize(timelineId: string): void;
+  currentTimelineId(): string;
+  phase(): 'running' | 'preparing' | 'committing';
+  bindEmit(ctx: PluginContext): <TEvent extends RuntimeEventInput>(event: TEvent) => Promise<void>;
+  onPrepare(input: TimelineResetPrepareContext, ctx: PluginContext): Promise<void>;
+  onAbort(input: TimelineResetAbortContext, ctx: PluginContext): Promise<void>;
+  onCommit(input: TimelineResetCommitContext, ctx: PluginContext): Promise<void>;
+}
+
+export interface TimelineResetParticipantOptions {
+  resources?: TimelineResettableResource[];
+  onPrepare?: (input: TimelineResetPrepareContext, ctx: PluginContext) => Promise<void> | void;
+  onAbort?: (input: TimelineResetAbortContext, ctx: PluginContext) => Promise<void> | void;
+  onCommit?: (input: TimelineResetCommitContext, ctx: PluginContext) => Promise<void> | void;
+}
+
+export type TimelineClipResult =
+  | { kind: 'drop' }
+  | { kind: 'keep'; payload: SignalBatchPayload };

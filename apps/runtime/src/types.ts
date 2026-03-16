@@ -15,10 +15,29 @@ export interface RuntimeUiSinks {
   onBinary?: (payload: UiBinaryOutPayload, event: RuntimeEvent) => void;
 }
 
+export type TimelineResetRequester = 'external-ui' | string;
+export type TimelineResetCommitFailurePolicy = 'inherit-required' | 'degraded_fatal' | 'fail_participant';
+export type TimelineResetRecorderPolicy = 'reject-if-recording';
+
+export interface TimelineResetParticipantConfig {
+  pluginId: string;
+  onCommitFailure?: TimelineResetCommitFailurePolicy;
+}
+
+export interface TimelineResetRuntimeOptions {
+  enabled: true;
+  requesters: TimelineResetRequester[];
+  participants: Array<string | TimelineResetParticipantConfig>;
+  prepareTimeoutMs?: number;
+  commitTimeoutMs?: number;
+  recorderPolicy?: TimelineResetRecorderPolicy;
+}
+
 export interface RuntimeOptions {
   plugins: PluginDescriptor[];
   telemetryIntervalMs?: number;
   uiSinks?: RuntimeUiSinks;
+  timelineReset?: TimelineResetRuntimeOptions;
 }
 
 export interface RuntimeHostPublic {

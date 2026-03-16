@@ -26,9 +26,9 @@ export const EventTypes = {
   shapeGenerateRequest: 'shape.generate.request',
   shapeGenerated: 'shape.generated',
 
-  intervalStart: 'interval.start',
-  intervalStop: 'interval.stop',
-  intervalStateChanged: 'interval.state.changed',
+  labelMarkRequest: 'label.mark.request',
+  timelineResetRequest: 'timeline.reset.request',
+  commandRejected: 'command.rejected',
 
   activityStateChanged: 'activity.state.changed',
 
