@@ -4,6 +4,7 @@ import {
   type AdapterConnectRequestPayload,
   type AdapterDisconnectRequestPayload,
   type AdapterScanRequestPayload,
+  type PluginManifest,
 } from '@sensync2/core';
 import {
   createAdapterStateHolder,
@@ -11,6 +12,7 @@ import {
   createOutputRegistry,
   createReconnectPolicy,
   createScanFlow,
+  createTimelineResetParticipant,
 } from '@sensync2/plugin-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 import {
@@ -49,6 +51,10 @@ interface ZephyrScanCandidateData {
   localName?: string;
 }
 
+interface ZephyrRuntimeConfig extends ZephyrBioHarnessAdapterConfig {
+  required?: boolean;
+}
+
 let config = resolveZephyrBioHarnessConfig(undefined);
 let transport: BleTransport | null = null;
 let scanInFlight = false;
@@ -66,6 +72,65 @@ let rrExtractionState: ZephyrRrExtractionState = resetZephyrRrExtractionState();
 let zephyrState = createAdapterStateHolder({ adapterId: config.adapterId });
 let zephyrScanFlow = createScanFlow<ZephyrScanCandidateData>({ adapterId: config.adapterId });
 let reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
+let pluginRequired = false;
+const baseManifest: PluginManifest = {
+  id: 'zephyr-bioharness-3-adapter',
+  version: '0.1.0',
+  required: false,
+  subscriptions: [
+    { type: EventTypes.adapterScanRequest, v: 1, kind: 'command', priority: 'control' },
+    { type: EventTypes.adapterConnectRequest, v: 1, kind: 'command', priority: 'control' },
+    { type: EventTypes.adapterDisconnectRequest, v: 1, kind: 'command', priority: 'control' },
+    { type: ZephyrPollType, v: 1, kind: 'fact', priority: 'system' },
+  ],
+  mailbox: {
+    controlCapacity: 256,
+    dataCapacity: 32,
+    dataPolicy: 'coalesce-latest-per-stream' as const,
+  },
+  emits: [
+    { type: EventTypes.adapterScanStateChanged, v: 1 },
+    { type: EventTypes.adapterScanCandidates, v: 1 },
+    { type: EventTypes.adapterStateChanged, v: 1 },
+    { type: EventTypes.signalBatch, v: 1 },
+    { type: ZephyrPollType, v: 1 },
+  ],
+};
+const manifest = {
+  ...baseManifest,
+  subscriptions: [...baseManifest.subscriptions],
+  emits: [...(baseManifest.emits ?? [])],
+};
+
+const timelineResetParticipant = createTimelineResetParticipant({
+  onPrepare: async (_input, ctx) => {
+    stopPolling(ctx);
+  },
+  onAbort: async (_input, ctx) => {
+    if (shouldPollAfterReset()) {
+      startPolling(ctx);
+    }
+  },
+  onCommit: async (input, ctx) => {
+    drainTransportBacklog();
+    resetPacketStats();
+    resetRrStreamState(input.timelineStartSessionMs);
+    lastDisconnectReason = null;
+    if (zephyrState.isState('connected', 'connecting')) {
+      lastPacketSeenSessionMs = input.timelineStartSessionMs;
+    }
+    if (shouldPollAfterReset()) {
+      startPolling(ctx);
+    }
+    await zephyrState.emitCurrent(ctx);
+  },
+});
+
+function resetManifest(): void {
+  manifest.required = pluginRequired;
+  manifest.subscriptions = [...baseManifest.subscriptions];
+  manifest.emits = [...(baseManifest.emits ?? [])];
+}
 
 function zephyrPollEvent() {
   return defineRuntimeEventInput({
@@ -144,6 +209,23 @@ function resetRrStreamState(referenceTimestampMs: number | null = null): void {
   rrExtractionState = referenceTimestampMs === null
     ? resetZephyrRrExtractionState()
     : createInitialZephyrRrExtractionState(referenceTimestampMs);
+}
+
+function shouldPollAfterReset(): boolean {
+  return zephyrState.isState('connected')
+    || (zephyrState.isState('connecting') && reconnectPolicy.getNextAttemptSessionMs() !== null);
+}
+
+function drainTransportBacklog(): void {
+  if (!transport) {
+    return;
+  }
+  while (transport.readPacket()) {
+    // Ничего не делаем: во время reset осознанно выбрасываем старый backlog.
+  }
+  while (transport.takeConnectionSignal()) {
+    // Аналогично забываем сигналы разрыва, пришедшие до commit нового timeline.
+  }
 }
 
 function emitTransportTelemetry(ctx: PluginContext): void {
@@ -502,35 +584,15 @@ async function handlePoll(ctx: PluginContext): Promise<void> {
 }
 
 export default definePlugin({
-  manifest: {
-    id: 'zephyr-bioharness-3-adapter',
-    version: '0.1.0',
-    required: false,
-    subscriptions: [
-      { type: EventTypes.adapterScanRequest, v: 1, kind: 'command', priority: 'control' },
-      { type: EventTypes.adapterConnectRequest, v: 1, kind: 'command', priority: 'control' },
-      { type: EventTypes.adapterDisconnectRequest, v: 1, kind: 'command', priority: 'control' },
-      { type: ZephyrPollType, v: 1, kind: 'fact', priority: 'system' },
-    ],
-    mailbox: {
-      controlCapacity: 256,
-      dataCapacity: 32,
-      dataPolicy: 'coalesce-latest-per-stream',
-    },
-    emits: [
-      { type: EventTypes.adapterScanStateChanged, v: 1 },
-      { type: EventTypes.adapterScanCandidates, v: 1 },
-      { type: EventTypes.adapterStateChanged, v: 1 },
-      { type: EventTypes.signalBatch, v: 1 },
-      { type: ZephyrPollType, v: 1 },
-    ],
-  },
+  manifest,
   async onInit(ctx) {
-    const rawConfig = ctx.getConfig<ZephyrBioHarnessAdapterConfig>();
+    const rawConfig = ctx.getConfig<ZephyrRuntimeConfig>();
     config = resolveZephyrBioHarnessConfig({
       ...(rawConfig ?? {}),
       ...readZephyrBioHarnessEnvOverrides(process.env),
     });
+    pluginRequired = rawConfig?.required === true;
+    resetManifest();
     transport = createBleTransport(config);
     zephyrState = createAdapterStateHolder({ adapterId: config.adapterId });
     zephyrScanFlow = createScanFlow<ZephyrScanCandidateData>({ adapterId: config.adapterId });
@@ -542,6 +604,7 @@ export default definePlugin({
     resetReconnectState();
     resetPacketStats();
     resetRrStreamState();
+    timelineResetParticipant.initialize(ctx.currentTimelineId());
     logDebug('init:config', config);
     await zephyrState.emitCurrent(ctx);
     await ctx.emit(zephyrScanFlow.createScanStateEvent(false));
@@ -588,5 +651,14 @@ export default definePlugin({
     resetReconnectState();
     resetPacketStats();
     resetRrStreamState();
+  },
+  async onTimelineResetPrepare(input, ctx) {
+    await timelineResetParticipant.onPrepare(input, ctx);
+  },
+  async onTimelineResetAbort(input, ctx) {
+    await timelineResetParticipant.onAbort(input, ctx);
+  },
+  async onTimelineResetCommit(input, ctx) {
+    await timelineResetParticipant.onCommit(input, ctx);
   },
 });

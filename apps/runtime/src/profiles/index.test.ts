@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { runtimeRepoRoot } from '../launch-profile-boundary.ts';
 import { buildLaunchProfile, LaunchProfiles, resolveLaunchProfile } from './index.ts';
 
 function uiGatewayConfig(profileId: 'fake' | 'fake-hdf5-simulation' | 'veloerg', env: NodeJS.ProcessEnv = process.env) {
@@ -98,6 +99,47 @@ describe('launch profiles registry', () => {
       sourceStreamId: 'zephyr.rr',
       outputStreamId: 'zephyr.hr',
     });
+  });
+
+  it('в veloerg-профиле включает recorder-driven timeline reset и live recorder config', () => {
+    const profile = buildLaunchProfile('veloerg');
+    const recorder = profile.plugins.find((plugin) => plugin.id === 'hdf5-recorder');
+    const zephyr = profile.plugins.find((plugin) => plugin.id === 'zephyr-bioharness-3-adapter');
+    const hrProcessor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
+
+    expect(profile.timelineReset).toMatchObject({
+      enabled: true,
+      requesters: ['hdf5-recorder'],
+      participants: [
+        'ui-gateway',
+        'ant-plus-adapter',
+        'zephyr-bioharness-3-adapter',
+        'hr-from-rr-processor',
+        'trigno-adapter',
+        'hdf5-recorder',
+      ],
+      recorderPolicy: 'reject-if-recording',
+    });
+
+    expect(recorder).toBeDefined();
+    expect(recorder?.config).toMatchObject({
+      writerKey: 'local',
+      resetTimelineOnStart: true,
+      resetTimelineOnStop: true,
+      required: true,
+      outputDir: path.join(runtimeRepoRoot, 'recordings/veloerg'),
+    });
+    expect(recorder?.config).toMatchObject({
+      startConditions: {
+        checks: [
+          { where: { adapterId: 'ant-plus' }, field: 'state', eq: 'connected' },
+          { where: { adapterId: 'zephyr-bioharness' }, field: 'state', eq: 'connected' },
+          { where: { adapterId: 'trigno' }, field: 'state', eq: 'connected' },
+        ],
+      },
+    });
+    expect(zephyr?.config).toMatchObject({ required: true });
+    expect(hrProcessor?.config).toMatchObject({ required: true });
   });
 
   it('в fake-hdf5-simulation профиле применяет env overrides до сборки plugins', () => {

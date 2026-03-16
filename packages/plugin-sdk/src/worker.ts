@@ -170,14 +170,17 @@ function buildContext(pluginId: string): PluginContext {
       return state.config as T;
     },
     requestTimelineReset(reason) {
-      if (state.shuttingDown || state.resetPhase !== 'running') {
-        return;
+      if (state.shuttingDown || state.resetPhase !== 'running' || state.activeResetId !== null) {
+        return null;
       }
+      const requestId = crypto.randomUUID();
       post({
         kind: 'plugin.timeline-reset.request',
         requestedByPluginId: pluginId,
+        requestId,
         ...(reason !== undefined ? { reason } : {}),
       });
+      return requestId;
     },
   };
 }
@@ -198,6 +201,9 @@ async function loadPlugin(modulePath: string): Promise<PluginModule> {
     ...(candidate.onTimelineResetPrepare ? { onTimelineResetPrepare: candidate.onTimelineResetPrepare } : {}),
     ...(candidate.onTimelineResetAbort ? { onTimelineResetAbort: candidate.onTimelineResetAbort } : {}),
     ...(candidate.onTimelineResetCommit ? { onTimelineResetCommit: candidate.onTimelineResetCommit } : {}),
+    ...(candidate.onTimelineResetRequestResult
+      ? { onTimelineResetRequestResult: candidate.onTimelineResetRequestResult }
+      : {}),
   };
 }
 
@@ -325,6 +331,7 @@ async function handleTimelineResetAbort(
     return;
   }
 
+  state.resetPhase = 'running';
   const ctx = buildContext(state.plugin.manifest.id);
   try {
     await state.plugin.onTimelineResetAbort?.({
@@ -332,7 +339,6 @@ async function handleTimelineResetAbort(
       currentTimelineId: message.currentTimelineId,
     }, ctx);
   } finally {
-    state.resetPhase = 'running';
     state.activeResetId = null;
     if (state.queue.length > 0) {
       state.queue = [];
@@ -382,6 +388,36 @@ async function handleTimelineResetCommit(
   }
 }
 
+async function handleTimelineResetRequestResult(
+  message: Extract<MainToPluginWorkerMessage, { kind: 'plugin.timeline-reset.request-result' }>,
+): Promise<void> {
+  if (!state.plugin) {
+    throw new Error('Plugin worker не инициализирован');
+  }
+  if (state.processing) {
+    throw new Error('Timeline reset request-result пришёл, пока worker ещё обрабатывает callback');
+  }
+
+  state.processing = true;
+  const ctx = buildContext(state.plugin.manifest.id);
+  try {
+    await state.plugin.onTimelineResetRequestResult?.({
+      requestId: message.requestId,
+      status: message.status,
+      code: message.code,
+      message: message.message,
+      ...(message.resetId !== undefined ? { resetId: message.resetId } : {}),
+      ...(message.nextTimelineId !== undefined ? { nextTimelineId: message.nextTimelineId } : {}),
+      ...(message.timelineStartSessionMs !== undefined ? { timelineStartSessionMs: message.timelineStartSessionMs } : {}),
+    }, ctx);
+  } finally {
+    state.processing = false;
+    if (state.queue.length > 0 && !state.shuttingDown && state.resetPhase === 'running') {
+      void processQueue();
+    }
+  }
+}
+
 if (!parentPort) {
   throw new Error('Plugin worker должен запускаться через worker_threads');
 }
@@ -411,6 +447,10 @@ parentPort.on('message', (raw: MainToPluginWorkerMessage) => {
       }
       if (raw.kind === 'plugin.timeline-reset.commit') {
         await handleTimelineResetCommit(raw);
+        return;
+      }
+      if (raw.kind === 'plugin.timeline-reset.request-result') {
+        await handleTimelineResetRequestResult(raw);
         return;
       }
       if (raw.kind === 'plugin.shutdown') {

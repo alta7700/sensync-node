@@ -38,7 +38,7 @@ function createHarness(): TestHarness {
     },
     telemetry: () => {},
     getConfig: <T>() => undefined as T,
-    requestTimelineReset: () => {},
+    requestTimelineReset: () => null,
   };
 
   return {

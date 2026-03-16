@@ -1,5 +1,6 @@
+import * as path from 'node:path';
 import { buildVeloergUiSchema } from '@sensync2/plugins-ui-gateway';
-import { moduleFileUrl } from '../launch-profile-boundary.ts';
+import { moduleFileUrl, runtimeRepoRoot } from '../launch-profile-boundary.ts';
 import { makeUiGatewayDescriptor } from './shared.ts';
 import type { LaunchProfileDefinition } from './types.ts';
 
@@ -10,6 +11,21 @@ export const veloergProfile: LaunchProfileDefinition = {
     return {
       id: 'veloerg',
       title: 'Veloerg live',
+      timelineReset: {
+        enabled: true,
+        requesters: ['hdf5-recorder'],
+        participants: [
+          'ui-gateway',
+          'ant-plus-adapter',
+          'zephyr-bioharness-3-adapter',
+          'hr-from-rr-processor',
+          'trigno-adapter',
+          'hdf5-recorder',
+        ],
+        prepareTimeoutMs: 5_000,
+        commitTimeoutMs: 5_000,
+        recorderPolicy: 'reject-if-recording',
+      },
       plugins: [
         {
           id: 'ant-plus-adapter',
@@ -25,6 +41,7 @@ export const veloergProfile: LaunchProfileDefinition = {
           config: {
             adapterId: 'zephyr-bioharness',
             mode: 'real',
+            required: true,
           },
         },
         {
@@ -33,6 +50,7 @@ export const veloergProfile: LaunchProfileDefinition = {
           config: {
             sourceStreamId: 'zephyr.rr',
             outputStreamId: 'zephyr.hr',
+            required: true,
           },
         },
         {
@@ -43,6 +61,46 @@ export const veloergProfile: LaunchProfileDefinition = {
             mode: 'real',
             backwardsCompatibility: false,
             upsampling: false,
+          },
+        },
+        {
+          id: 'hdf5-recorder',
+          modulePath: moduleFileUrl('packages/plugins-hdf5/src/hdf5-recorder-plugin.ts'),
+          config: {
+            writerKey: 'local',
+            outputDir: path.join(runtimeRepoRoot, 'recordings/veloerg'),
+            defaultFilenameTemplate: '{writer}-{startDateTime}',
+            resetTimelineOnStart: true,
+            resetTimelineOnStop: true,
+            required: true,
+            startConditions: {
+              checks: [
+                {
+                  kind: 'fact-field',
+                  event: { type: 'adapter.state.changed', v: 1 },
+                  where: { adapterId: 'ant-plus' },
+                  field: 'state',
+                  eq: 'connected',
+                  message: 'Moxy/ANT+ должен быть подключён',
+                },
+                {
+                  kind: 'fact-field',
+                  event: { type: 'adapter.state.changed', v: 1 },
+                  where: { adapterId: 'zephyr-bioharness' },
+                  field: 'state',
+                  eq: 'connected',
+                  message: 'Zephyr должен быть подключён',
+                },
+                {
+                  kind: 'fact-field',
+                  event: { type: 'adapter.state.changed', v: 1 },
+                  where: { adapterId: 'trigno' },
+                  field: 'state',
+                  eq: 'connected',
+                  message: 'Trigno должен быть подключён и запущен',
+                },
+              ],
+            },
           },
         },
         makeUiGatewayDescriptor(buildVeloergUiSchema()),

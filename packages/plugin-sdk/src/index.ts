@@ -35,6 +35,18 @@ export interface TimelineResetCommitContext {
   timelineStartSessionMs: number;
 }
 
+export type TimelineResetRequestResultStatus = 'rejected' | 'aborted' | 'failed' | 'succeeded';
+
+export interface TimelineResetRequestResultContext {
+  requestId: string;
+  status: TimelineResetRequestResultStatus;
+  code: string;
+  message: string;
+  resetId?: string;
+  nextTimelineId?: string;
+  timelineStartSessionMs?: number;
+}
+
 export interface PluginContext {
   pluginId: string;
   clock: SessionClockApi;
@@ -49,7 +61,7 @@ export interface PluginContext {
   clearTimer(timerId: string): void;
   telemetry(metric: PluginMetric): void;
   getConfig<T = unknown>(): T;
-  requestTimelineReset(reason?: string): void;
+  requestTimelineReset(reason?: string): string | null;
 }
 
 export interface PluginModule {
@@ -59,6 +71,7 @@ export interface PluginModule {
   onTimelineResetPrepare?(input: TimelineResetPrepareContext, ctx: PluginContext): Promise<void>;
   onTimelineResetAbort?(input: TimelineResetAbortContext, ctx: PluginContext): Promise<void>;
   onTimelineResetCommit?(input: TimelineResetCommitContext, ctx: PluginContext): Promise<void>;
+  onTimelineResetRequestResult?(input: TimelineResetRequestResultContext, ctx: PluginContext): Promise<void>;
   onShutdown(ctx: PluginContext): Promise<void>;
 }
 

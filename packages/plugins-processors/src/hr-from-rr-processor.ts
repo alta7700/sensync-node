@@ -12,6 +12,7 @@ import {
   createInputRuntime,
   createIrregularSignalEmitter,
   createOutputRegistry,
+  createTimelineResetParticipant,
   createUniformSignalEmitter,
   signalInput,
   type HandlerGroup,
@@ -27,11 +28,13 @@ import {
 interface HrFromRrProcessorConfig extends HrFromRrEstimatorConfig {
   sourceStreamId?: string;
   outputStreamId?: string;
+  required?: boolean;
 }
 
 interface NormalizedHrFromRrProcessorConfig extends HrFromRrEstimatorConfig {
   sourceStreamId: string;
   outputStreamId: string;
+  required: boolean;
 }
 
 type HrInputPayload = RuntimeEventOf<typeof EventTypes.signalBatch, 1>['payload'];
@@ -63,6 +66,7 @@ const defaultConfig: NormalizedHrFromRrProcessorConfig = {
   maxRrSeconds: 2.0,
   medianWindowSize: 5,
   emaAlpha: 0.25,
+  required: false,
 };
 
 let cfg = { ...defaultConfig };
@@ -71,6 +75,19 @@ let handlers: HandlerGroup<'source', never> | null = null;
 let estimator: HrFromRrEstimator | null = null;
 let emitUniformHr: ReturnType<typeof createUniformSignalEmitter<'output'>> | null = null;
 let emitIrregularHr: ReturnType<typeof createIrregularSignalEmitter<'output'>> | null = null;
+const timelineResetParticipant = createTimelineResetParticipant({
+  onPrepare: async (_input, ctx) => {
+    await handlers?.stop(ctx);
+  },
+  onAbort: async (_input, ctx) => {
+    await handlers?.start(ctx);
+  },
+  onCommit: async (_input, ctx) => {
+    inputs?.clear();
+    estimator?.reset();
+    await handlers?.start(ctx);
+  },
+});
 
 const baseManifest = {
   id: 'hr-from-rr-processor',
@@ -94,6 +111,7 @@ const manifest = {
 };
 
 function resetManifest(): void {
+  manifest.required = baseManifest.required;
   manifest.subscriptions = [...baseManifest.subscriptions];
   manifest.emits = [...baseManifest.emits];
 }
@@ -192,6 +210,7 @@ export default definePlugin({
   async onInit(ctx) {
     cfg = resolveProcessorConfig(ctx.getConfig<HrFromRrProcessorConfig>() ?? undefined);
     resetManifest();
+    manifest.required = cfg.required;
 
     const inputMap = createInputMap({
       source: signalInput({
@@ -240,6 +259,7 @@ export default definePlugin({
 
     applyManifestFragment(manifest, buildManifestFragmentFromInputs(inputMap));
     applyManifestFragment(manifest, handlers.manifest());
+    timelineResetParticipant.initialize(ctx.currentTimelineId());
     await handlers.start(ctx);
   },
   async onEvent(event, ctx) {
@@ -254,5 +274,14 @@ export default definePlugin({
     estimator = null;
     emitUniformHr = null;
     emitIrregularHr = null;
+  },
+  async onTimelineResetPrepare(input, ctx) {
+    await timelineResetParticipant.onPrepare(input, ctx);
+  },
+  async onTimelineResetAbort(input, ctx) {
+    await timelineResetParticipant.onAbort(input, ctx);
+  },
+  async onTimelineResetCommit(input, ctx) {
+    await timelineResetParticipant.onCommit(input, ctx);
   },
 });

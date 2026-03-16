@@ -149,6 +149,75 @@ describe('zephyr-bioharness-3-adapter', () => {
     await harness.tickPoll();
     expect(lastAdapterState(harness.emitted, 'zephyr-bioharness')?.state).toBe('connected');
   });
+
+  it('на timeline reset сохраняет connect state и очищает RR backlog', async () => {
+    const harness = createHarness({
+      adapterId: 'zephyr-bioharness',
+      mode: 'fake',
+      required: true,
+      scanTimeoutMs: 500,
+      fakePacketIntervalMs: 100,
+    });
+
+    await zephyrBioHarnessAdapter.onInit(harness.ctx);
+    expect(zephyrBioHarnessAdapter.manifest.required).toBe(true);
+
+    const scanPromise = harness.dispatch({
+      type: EventTypes.adapterScanRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'zephyr-bioharness',
+        timeoutMs: 500,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    await scanPromise;
+
+    const candidatesEvent = harness.emitted.find((event) => event.type === EventTypes.adapterScanCandidates);
+    const candidate = (candidatesEvent as RuntimeEventInputOf<'adapter.scan.candidates', 1>).payload.candidates[0];
+
+    await harness.dispatch({
+      type: EventTypes.adapterConnectRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'zephyr-bioharness',
+        formData: {
+          candidateId: candidate?.candidateId,
+          ...candidate?.connectFormData,
+        },
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(300);
+    await zephyrBioHarnessAdapter.onTimelineResetPrepare?.({
+      resetId: 'reset-1',
+      currentTimelineId: 'timeline-test',
+      nextTimelineId: 'timeline-next',
+      requestedAtSessionMs: 50,
+    }, harness.ctx);
+    await zephyrBioHarnessAdapter.onTimelineResetCommit?.({
+      resetId: 'reset-1',
+      nextTimelineId: 'timeline-next',
+      timelineStartSessionMs: 1000,
+    }, harness.ctx);
+
+    expect(lastAdapterState(harness.emitted, 'zephyr-bioharness')?.state).toBe('connected');
+
+    harness.emitted.length = 0;
+    await vi.advanceTimersByTimeAsync(100);
+    harness.advanceSession(1_100);
+    await harness.tickPoll();
+
+    const rrEvent = harness.emitted.find((event) => event.type === EventTypes.signalBatch);
+    expect(rrEvent?.type).toBe(EventTypes.signalBatch);
+    if (rrEvent?.type === EventTypes.signalBatch) {
+      expect(Math.min(...Array.from(rrEvent.payload.timestampsMs ?? new Float64Array()))).toBeGreaterThanOrEqual(1000);
+    }
+  });
 });
 
 function createHarness(config: Record<string, unknown>): TestHarness {
@@ -179,7 +248,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
       metrics.push(metric);
     },
     getConfig: <T>() => config as T,
-    requestTimelineReset: () => {},
+    requestTimelineReset: () => null,
   };
 
   function toRuntimeEvent(event: RuntimeEventInput): RuntimeEvent {

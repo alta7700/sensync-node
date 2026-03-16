@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   EventTypes,
   type PluginMetric,
@@ -19,7 +19,16 @@ interface TestHarness {
   tick(timerId: string): Promise<void>;
 }
 
+let activeHarness: TestHarness | null = null;
+
 describe('ant-plus-adapter', () => {
+  afterEach(async () => {
+    if (activeHarness) {
+      await antPlusAdapter.onShutdown(activeHarness.ctx);
+    }
+    activeHarness = null;
+  });
+
   it('публикует scan candidates только с opaque candidateId и подключается по нему', async () => {
     const harness = createHarness({
       adapterId: 'ant-plus',
@@ -29,6 +38,7 @@ describe('ant-plus-adapter', () => {
       packetIntervalMs: 250,
       measurementIntervalMs: 250,
     });
+    activeHarness = harness;
 
     await antPlusAdapter.onInit(harness.ctx);
     await harness.dispatch({
@@ -84,6 +94,7 @@ describe('ant-plus-adapter', () => {
       packetIntervalMs: 250,
       measurementIntervalMs: 250,
     });
+    activeHarness = harness;
 
     await antPlusAdapter.onInit(harness.ctx);
     await harness.dispatch({
@@ -122,6 +133,69 @@ describe('ant-plus-adapter', () => {
     expect(signalEvents.map((event) => event.payload.streamId).sort()).toEqual(['moxy.smo2', 'moxy.thb']);
     expect(signalEvents.every((event) => event.payload.frameKind === 'uniform-signal-batch')).toBe(true);
   });
+
+  it('на timeline reset сохраняет connected state и переякоривает fake timeline', async () => {
+    const harness = createHarness({
+      adapterId: 'ant-plus',
+      mode: 'fake',
+      stickPresent: true,
+      scanDelayMs: 1,
+      packetIntervalMs: 250,
+      measurementIntervalMs: 250,
+    });
+    activeHarness = harness;
+
+    await antPlusAdapter.onInit(harness.ctx);
+    await harness.dispatch({
+      type: EventTypes.adapterScanRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'ant-plus',
+        formData: { profile: 'muscle-oxygen' },
+      },
+    });
+    const candidatesEvent = (
+      harness.emitted.find((event) => event.type === EventTypes.adapterScanCandidates)
+    ) as RuntimeEventInputOf<typeof EventTypes.adapterScanCandidates, 1>;
+    const candidate = candidatesEvent.payload.candidates[0];
+
+    await harness.dispatch({
+      type: EventTypes.adapterConnectRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'ant-plus',
+        formData: {
+          candidateId: candidate?.candidateId,
+        },
+      },
+    });
+
+    await antPlusAdapter.onTimelineResetPrepare?.({
+      resetId: 'reset-1',
+      currentTimelineId: 'timeline-test',
+      nextTimelineId: 'timeline-next',
+      requestedAtSessionMs: 10,
+    }, harness.ctx);
+    await antPlusAdapter.onTimelineResetCommit?.({
+      resetId: 'reset-1',
+      nextTimelineId: 'timeline-next',
+      timelineStartSessionMs: 1000,
+    }, harness.ctx);
+
+    expect(lastAdapterState(harness.emitted, 'ant-plus')?.state).toBe('connected');
+
+    harness.emitted.length = 0;
+    harness.advanceSession(1_250);
+    await harness.tick('ant-plus.poll');
+
+    const signalEvents = harness.emitted.filter((event) => event.type === EventTypes.signalBatch);
+    expect(signalEvents).toHaveLength(2);
+    expect(signalEvents.every((event) => event.payload.t0Ms >= 1000)).toBe(true);
+  });
 });
 
 function createHarness(config: Record<string, unknown>): TestHarness {
@@ -152,7 +226,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
       metrics.push(metric);
     },
     getConfig: <T>() => config as T,
-    requestTimelineReset: () => {},
+    requestTimelineReset: () => null,
   };
 
   function toRuntimeEvent(event: RuntimeEventInput): RuntimeEvent {

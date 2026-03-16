@@ -10,6 +10,9 @@
 ## Как работает
 
 - `hdf5-recorder-plugin.ts` пишет runtime-потоки в `/channels/<streamId>/timestamps` и `/channels/<streamId>/values`.
+- Recorder теперь умеет deferred-start через `timeline reset`: при `resetTimelineOnStart=true` файл открывается только после глобального `request-result(status=succeeded)` от runtime, а не в локальном `onTimelineResetCommit()`.
+- Recorder materialize'ит manifest из plugin config в `onInit()`: через config можно включить `required` и profile-driven readiness checks.
+- `startConditions` в `v1` поддерживают только `fact-field`, чтобы preflight записи оставался runtime-driven и не тащил signal-specific framework в recorder.
 - `hdf5-simulation-adapter.ts` лениво читает те же datasets с помощью `h5wasm.slice()` и формирует новые runtime-batch по окну `batchMs`.
 - `hdf5-simulation-adapter.ts` может ограничивать воспроизведение только выбранными `streamIds`, которые пришли в plugin config.
 - File-boundary для симуляции вынесен в `src/hdf5-simulation-boundary.ts`, чтобы адаптер не смешивал runtime-state machine и разбор внешнего HDF5.
@@ -21,6 +24,7 @@
 - Использует контракты из `packages/core`.
 - Запускается через `packages/plugin-sdk` как обычные worker-плагины.
 - Recorder подключается к live-источникам, а simulation-плагин работает как отдельный data-source profile.
+- В live-profile `veloerg` recorder сам инициирует `timeline reset` на start/stop записи; UI больше не считается requester'ом этого reset-flow.
 
 Дополнительно:
 

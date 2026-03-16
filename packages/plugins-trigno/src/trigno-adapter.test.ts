@@ -258,6 +258,74 @@ describe('trigno-adapter', () => {
     await harness.tick('trigno.poll');
     expect(lastAdapterState(harness.emitted, 'trigno')?.state).toBe('connected');
   });
+
+  it('на timeline reset сохраняет started state и клипует первый gyro batch', async () => {
+    const harness = createHarness({
+      adapterId: 'trigno',
+      backwardsCompatibility: false,
+      upsampling: false,
+      pollIntervalMs: 250,
+      reconnectRetryDelayMs: 250,
+      connectCooldownMs: 0,
+    });
+
+    await trignoAdapter.onInit(harness.ctx);
+    await harness.dispatch({
+      type: EventTypes.adapterConnectRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'trigno',
+        formData: {
+          host: '10.9.15.71',
+          sensorSlot: 1,
+        },
+      },
+    });
+    await harness.dispatch({
+      type: TrignoEventTypes.streamStartRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'trigno',
+      },
+    });
+
+    await trignoAdapter.onTimelineResetPrepare?.({
+      resetId: 'reset-1',
+      currentTimelineId: 'timeline-test',
+      nextTimelineId: 'timeline-next',
+      requestedAtSessionMs: 10,
+    }, harness.ctx);
+    await trignoAdapter.onTimelineResetCommit?.({
+      resetId: 'reset-1',
+      nextTimelineId: 'timeline-next',
+      timelineStartSessionMs: 1000,
+    }, harness.ctx);
+
+    expect(lastAdapterState(harness.emitted, 'trigno')?.state).toBe('connected');
+
+    const session = sessionControl.getLatestSession();
+    if (!session) {
+      throw new Error('Ожидалась Trigno session');
+    }
+
+    harness.advanceSession(995);
+    harness.emitted.length = 0;
+    session.emitGyro({
+      x: new Float32Array([0.1, 0.2]),
+      y: new Float32Array([0.3, 0.4]),
+      z: new Float32Array([0.5, 0.6]),
+    });
+    await Promise.resolve();
+
+    const signalEvents = harness.emitted.filter((event) => event.type === EventTypes.signalBatch);
+    expect(signalEvents).toHaveLength(3);
+    expect(signalEvents.every((event) => event.payload.sampleCount === 1)).toBe(true);
+    expect(signalEvents.every((event) => event.payload.t0Ms >= 1000)).toBe(true);
+  });
 });
 
 function createHarness(config: Record<string, unknown>): TestHarness {
@@ -288,7 +356,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
       metrics.push(metric);
     },
     getConfig: <T>() => config as T,
-    requestTimelineReset: () => {},
+    requestTimelineReset: () => null,
   };
 
   function toRuntimeEvent(event: RuntimeEventInput): RuntimeEvent {

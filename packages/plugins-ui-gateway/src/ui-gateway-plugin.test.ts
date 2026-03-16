@@ -39,7 +39,9 @@ function createTestContext(schema: UiSchema = buildVeloergUiSchema()) {
       getConfig() {
         return { schema };
       },
-      requestTimelineReset() {},
+      requestTimelineReset() {
+        return null;
+      },
     },
   };
 }

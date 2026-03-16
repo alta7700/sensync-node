@@ -18,6 +18,14 @@
 - Для timeline-reset `v1` пакет даёт:
   - `createTimelineResetParticipant(...)` для локального lifecycle/resettable resources;
   - `clipSignalBatchToTimelineStart(...)` для clipping первого батча нового timeline.
+- Практическое правило выбора reset-helper'ов:
+  - processor'ы и derived adapters почти всегда должны быть `active reset participant`;
+  - transport adapters с живым сокетом/радиоканалом чаще сохраняют persistent connection и чистят только timeline-local state;
+  - если plugin после reset не должен ничего делать специально, это должно быть осознанное решение, а не «просто без hook'ов».
+- `clipSignalBatchToTimelineStart(...)` нужен именно там, где transport нельзя безболезненно рвать ради reset:
+  - high-rate TCP/BLE/serial streams;
+  - raw frame sync, который дорого восстанавливать;
+  - первый batch нового timeline может содержать старый prefix, который нужно отбросить без потери соединения.
 
 ## Взаимодействие
 

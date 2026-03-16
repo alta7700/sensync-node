@@ -19,7 +19,7 @@ interface QueuedItem {
 interface PluginHostCallbacks {
   onReady: (pluginId: string, manifest: PluginManifest) => void;
   onEmit: (pluginId: string, event: RuntimeEventInput, timelineId: string) => Promise<void>;
-  onTimelineResetRequest: (pluginId: string, reason?: string) => Promise<void>;
+  onTimelineResetRequest: (pluginId: string, requestId: string, reason?: string) => Promise<void>;
   onTimelineResetReady: (resetId: string, pluginId: string) => void;
   onTimelineResetFailed: (resetId: string, pluginId: string, message: string) => void;
   onTimelineResetCommitted: (resetId: string, pluginId: string) => void;
@@ -41,6 +41,7 @@ export class PluginHost {
 
   private controlQueue: QueuedItem[] = [];
   private dataQueue: QueuedItem[] = [];
+  private deferredMainMessages: MainToPluginWorkerMessage[] = [];
   private inFlightSeq: bigint | null = null;
   private quiescing = false;
   private drainedResolvers = new Set<() => void>();
@@ -217,6 +218,7 @@ export class PluginHost {
 
   resume(): void {
     this.quiescing = false;
+    this.flushDeferredMainMessages();
     this.pump();
   }
 
@@ -248,6 +250,32 @@ export class PluginHost {
     });
   }
 
+  sendTimelineResetRequestResult(input: {
+    requestId: string;
+    status: 'rejected' | 'aborted' | 'failed' | 'succeeded';
+    code: string;
+    message: string;
+    resetId?: string;
+    nextTimelineId?: string;
+    timelineStartSessionMs?: number;
+  }): void {
+    const message: MainToPluginWorkerMessage = {
+      kind: 'plugin.timeline-reset.request-result',
+      requestId: input.requestId,
+      status: input.status,
+      code: input.code,
+      message: input.message,
+      ...(input.resetId !== undefined ? { resetId: input.resetId } : {}),
+      ...(input.nextTimelineId !== undefined ? { nextTimelineId: input.nextTimelineId } : {}),
+      ...(input.timelineStartSessionMs !== undefined ? { timelineStartSessionMs: input.timelineStartSessionMs } : {}),
+    };
+    if (this.inFlightSeq !== null) {
+      this.deferredMainMessages.push(message);
+      return;
+    }
+    this.post(message);
+  }
+
   private post(message: MainToPluginWorkerMessage, transferList?: readonly TransferListItem[]): void {
     if (!this.worker) {
       throw new Error(`Plugin worker ${this.descriptor.id} не запущен`);
@@ -261,6 +289,12 @@ export class PluginHost {
 
   private pump(): void {
     if (!this.worker || this.state !== 'running' || this.inFlightSeq !== null || this.quiescing) return;
+    if (this.deferredMainMessages.length > 0) {
+      this.flushDeferredMainMessages();
+      if (this.inFlightSeq !== null || this.quiescing) {
+        return;
+      }
+    }
 
     const next = this.controlQueue.shift() ?? this.dataQueue.shift();
     if (!next) return;
@@ -301,7 +335,7 @@ export class PluginHost {
     }
 
     if (message.kind === 'plugin.timeline-reset.request') {
-      await this.callbacks.onTimelineResetRequest(this.descriptor.id, message.reason);
+      await this.callbacks.onTimelineResetRequest(this.descriptor.id, message.requestId, message.reason);
       return;
     }
 
@@ -328,6 +362,7 @@ export class PluginHost {
       this.resolveDrained();
       this.telemetry.handled += 1;
       this.handlerMsTotal += message.handledMs;
+      this.flushDeferredMainMessages();
       this.pump();
       return;
     }
@@ -365,5 +400,16 @@ export class PluginHost {
       resolve();
     }
     this.drainedResolvers.clear();
+  }
+
+  private flushDeferredMainMessages(): void {
+    if (!this.worker || this.inFlightSeq !== null || this.deferredMainMessages.length === 0) {
+      return;
+    }
+    const pending = this.deferredMainMessages;
+    this.deferredMainMessages = [];
+    for (const message of pending) {
+      this.post(message);
+    }
   }
 }

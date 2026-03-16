@@ -11,6 +11,7 @@ import {
   createOutputRegistry,
   createReconnectPolicy,
   createScanFlow,
+  createTimelineResetParticipant,
   createUniformSignalEmitter,
 } from '@sensync2/plugin-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
@@ -93,6 +94,31 @@ let lastProfileIntervalFieldMs: number | null = null;
 let antState = createAdapterStateHolder({ adapterId: config.adapterId });
 let antScanFlow = createScanFlow<MoxyScanCandidateData>({ adapterId: config.adapterId });
 let reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
+const timelineResetParticipant = createTimelineResetParticipant({
+  onPrepare: async (_input, ctx) => {
+    stopPolling(ctx);
+  },
+  onAbort: async (_input, ctx) => {
+    if (shouldPollAfterReset()) {
+      startPolling(ctx);
+    }
+  },
+  onCommit: async (input, ctx) => {
+    discardTransportBacklog();
+    resetPacketState();
+    if (currentRuntimeState() === 'connected') {
+      connectionStartedSessionMs = input.timelineStartSessionMs;
+      lastPacketSeenSessionMs = input.timelineStartSessionMs;
+      if (transport?.mode === 'fake') {
+        nextFakePacketDueSessionMs = input.timelineStartSessionMs;
+      }
+    }
+    if (shouldPollAfterReset()) {
+      startPolling(ctx);
+    }
+    await antState.emitCurrent(ctx);
+  },
+});
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -575,6 +601,23 @@ function currentRuntimeState() {
   return antState.getState();
 }
 
+function shouldPollAfterReset(): boolean {
+  return antState.isState('connected')
+    || (antState.isState('connecting') && reconnectPolicy.getNextAttemptSessionMs() !== null);
+}
+
+function discardTransportBacklog(): void {
+  if (!transport || transport.mode === 'fake') {
+    return;
+  }
+  while (transport.readPacket()) {
+    // Во время commit нового timeline старые пакеты осознанно выбрасываем.
+  }
+  while (transport.takeConnectionSignal()) {
+    // Старые disconnect-сигналы не должны ломать уже новый timeline.
+  }
+}
+
 function stringFormField(formData: Record<string, unknown> | undefined, key: string): string | undefined {
   const rawValue = formData?.[key];
   return typeof rawValue === 'string' && rawValue.trim().length > 0 ? rawValue.trim() : undefined;
@@ -982,6 +1025,7 @@ export default definePlugin({
     connectionStartedSessionMs = null;
     resetReconnectState();
     resetPacketState();
+    timelineResetParticipant.initialize(ctx.currentTimelineId());
     await antState.emitCurrent(ctx);
     await ctx.emit(antScanFlow.createScanStateEvent(false));
   },
@@ -1026,5 +1070,14 @@ export default definePlugin({
     connectionStartedSessionMs = null;
     resetReconnectState();
     resetPacketState();
+  },
+  async onTimelineResetPrepare(input, ctx) {
+    await timelineResetParticipant.onPrepare(input, ctx);
+  },
+  async onTimelineResetAbort(input, ctx) {
+    await timelineResetParticipant.onAbort(input, ctx);
+  },
+  async onTimelineResetCommit(input, ctx) {
+    await timelineResetParticipant.onCommit(input, ctx);
   },
 });

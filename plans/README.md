@@ -18,5 +18,6 @@
 - `plugin-kit.md`
 - `plugin-multi-instance.md`
 - `processor-kit.md`
+- `recording-driven-timeline-reset.md`
 - `test-coverage.md`
 - `timeline-reset.md`

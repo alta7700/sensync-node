@@ -41,7 +41,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
       metrics.push(metric);
     },
     getConfig: <T>() => config as T,
-    requestTimelineReset: () => {},
+    requestTimelineReset: () => null,
   };
 
   function toRuntimeEvent(event: RuntimeEventInput): RuntimeEvent {

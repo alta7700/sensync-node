@@ -111,6 +111,7 @@ Shared ingress:
 - UI отправляет `timeline.reset.request`;
 - `RuntimeHost` перехватывает эту команду до `publish()` и запускает special reset protocol;
 - plugin-side reset request идёт отдельным worker-protocol сообщением, а не через `ctx.emit(...)`.
+- plugin-requester получает отдельный out-of-band `request-result`, а не должен угадывать итог reset по локальным participant-hook'ам.
 
 Инварианты `v1`:
 
@@ -121,6 +122,11 @@ Shared ingress:
 - старые queued events не должны проходить safe-point после входа в `prepare`;
 - `plugin.emit` обязан нести `timelineId`, а runtime обязан дропать emit с устаревшим timeline;
 - reset запрещён, если recorder находится в `recording` или `paused`.
+- `requestTimelineReset(...)` в worker возвращает локальный `requestId`; итог этого запроса приходит только через отдельный requester-result:
+  - `rejected` — runtime отклонил запрос до входа в barrier;
+  - `aborted` — prepare/barrier abort;
+  - `failed` — commit/global failure;
+  - `succeeded` — только после полного finish reset в runtime.
 
 UI-модель:
 

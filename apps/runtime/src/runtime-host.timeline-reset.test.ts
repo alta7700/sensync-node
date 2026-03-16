@@ -159,6 +159,152 @@ describe('RuntimeHost timeline reset', () => {
       return entry.message.type === 'ui.warning' && entry.message.code === 'reset_commit_probe';
     })).toBe(false);
   });
+
+  it('возвращает requester-result rejected при раннем отклонении reset-запроса от плагина', async () => {
+    const controls: UiControlOutPayload[] = [];
+
+    runtime = new RuntimeHost({
+      plugins: [
+        {
+          id: 'runtime-reset-requester-plugin',
+          modulePath: new URL('./runtime-reset-requester-plugin.test-fixture.ts', import.meta.url).href,
+          config: {
+            triggerClientId: 'requester-ui',
+          },
+        },
+      ],
+      timelineReset: {
+        enabled: true,
+        requesters: ['external-ui'],
+        participants: [],
+        prepareTimeoutMs: 1_000,
+        commitTimeoutMs: 1_000,
+        recorderPolicy: 'reject-if-recording',
+      },
+      uiSinks: {
+        onControl(payload) {
+          controls.push(payload);
+        },
+      },
+    });
+
+    await runtime.start();
+    await runtime.attachUiClient('requester-ui');
+
+    await waitFor(() => {
+      return controls.some((entry) => {
+        return entry.message.type === 'ui.warning' && entry.message.code === 'reset_request_result_rejected';
+      });
+    });
+
+    expect(controls.some((entry) => {
+      return entry.message.type === 'ui.warning' && entry.message.code === 'reset_request_result_succeeded';
+    })).toBe(false);
+  });
+
+  it('шлёт requester-result succeeded только после глобального finish reset', async () => {
+    const controls: Array<{ payload: UiControlOutPayload; atMs: number }> = [];
+
+    runtime = new RuntimeHost({
+      plugins: [
+        {
+          id: 'runtime-reset-requester-plugin',
+          modulePath: new URL('./runtime-reset-requester-plugin.test-fixture.ts', import.meta.url).href,
+          config: {
+            triggerClientId: 'requester-ui',
+          },
+        },
+        {
+          id: 'runtime-reset-probe-plugin',
+          modulePath: new URL('./runtime-reset-probe-plugin.test-fixture.ts', import.meta.url).href,
+          config: {
+            commitDelayMs: 30,
+          },
+        },
+      ],
+      timelineReset: {
+        enabled: true,
+        requesters: ['runtime-reset-requester-plugin'],
+        participants: ['runtime-reset-probe-plugin'],
+        prepareTimeoutMs: 1_000,
+        commitTimeoutMs: 1_000,
+        recorderPolicy: 'reject-if-recording',
+      },
+      uiSinks: {
+        onControl(payload) {
+          controls.push({ payload, atMs: Date.now() });
+        },
+      },
+    });
+
+    await runtime.start();
+    await runtime.attachUiClient('requester-ui');
+
+    await waitFor(() => {
+      return controls.some((entry) => {
+        return entry.payload.message.type === 'ui.warning' && entry.payload.message.code === 'reset_request_result_succeeded';
+      });
+    });
+
+    const commitIndex = controls.findIndex((entry) => {
+      return entry.payload.message.type === 'ui.warning' && entry.payload.message.code === 'reset_commit_probe';
+    });
+    const resultIndex = controls.findIndex((entry) => {
+      return entry.payload.message.type === 'ui.warning' && entry.payload.message.code === 'reset_request_result_succeeded';
+    });
+
+    expect(commitIndex).toBeGreaterThanOrEqual(0);
+    expect(resultIndex).toBeGreaterThan(commitIndex);
+  });
+
+  it('при global commit-failure requester получает failed вместо success', async () => {
+    const controls: UiControlOutPayload[] = [];
+
+    runtime = new RuntimeHost({
+      plugins: [
+        {
+          id: 'runtime-reset-requester-plugin',
+          modulePath: new URL('./runtime-reset-requester-plugin.test-fixture.ts', import.meta.url).href,
+          config: {
+            triggerClientId: 'requester-ui',
+          },
+        },
+        {
+          id: 'runtime-reset-probe-plugin',
+          modulePath: new URL('./runtime-reset-probe-plugin.test-fixture.ts', import.meta.url).href,
+          config: {
+            failCommit: true,
+          },
+        },
+      ],
+      timelineReset: {
+        enabled: true,
+        requesters: ['runtime-reset-requester-plugin'],
+        participants: ['runtime-reset-probe-plugin'],
+        prepareTimeoutMs: 1_000,
+        commitTimeoutMs: 1_000,
+        recorderPolicy: 'reject-if-recording',
+      },
+      uiSinks: {
+        onControl(payload) {
+          controls.push(payload);
+        },
+      },
+    });
+
+    await runtime.start();
+    await runtime.attachUiClient('requester-ui');
+
+    await waitFor(() => {
+      return controls.some((entry) => {
+        return entry.message.type === 'ui.warning' && entry.message.code === 'reset_request_result_failed';
+      });
+    });
+
+    expect(controls.some((entry) => {
+      return entry.message.type === 'ui.warning' && entry.message.code === 'reset_request_result_succeeded';
+    })).toBe(false);
+  });
 });
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {

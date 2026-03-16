@@ -43,7 +43,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
     },
     telemetry: () => {},
     getConfig: <T>() => config as T,
-    requestTimelineReset: () => {},
+    requestTimelineReset: () => null,
   };
 
   function toRuntimeEvent(event: RuntimeEventInput): RuntimeEvent {

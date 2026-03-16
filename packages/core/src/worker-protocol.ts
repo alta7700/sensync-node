@@ -49,12 +49,24 @@ export interface PluginWorkerTimelineResetCommitMessage {
   timelineStartSessionMs: number;
 }
 
+export interface PluginWorkerTimelineResetRequestResultMessage {
+  kind: 'plugin.timeline-reset.request-result';
+  requestId: string;
+  status: 'rejected' | 'aborted' | 'failed' | 'succeeded';
+  code: string;
+  message: string;
+  resetId?: string;
+  nextTimelineId?: string;
+  timelineStartSessionMs?: number;
+}
+
 export type MainToPluginWorkerMessage =
   | PluginWorkerInitMessage
   | PluginWorkerDeliverMessage
   | PluginWorkerTimelineResetPrepareMessage
   | PluginWorkerTimelineResetAbortMessage
   | PluginWorkerTimelineResetCommitMessage
+  | PluginWorkerTimelineResetRequestResultMessage
   | PluginWorkerShutdownMessage;
 
 export interface PluginWorkerReadyMessage {
@@ -102,6 +114,7 @@ export interface PluginWorkerClearTimerMessage {
 export interface PluginWorkerTimelineResetRequestMessage {
   kind: 'plugin.timeline-reset.request';
   requestedByPluginId: string;
+  requestId: string;
   reason?: string;
 }
 

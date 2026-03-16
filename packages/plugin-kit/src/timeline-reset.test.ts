@@ -20,7 +20,7 @@ function createTestContext() {
     clearTimer: () => {},
     telemetry: () => {},
     getConfig: <T>() => undefined as T,
-    requestTimelineReset: () => {},
+    requestTimelineReset: () => null,
   };
 
   return { ctx, emitted };

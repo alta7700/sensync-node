@@ -35,7 +35,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
     clearTimer: () => {},
     telemetry: () => {},
     getConfig: <T>() => config as T,
-    requestTimelineReset: () => {},
+    requestTimelineReset: () => null,
   };
 
   function toRuntimeEvent(event: RuntimeEventInput): RuntimeEvent {
@@ -172,5 +172,66 @@ describe('hr-from-rr-processor', () => {
     expect(outputEvent.payload.frameKind).toBe('irregular-signal-batch');
     expect(Array.from(outputEvent.payload.values)).toEqual([60, 80]);
     expect(Array.from(outputEvent.payload.timestampsMs ?? new Float64Array())).toEqual([500, 2500]);
+  });
+
+  it('сбрасывает estimator state на timeline reset commit', async () => {
+    const harness = createHarness({
+      sourceStreamId: 'rr.input',
+      outputStreamId: 'hr.output',
+      medianWindowSize: 1,
+      emaAlpha: 0.5,
+      required: true,
+    });
+
+    await hrFromRrProcessor.onInit(harness.ctx);
+    expect(hrFromRrProcessor.manifest.required).toBe(true);
+
+    await harness.dispatch(defineRuntimeEventInput({
+      type: EventTypes.signalBatch,
+      v: 1,
+      kind: 'data',
+      priority: 'data',
+      payload: {
+        streamId: 'rr.input',
+        sampleFormat: 'f32',
+        frameKind: 'uniform-signal-batch',
+        t0Ms: 0,
+        dtMs: 1000,
+        sampleCount: 1,
+        values: new Float32Array([1.0]),
+      },
+    }));
+
+    await hrFromRrProcessor.onTimelineResetPrepare?.({
+      resetId: 'reset-1',
+      currentTimelineId: 'timeline-test',
+      nextTimelineId: 'timeline-next',
+      requestedAtSessionMs: 10,
+    }, harness.ctx);
+    await hrFromRrProcessor.onTimelineResetCommit?.({
+      resetId: 'reset-1',
+      nextTimelineId: 'timeline-next',
+      timelineStartSessionMs: 100,
+    }, harness.ctx);
+
+    await harness.dispatch(defineRuntimeEventInput({
+      type: EventTypes.signalBatch,
+      v: 1,
+      kind: 'data',
+      priority: 'data',
+      payload: {
+        streamId: 'rr.input',
+        sampleFormat: 'f32',
+        frameKind: 'uniform-signal-batch',
+        t0Ms: 100,
+        dtMs: 1000,
+        sampleCount: 1,
+        values: new Float32Array([0.5]),
+      },
+    }));
+
+    const outputEvents = harness.emitted.filter((event) => event.type === EventTypes.signalBatch);
+    const lastOutput = outputEvents.at(-1) as RuntimeEventInputOf<typeof EventTypes.signalBatch, 1>;
+    expect(lastOutput.payload.values[0]).toBeCloseTo(120, 5);
   });
 });

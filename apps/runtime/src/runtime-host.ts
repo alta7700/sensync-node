@@ -54,6 +54,7 @@ interface NormalizedTimelineResetConfig {
 interface ActiveTimelineReset {
   resetId: string;
   requestedBy: TimelineResetRequester;
+  requesterRequestId?: string;
   requestedAtSessionMs: number;
   nextTimelineId: string | null;
   readyPlugins: Set<string>;
@@ -257,9 +258,12 @@ export class RuntimeHost implements RuntimeHostPublic {
     const host = new PluginHost(descriptor, {
       onReady: (pluginId, manifest) => this.onPluginReady(pluginId, manifest),
       onEmit: async (pluginId, event, timelineId) => this.publishFromPlugin(event, pluginId, timelineId),
-      onTimelineResetRequest: async (pluginId, reason) => this.handleTimelineResetRequest(
+      onTimelineResetRequest: async (pluginId, requestId, reason) => this.handleTimelineResetRequest(
         pluginId,
-        reason !== undefined ? { reason } : {},
+        {
+          ...(reason !== undefined ? { reason } : {}),
+          requestId,
+        },
       ),
       onTimelineResetReady: (resetId, pluginId) => this.onTimelineResetReady(resetId, pluginId),
       onTimelineResetFailed: (resetId, pluginId, message) => this.onTimelineResetFailed(resetId, pluginId, message),
@@ -614,33 +618,24 @@ export class RuntimeHost implements RuntimeHostPublic {
   ): Promise<void> {
     const config = this.timelineReset;
     if (!config?.enabled) {
-      this.emitWarningFallback({
-        code: 'timeline_reset_disabled',
-        message: 'Текущий профиль не поддерживает timeline reset',
-        ...(requester !== 'external-ui' ? { pluginId: requester } : {}),
-      });
+      this.rejectTimelineResetRequest(requester, payload, 'timeline_reset_disabled', 'Текущий профиль не поддерживает timeline reset');
       return;
     }
     if (!config.requesters.has(requester)) {
-      this.emitWarningFallback({
-        code: 'timeline_reset_forbidden',
-        message: 'Requester не разрешён для timeline reset в текущем профиле',
-        ...(requester !== 'external-ui' ? { pluginId: requester } : {}),
-      });
+      this.rejectTimelineResetRequest(requester, payload, 'timeline_reset_forbidden', 'Requester не разрешён для timeline reset в текущем профиле');
       return;
     }
     if (this.runtimeState !== 'running') {
-      this.emitWarningFallback({
-        code: 'timeline_reset_in_progress',
-        message: 'Timeline reset можно запускать только из состояния RUNNING',
-      });
+      this.rejectTimelineResetRequest(requester, payload, 'timeline_reset_in_progress', 'Timeline reset можно запускать только из состояния RUNNING');
       return;
     }
     if (config.recorderPolicy === 'reject-if-recording' && this.hasActiveRecorder()) {
-      this.emitWarningFallback({
-        code: 'timeline_reset_recording_active',
-        message: 'Timeline reset запрещён во время активной записи или паузы записи',
-      });
+      this.rejectTimelineResetRequest(
+        requester,
+        payload,
+        'timeline_reset_recording_active',
+        'Timeline reset запрещён во время активной записи или паузы записи',
+      );
       return;
     }
 
@@ -655,6 +650,7 @@ export class RuntimeHost implements RuntimeHostPublic {
     this.activeReset = {
       resetId,
       requestedBy: requester,
+      ...(requester !== 'external-ui' && payload.requestId !== undefined ? { requesterRequestId: payload.requestId } : {}),
       requestedAtSessionMs,
       nextTimelineId: null,
       readyPlugins: new Set<string>(),
@@ -689,7 +685,7 @@ export class RuntimeHost implements RuntimeHostPublic {
       }
     } catch (error) {
       const normalized = error instanceof Error ? error : new Error(String(error));
-      await this.abortTimelineReset(normalized.message, barrierHosts);
+      await this.abortTimelineReset(normalized.message, barrierHosts, requester);
       return;
     }
 
@@ -729,15 +725,37 @@ export class RuntimeHost implements RuntimeHostPublic {
     if (commitFailure) {
       const flushBufferedEvents = this.handleCommitFailure(commitFailure.pluginId, commitFailure.message);
       await this.finishTimelineResetAfterCommitFailure(flushBufferedEvents);
-      this.emitErrorFallback({
+      this.emitTimelineResetRequestResult(requester, payload, {
+        status: 'failed',
         code: 'timeline_reset_commit_failed',
         message: `${commitFailure.pluginId}: ${commitFailure.message}`,
-        pluginId: commitFailure.pluginId,
+        resetId,
       });
+      if (requester === 'external-ui') {
+        this.emitErrorFallback({
+          code: 'timeline_reset_commit_failed',
+          message: `${commitFailure.pluginId}: ${commitFailure.message}`,
+          pluginId: commitFailure.pluginId,
+        });
+      } else if (this.isRecorderPostStopReset(requester, payload)) {
+        this.emitWarningFallback({
+          code: 'recording_stop_post_reset_failed',
+          message: 'Запись остановлена, но не удалось сбросить timeline, рекомендуется перезапустить приложение',
+          pluginId: commitFailure.pluginId,
+        });
+      }
       return;
     }
 
     await this.finishTimelineResetSuccess();
+    this.emitTimelineResetRequestResult(requester, payload, {
+      status: 'succeeded',
+      code: 'timeline_reset_succeeded',
+      message: 'Timeline reset завершён',
+      resetId,
+      nextTimelineId,
+      timelineStartSessionMs,
+    });
   }
 
   private hasActiveRecorder(): boolean {
@@ -752,6 +770,7 @@ export class RuntimeHost implements RuntimeHostPublic {
   private async abortTimelineReset(
     reason: string,
     barrierHosts: ResetBarrierHost[],
+    requester: TimelineResetRequester,
   ): Promise<void> {
     const reset = this.activeReset;
     if (!reset) {
@@ -769,10 +788,25 @@ export class RuntimeHost implements RuntimeHostPublic {
       host.resume();
     }
     await this.flushPendingUiClientAttaches();
-    this.emitWarningFallback({
+    this.emitTimelineResetRequestResult(requester, reset.requesterRequestId !== undefined ? { requestId: reset.requesterRequestId } : {}, {
+      status: 'aborted',
       code: 'timeline_reset_aborted',
       message: reason,
+      resetId: reset.resetId,
     });
+    if (requester === 'external-ui') {
+      this.emitWarningFallback({
+        code: 'timeline_reset_aborted',
+        message: reason,
+      });
+    }
+  }
+
+  private isRecorderPostStopReset(
+    requester: TimelineResetRequester,
+    payload: TimelineResetRequestPayload,
+  ): boolean {
+    return requester === 'hdf5-recorder' && payload.reason?.startsWith('recording.stop:') === true;
   }
 
   private handleCommitFailure(pluginId: string, message: string): boolean {
@@ -813,6 +847,56 @@ export class RuntimeHost implements RuntimeHostPublic {
       await this.dispatchEvent(event);
     }
     await this.flushPendingUiClientAttaches();
+  }
+
+  private rejectTimelineResetRequest(
+    requester: TimelineResetRequester,
+    payload: TimelineResetRequestPayload,
+    code: string,
+    message: string,
+  ): void {
+    this.emitTimelineResetRequestResult(requester, payload, {
+      status: 'rejected',
+      code,
+      message,
+    });
+    if (requester === 'external-ui') {
+      this.emitWarningFallback({ code, message });
+    }
+  }
+
+  private emitTimelineResetRequestResult(
+    requester: TimelineResetRequester,
+    payload: Pick<TimelineResetRequestPayload, 'requestId'>,
+    result: {
+      status: 'rejected' | 'aborted' | 'failed' | 'succeeded';
+      code: string;
+      message: string;
+      resetId?: string;
+      nextTimelineId?: string;
+      timelineStartSessionMs?: number;
+    },
+  ): void {
+    if (requester === 'external-ui') {
+      return;
+    }
+    const requestId = payload.requestId;
+    if (!requestId) {
+      return;
+    }
+    const host = this.pluginHosts.get(requester);
+    if (!host) {
+      return;
+    }
+    host.sendTimelineResetRequestResult({
+      requestId,
+      status: result.status,
+      code: result.code,
+      message: result.message,
+      ...(result.resetId !== undefined ? { resetId: result.resetId } : {}),
+      ...(result.nextTimelineId !== undefined ? { nextTimelineId: result.nextTimelineId } : {}),
+      ...(result.timelineStartSessionMs !== undefined ? { timelineStartSessionMs: result.timelineStartSessionMs } : {}),
+    });
   }
 
   private async flushPendingUiClientAttaches(): Promise<void> {
