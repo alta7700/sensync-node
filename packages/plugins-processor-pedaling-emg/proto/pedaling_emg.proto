@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package sensync2_processors.pedaling_emg;
+
+import "sensync2_plugin_kit/ipc_worker/numeric_array.proto";
+
+message PedalingEmgAnalysisRequest {
+  uint64 cycle_id = 1;
+  double window_start_session_ms = 2;
+  double sample_rate_hz = 3;
+  sensync2_plugin_kit.ipc_worker.NumericArray emg_samples = 4;
+  double expected_active_start_offset_ms = 5;
+  double expected_active_end_offset_ms = 6;
+  optional double previous_baseline = 7;
+  optional double previous_threshold_high = 8;
+  optional double previous_threshold_low = 9;
+}
+
+enum PedalingEmgStatus {
+  PEDALING_EMG_STATUS_UNSPECIFIED = 0;
+  PEDALING_EMG_STATUS_OK = 1;
+  PEDALING_EMG_STATUS_LOW_SNR = 2;
+  PEDALING_EMG_STATUS_NO_ACTIVATION = 3;
+  PEDALING_EMG_STATUS_INVALID_WINDOW = 4;
+}
+
+message PedalingEmgAnalysisResponse {
+  optional double detected_onset_offset_ms = 1;
+  optional double detected_offset_offset_ms = 2;
+  double confidence = 3;
+  double baseline = 4;
+  double threshold_high = 5;
+  double threshold_low = 6;
+  PedalingEmgStatus status = 7;
+}

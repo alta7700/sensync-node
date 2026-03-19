@@ -31,9 +31,13 @@ npm run dev
 - `npm run dev` — запускает desktop c профилем `fake`.
 - `npm run dev:fake` — явный запуск fake-профиля.
 - `npm run dev:fake-hdf5-simulation` — переходный профиль: fake-UI поверх `hdf5-simulation` источника.
+- `npm run dev:pedaling-emg-test` — live-профиль для отдельного теста `Trigno EMG + Gyro` с записью raw-каналов в HDF5.
+- `npm run dev:pedaling-emg-replay` — replay-профиль для HDF5-файла с raw `Trigno EMG + Gyro`; файл выбирается через UI при `connect`.
 - `npm run dev:veloerg` — composite dev-профиль `veloerg` для ANT+/Moxy и BLE/Zephyr.
 - `npm run dev:runtime` — runtime отдельно, по умолчанию в профиле `fake`.
 - `npm run dev:runtime:fake-hdf5-simulation` — standalone runtime для fake simulation из HDF5.
+- `npm run dev:runtime:pedaling-emg-test` — standalone runtime для отдельного live `EMG + Gyro` теста.
+- `npm run dev:runtime:pedaling-emg-replay` — standalone runtime для replay raw `EMG + Gyro`.
 - `npm run dev:runtime:veloerg` — standalone runtime для composite `veloerg` профиля.
 - `npm run build` — сборка всех workspace-пакетов.
 - `npm run lint` — единый ESLint-прогон по monorepo.
@@ -48,7 +52,7 @@ npm run dev
 
 ## Launch profiles
 
-Сейчас есть три штатных профиля запуска:
+Сейчас есть пять штатных профиля запуска:
 
 - `fake`
   - synthetic fake adapter с автостартом `fake-signal` после общего runtime-барьера `runtime.started`;
@@ -68,6 +72,14 @@ npm run dev
   - Moxy публикует `moxy.smo2` и `moxy.thb`, Zephyr даёт live `RR`, а Trigno в `v1` публикует raw `EMG + Gyroscope`;
   - `ui-gateway` поднимает composite-схему live-подключения Moxy, Zephyr и Trigno;
   - fake transport остаётся доступен для локальной отладки.
+- `pedaling-emg-test`
+  - отдельный live-профиль только для `Trigno`;
+  - поднимает raw `EMG + Gyroscope`, `pedaling-emg-processor`, recorder и UI;
+  - запись пишет только raw `Trigno`-каналы в `recordings/pedaling-emg-test`.
+- `pedaling-emg-replay`
+  - replay-профиль для тех же raw `Trigno`-каналов из HDF5;
+  - файл выбирается через UI при `adapter.connect.request`, а не через env;
+  - поднимает `hdf5-simulation-adapter`, `pedaling-emg-processor` и отдельную replay-схему UI.
 
 Профиль выбирается через `SENSYNC2_PROFILE`, а npm-скрипты просто подставляют это значение явно.
 
@@ -80,6 +92,8 @@ SENSYNC2_HDF5_SIMULATION_FILE=/absolute/path/to/file.h5 npm run dev:fake-hdf5-si
 Допускается и относительный путь: он будет резолвиться от корня репозитория `sensync2`, а не от `apps/desktop`.
 
 Это осознанно: профиль не должен подменять реальный источник скрытым demo-файлом.
+
+Для `pedaling-emg-replay` отдельный env не нужен: после запуска профиля файл выбирается в UI через кнопку подключения replay.
 
 Для `veloerg` можно отдельно включить fake transport и проверить UX ветку "stick не найден":
 

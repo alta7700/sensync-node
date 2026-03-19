@@ -13,6 +13,7 @@
 - `plugin-sdk` задаёт модель worker-плагина.
 - `plugins-*` реализуют доменную логику поверх этих контрактов.
 - `plugins-processor-*` собирают live/generic processor'ы по одному пакету на processor, чтобы не смешивать их зависимости, `.proto` и Python compute-side.
+- Среди `plugins-processor-*` теперь есть и mixed TS/Python processor'ы, где потоковая логика живёт в worker-плагине, а плотная численная обработка уходит во внешний compute-worker через `plugin-kit/ipc-worker`.
 - `plugins-labels` собирает generic label-generator плагины, которые не должны считаться fake-специфичными.
 - `plugins-ant-plus` отвечает за ANT+ scan/connect/data flow и transport boundary к stick.
 - `plugins-ble` отвечает за BLE scan/connect/notify/write flow и boundary к `noble`.

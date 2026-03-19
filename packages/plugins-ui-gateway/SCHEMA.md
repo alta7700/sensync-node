@@ -9,11 +9,13 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 ## 1. Launch profiles
 
-Сейчас runtime profiles используют три concrete-схемы:
+Сейчас runtime profiles используют пять concrete-схем:
 
 - `fake`
 - `fake-hdf5-simulation`
 - `veloerg`
+- `pedaling-emg-test`
+- `pedaling-emg-replay`
 
 `fake` — дефолтный dev-профиль. Сама схема больше не выбирается внутри `ui-gateway`, а передаётся ему из `apps/runtime/src/profiles/README.md`.
 
@@ -251,8 +253,8 @@ Derived flag для interval:
 
 Назначение:
 
-- live composite-профиль для ANT+/Moxy, BLE/Zephyr, generic HR-from-RR processor и TCP/Trigno;
-- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-график `RR`, processor строит derived `HR`, а Trigno даёт raw `EMG + Gyroscope`.
+- live composite-профиль для ANT+/Moxy, BLE/Zephyr, generic HR-from-RR/DFA processors и TCP/Trigno;
+- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-графики `RR/HR/DFA-a1`, а `pedaling-emg-processor` строит phase/activity overlays и confidence-диагностику поверх raw `Trigno EMG + Gyroscope`.
 
 ### Страница
 
@@ -262,13 +264,14 @@ Derived flag для interval:
 Раскладка страницы задаётся через `page.layout`:
 
 - верхний `row` делит экран на две зоны:
-  - левая `column` содержит:
-    - `controls-trigno`
-    - `controls-main`
-    - `controls-zephyr`
-  - справа находится `status-main`
+  - слева находится `status-main`
+  - справа находится `column` с grid controls:
+    - `controls-trigno` на всю ширину
+    - ниже `row`: `controls-main | controls-zephyr`
+    - ниже `controls-recording` на всю ширину
 - ниже идут отдельные `row`:
   - `chart-trigno-emg | chart-trigno-gyro`
+  - `chart-pedaling-confidence | chart-pedaling-cycle-period`
   - `chart-moxy-smo2 | chart-moxy-thb`
   - `chart-zephyr-rr | chart-zephyr-hr`
   - `chart-zephyr-dfa-a1`
@@ -281,6 +284,7 @@ Derived flag для interval:
 - `controls-trigno`
 - `controls-main`
 - `controls-zephyr`
+- `controls-recording`
 
 Кнопки:
 
@@ -312,6 +316,7 @@ Derived flag для interval:
   - в `connected` отправляет `adapter.disconnect.request`
   - в `failed` тоже отправляет `adapter.disconnect.request`, чтобы сбросить состояние
 - `toggle-recording`
+  - вынесена в отдельный виджет `controls-recording`
   - если `adapter.ant-plus.state = connected`, `adapter.zephyr-bioharness.state = connected`, `adapter.trigno.state = connected`
     и `recording.local.state ∈ { idle, failed, null }`
     - label: `Начать запись`
@@ -323,6 +328,7 @@ Derived flag для interval:
     - label: `Продолжить запись`
     - команда: `recording.resume`
 - `stop-recording`
+  - находится в виджете `controls-recording`
   - видима только если `recording.local.state ∈ { recording, paused, stopping }`
   - основная команда: `recording.stop`
 - `scan-zephyr`
@@ -367,6 +373,8 @@ Derived flag для interval:
 - `chart-trigno-emg`
   - окно: `20_000 ms`
   - поток: `trigno.avanti`
+  - overlay interval stream: `pedaling.phase.coarse` (`1=start`, `0=end`)
+  - overlay interval stream: `pedaling.activity.vastus-lateralis` (`1=start`, `0=end`)
   - ось Y: `V`
 - `chart-trigno-gyro`
   - окно: `20_000 ms`
@@ -374,7 +382,18 @@ Derived flag для interval:
     - `trigno.avanti.gyro.x`
     - `trigno.avanti.gyro.y`
     - `trigno.avanti.gyro.z`
+  - overlay interval stream: `pedaling.phase.coarse` (`1=start`, `0=end`)
   - ось Y: `deg/s`
+- `chart-pedaling-confidence`
+  - окно: `20_000 ms`
+  - потоки:
+    - `pedaling.phase.confidence`
+    - `pedaling.emg.confidence`
+  - ось Y: `[0, 1] a.u.`
+- `chart-pedaling-cycle-period`
+  - окно: `20_000 ms`
+  - поток: `pedaling.cycle.period-ms`
+  - ось Y: `[300, 2000] ms`
 - `chart-moxy-smo2`
   - окно: `20_000 ms`
   - поток: `moxy.smo2`
@@ -402,6 +421,194 @@ Derived flag для interval:
 - Для `veloerg` сюда также попадают latest metrics качества ANT+ канала от `ant-plus-adapter` и BLE/Zephyr transport metrics от `zephyr-bioharness-3-adapter`.
 
 ## 5. Общие правила flags и stream declarations
+
+## 5. Профиль `pedaling-emg-test`
+
+Назначение:
+
+- отдельный live-профиль для записи и отладки raw `Trigno EMG + Gyroscope`;
+- без ANT+/BLE-датчиков, но с тем же `pedaling-emg-processor`, который строит phase/activity overlays и confidence-диагностику.
+
+### Страница
+
+- Одна страница: `main`.
+- Заголовок страницы: `Pedaling EMG test`.
+
+Раскладка строк:
+
+- `status-main | controls-column`
+- `chart-trigno-emg | chart-trigno-gyro`
+- `chart-pedaling-confidence | chart-pedaling-cycle-period`
+- `telemetry-main`
+
+Где `controls-column` содержит:
+
+- `controls-trigno`
+- `controls-recording`
+
+### Controls
+
+Виджеты:
+
+- `controls-trigno`
+- `controls-recording`
+
+Кнопки `controls-trigno`:
+
+- `connect-trigno`
+  - открывает modal form `connect-trigno-trigno`
+  - submit формы отправляет `adapter.connect.request` для `adapterId = trigno`
+- `disconnect-trigno`
+  - видима только если `adapter.trigno.state ∈ { connected, paused, failed, disconnecting }`
+- `start-trigno`
+  - видима только если `adapter.trigno.state = paused`
+  - отправляет `trigno.stream.start.request`
+- `stop-trigno`
+  - видима только если `adapter.trigno.state = connected`
+  - отправляет `trigno.stream.stop.request`
+- `refresh-trigno`
+  - видима только если `adapter.trigno.state ∈ { connected, paused }`
+  - отправляет `trigno.status.refresh.request`
+
+Кнопки `controls-recording`:
+
+- `toggle-recording`
+  - если `adapter.trigno.state = connected` и `recording.local.state ∈ { idle, failed, null }`
+    - label: `Начать запись`
+    - команда: `recording.start`
+    - запись фиксирует только raw `Trigno`-каналы:
+      - `trigno.avanti`
+      - `trigno.avanti.gyro.x`
+      - `trigno.avanti.gyro.y`
+      - `trigno.avanti.gyro.z`
+  - если `recording.local.state = recording`
+    - label: `Пауза записи`
+    - команда: `recording.pause`
+  - если `recording.local.state = paused`
+    - label: `Продолжить запись`
+    - команда: `recording.resume`
+- `stop-recording`
+  - видима только если `recording.local.state ∈ { recording, paused, stopping }`
+  - отправляет `recording.stop`
+
+### Status
+
+Показываемые флаги:
+
+- `adapter.trigno.state`
+- `adapter.trigno.message`
+- `trigno.host`
+- `trigno.sensorSlot`
+- `trigno.mode`
+- `trigno.startIndex`
+- `trigno.serial`
+- `trigno.firmware`
+- `trigno.backwardsCompatibility`
+- `trigno.upsampling`
+- `trigno.emgRateHz`
+- `trigno.gyroRateHz`
+- `recording.local.state`
+- `recording.local.filePath`
+
+### Графики
+
+- `chart-trigno-emg`
+  - поток: `trigno.avanti`
+  - overlay interval stream: `pedaling.phase.coarse`
+  - overlay interval stream: `pedaling.activity.vastus-lateralis`
+- `chart-trigno-gyro`
+  - потоки:
+    - `trigno.avanti.gyro.x`
+    - `trigno.avanti.gyro.y`
+    - `trigno.avanti.gyro.z`
+  - overlay interval stream: `pedaling.phase.coarse`
+- `chart-pedaling-confidence`
+  - потоки:
+    - `pedaling.phase.confidence`
+    - `pedaling.emg.confidence`
+- `chart-pedaling-cycle-period`
+  - поток: `pedaling.cycle.period-ms`
+
+## 6. Профиль `pedaling-emg-replay`
+
+Назначение:
+
+- replay-профиль для тех же raw `Trigno EMG + Gyroscope` потоков из HDF5;
+- позволяет выбрать файл перед `connect`, эмулировать воспроизведение и прогонять тот же `pedaling-emg-processor`.
+
+### Страница
+
+- Одна страница: `main`.
+- Заголовок страницы: `Pedaling EMG replay`.
+
+Раскладка строк:
+
+- `status-main | controls-main`
+- `chart-trigno-emg | chart-trigno-gyro`
+- `chart-pedaling-confidence | chart-pedaling-cycle-period`
+- `telemetry-main`
+
+### Controls
+
+Виджет:
+
+- `controls-main`
+
+Кнопки:
+
+- `toggle-pedaling-emg-replay`
+  - если `adapter.pedaling-emg-replay.state = disconnected`
+    - label: `Подключить replay`
+    - команда: `adapter.connect.request`
+    - открывает modal form, которая собирает `formData.filePath`
+  - если `adapter.pedaling-emg-replay.state = connected`
+    - label: `Пауза replay`
+    - команда: `simulation.pause.request`
+  - если `adapter.pedaling-emg-replay.state = paused`
+    - label: `Продолжить replay`
+    - команда: `simulation.resume.request`
+- `disconnect-pedaling-emg-replay`
+  - видима только если `adapter.pedaling-emg-replay.state ∈ { connected, paused, disconnecting }`
+  - отправляет `adapter.disconnect.request`
+- `speed-*`
+  - набор кнопок скоростей симуляции
+
+Modal form replay:
+
+- содержит `fileInput` с `fieldId = filePath`
+- путь уходит в `adapter.connect.request.payload.formData.filePath`
+
+### Status
+
+Показываемые флаги:
+
+- `adapter.pedaling-emg-replay.state`
+- `adapter.pedaling-emg-replay.message`
+- `simulation.pedaling-emg-replay.speed`
+- `simulation.pedaling-emg-replay.batchMs`
+- `simulation.pedaling-emg-replay.filePath`
+- `simulation.pedaling-emg-replay.message`
+
+### Графики
+
+Графики совпадают по составу с `pedaling-emg-test`, но вход уже идёт из replay:
+
+- `chart-trigno-emg`
+  - `trigno.avanti`
+  - `pedaling.phase.coarse`
+  - `pedaling.activity.vastus-lateralis`
+- `chart-trigno-gyro`
+  - `trigno.avanti.gyro.x`
+  - `trigno.avanti.gyro.y`
+  - `trigno.avanti.gyro.z`
+  - `pedaling.phase.coarse`
+- `chart-pedaling-confidence`
+  - `pedaling.phase.confidence`
+  - `pedaling.emg.confidence`
+- `chart-pedaling-cycle-period`
+  - `pedaling.cycle.period-ms`
+
+## 7. Общие правила flags и stream declarations
 
 `ui-gateway` materialize'ит:
 

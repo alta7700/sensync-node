@@ -16,7 +16,8 @@ export type H5Dataset = InstanceType<typeof h5wasm.Dataset>;
 
 export interface Hdf5SimulationAdapterConfig {
   adapterId?: string;
-  filePath: string;
+  filePath?: string;
+  allowConnectFilePathOverride?: boolean;
   streamIds?: string[];
   batchMs?: number;
   speed?: number;
@@ -55,11 +56,20 @@ export const AllowedSimulationSpeeds = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3
 export const DefaultHdf5SimulationConfig: Required<Hdf5SimulationAdapterConfig> = {
   adapterId: 'hdf5-simulation',
   filePath: '',
+  allowConnectFilePathOverride: false,
   streamIds: [],
   batchMs: 50,
   speed: 1,
   readChunkSamples: 4096,
 };
+
+export function normalizeHdf5SimulationFilePath(rawFilePath: string): string {
+  const nextFilePath = rawFilePath.trim();
+  if (nextFilePath.length === 0) {
+    throw new Error('Не задан filePath для hdf5-simulation-adapter');
+  }
+  return path.resolve(nextFilePath);
+}
 
 export function isAllowedSimulationSpeed(value: number): boolean {
   return AllowedSimulationSpeeds.includes(value as (typeof AllowedSimulationSpeeds)[number]);
@@ -74,11 +84,10 @@ export function resolveHdf5SimulationConfig(
     : DefaultHdf5SimulationConfig.adapterId;
 
   const rawFilePath = typeof next.filePath === 'string' ? next.filePath.trim() : '';
-  if (rawFilePath.length === 0) {
+  if (rawFilePath.length === 0 && !next.allowConnectFilePathOverride) {
     throw new Error('Не задан filePath для hdf5-simulation-adapter');
   }
-
-  next.filePath = path.resolve(rawFilePath);
+  next.filePath = rawFilePath.length > 0 ? normalizeHdf5SimulationFilePath(rawFilePath) : '';
   next.streamIds = Array.isArray(next.streamIds)
     ? [...new Set(next.streamIds.map((value) => String(value).trim()).filter((value) => value.length > 0))]
     : [];

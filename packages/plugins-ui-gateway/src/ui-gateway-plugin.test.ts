@@ -261,19 +261,26 @@ describe('ui-gateway-plugin', () => {
           gap: 12,
           children: [
             {
-              kind: 'column',
-              gap: 12,
-              minWidth: 360,
-              children: [
-                { kind: 'widget', widgetId: 'controls-trigno' },
-                { kind: 'widget', widgetId: 'controls-main' },
-                { kind: 'widget', widgetId: 'controls-zephyr' },
-              ],
-            },
-            {
               kind: 'widget',
               widgetId: 'status-main',
-              minWidth: 420,
+              minWidth: 320,
+            },
+            {
+              kind: 'column',
+              gap: 12,
+              minWidth: 520,
+              children: [
+                { kind: 'widget', widgetId: 'controls-trigno' },
+                {
+                  kind: 'row',
+                  gap: 12,
+                  children: [
+                    { kind: 'widget', widgetId: 'controls-main', minWidth: 250 },
+                    { kind: 'widget', widgetId: 'controls-zephyr', minWidth: 250 },
+                  ],
+                },
+                { kind: 'widget', widgetId: 'controls-recording' },
+              ],
             },
           ],
         },
@@ -283,6 +290,14 @@ describe('ui-gateway-plugin', () => {
           children: [
             { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
             { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'chart-pedaling-confidence', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-pedaling-cycle-period', minWidth: 420 },
           ],
         },
         {
@@ -372,6 +387,17 @@ describe('ui-gateway-plugin', () => {
     expect(mainControlsWidget.controls.map((control) => control.id)).toEqual([
       'scan-moxy',
       'disconnect-moxy',
+    ]);
+
+    const recordingControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-recording' && widget.kind === 'controls';
+    });
+    expect(recordingControlsWidget?.kind).toBe('controls');
+    if (!recordingControlsWidget || recordingControlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-recording');
+    }
+
+    expect(recordingControlsWidget.controls.map((control) => control.id)).toEqual([
       'toggle-recording',
       'stop-recording',
     ]);

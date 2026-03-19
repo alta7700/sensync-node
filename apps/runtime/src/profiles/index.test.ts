@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { runtimeRepoRoot } from '../launch-profile-boundary.ts';
 import { buildLaunchProfile, LaunchProfiles, resolveLaunchProfile } from './index.ts';
 
-function uiGatewayConfig(profileId: 'fake' | 'fake-hdf5-simulation' | 'veloerg', env: NodeJS.ProcessEnv = process.env) {
+function uiGatewayConfig(
+  profileId: 'fake' | 'fake-hdf5-simulation' | 'veloerg' | 'pedaling-emg-test' | 'pedaling-emg-replay',
+  env: NodeJS.ProcessEnv = process.env,
+) {
   const profile = buildLaunchProfile(profileId, env);
   const descriptor = profile.plugins.find((plugin) => plugin.id === 'ui-gateway');
   if (!descriptor) {
@@ -90,10 +93,21 @@ describe('launch profiles registry', () => {
     expect(config.schema.pages[0]?.title).toBe('Veloerg');
   });
 
+  it('в pedaling-emg-test профиле передает отдельную schema в ui-gateway', () => {
+    const config = uiGatewayConfig('pedaling-emg-test');
+    expect(config.schema.pages[0]?.title).toBe('Pedaling EMG test');
+  });
+
+  it('в pedaling-emg-replay профиле передает replay schema в ui-gateway', () => {
+    const config = uiGatewayConfig('pedaling-emg-replay');
+    expect(config.schema.pages[0]?.title).toBe('Pedaling EMG replay');
+  });
+
   it('в veloerg-профиле подключает generic hr-from-rr processor', () => {
     const profile = buildLaunchProfile('veloerg');
     const processor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
     const dfaProcessor = profile.plugins.find((plugin) => plugin.id === 'dfa-a1-from-rr-processor');
+    const pedalingProcessor = profile.plugins.find((plugin) => plugin.id === 'pedaling-emg-processor');
 
     expect(processor).toBeDefined();
     expect(processor?.config).toMatchObject({
@@ -107,6 +121,13 @@ describe('launch profiles registry', () => {
       rrUnit: 's',
       required: true,
     });
+    expect(pedalingProcessor).toBeDefined();
+    expect(pedalingProcessor?.config).toMatchObject({
+      emgStreamId: 'trigno.avanti',
+      phaseLabelStreamId: 'pedaling.phase.coarse',
+      activityLabelStreamId: 'pedaling.activity.vastus-lateralis',
+      required: true,
+    });
   });
 
   it('в veloerg-профиле включает recorder-driven timeline reset и live recorder config', () => {
@@ -115,6 +136,7 @@ describe('launch profiles registry', () => {
     const zephyr = profile.plugins.find((plugin) => plugin.id === 'zephyr-bioharness-3-adapter');
     const hrProcessor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
     const dfaProcessor = profile.plugins.find((plugin) => plugin.id === 'dfa-a1-from-rr-processor');
+    const pedalingProcessor = profile.plugins.find((plugin) => plugin.id === 'pedaling-emg-processor');
 
     expect(profile.timelineReset).toMatchObject({
       enabled: true,
@@ -125,6 +147,7 @@ describe('launch profiles registry', () => {
         'zephyr-bioharness-3-adapter',
         'hr-from-rr-processor',
         'dfa-a1-from-rr-processor',
+        'pedaling-emg-processor',
         'trigno-adapter',
         'hdf5-recorder',
       ],
@@ -151,6 +174,73 @@ describe('launch profiles registry', () => {
     expect(zephyr?.config).toMatchObject({ required: true });
     expect(hrProcessor?.config).toMatchObject({ required: true });
     expect(dfaProcessor?.config).toMatchObject({ required: true });
+    expect(pedalingProcessor?.config).toMatchObject({ required: true });
+  });
+
+  it('в pedaling-emg-test профиле включает Trigno, pedaling processor и raw HDF5 recorder', () => {
+    const profile = buildLaunchProfile('pedaling-emg-test');
+    const trigno = profile.plugins.find((plugin) => plugin.id === 'trigno-adapter');
+    const pedalingProcessor = profile.plugins.find((plugin) => plugin.id === 'pedaling-emg-processor');
+    const recorder = profile.plugins.find((plugin) => plugin.id === 'hdf5-recorder');
+
+    expect(profile.timelineReset).toMatchObject({
+      enabled: true,
+      requesters: ['hdf5-recorder'],
+      participants: [
+        'ui-gateway',
+        'trigno-adapter',
+        'pedaling-emg-processor',
+        'hdf5-recorder',
+      ],
+      recorderPolicy: 'reject-if-recording',
+    });
+    expect(trigno?.config).toMatchObject({
+      adapterId: 'trigno',
+      mode: 'real',
+      backwardsCompatibility: false,
+      upsampling: false,
+    });
+    expect(pedalingProcessor?.config).toMatchObject({
+      emgStreamId: 'trigno.avanti',
+      activityLabelStreamId: 'pedaling.activity.vastus-lateralis',
+      required: true,
+    });
+    expect(recorder?.config).toMatchObject({
+      outputDir: path.join(runtimeRepoRoot, 'recordings/pedaling-emg-test'),
+      resetTimelineOnStart: true,
+      resetTimelineOnStop: true,
+      required: true,
+      startConditions: {
+        checks: [
+          { where: { adapterId: 'trigno' }, field: 'state', eq: 'connected' },
+        ],
+      },
+    });
+  });
+
+  it('в pedaling-emg-replay профиле включает HDF5 replay с выбором файла и pedaling processor', () => {
+    const profile = buildLaunchProfile('pedaling-emg-replay');
+    const simulation = profile.plugins.find((plugin) => plugin.id === 'hdf5-simulation-adapter');
+    const pedalingProcessor = profile.plugins.find((plugin) => plugin.id === 'pedaling-emg-processor');
+
+    expect(profile.timelineReset).toBeUndefined();
+    expect(simulation?.config).toMatchObject({
+      adapterId: 'pedaling-emg-replay',
+      allowConnectFilePathOverride: true,
+      streamIds: [
+        'trigno.avanti',
+        'trigno.avanti.gyro.x',
+        'trigno.avanti.gyro.y',
+        'trigno.avanti.gyro.z',
+      ],
+      batchMs: 50,
+      speed: 1,
+    });
+    expect(pedalingProcessor?.config).toMatchObject({
+      emgStreamId: 'trigno.avanti',
+      activityLabelStreamId: 'pedaling.activity.vastus-lateralis',
+      required: true,
+    });
   });
 
   it('в fake-hdf5-simulation профиле применяет env overrides до сборки plugins', () => {

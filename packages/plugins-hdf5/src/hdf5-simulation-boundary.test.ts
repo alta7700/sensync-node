@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import h5wasm from 'h5wasm/node';
 import {
   loadHdf5SimulationSession,
+  normalizeHdf5SimulationFilePath,
   readSimulationWindowForChannel,
   resolveHdf5SimulationConfig,
 } from './hdf5-simulation-boundary.ts';
@@ -67,6 +68,7 @@ describe('hdf5-simulation-boundary', () => {
       speed: 2,
       readChunkSamples: 2,
     });
+    expect(normalizeHdf5SimulationFilePath(filePath)).toBe(filePath);
 
     const session = loadHdf5SimulationSession(filePath, ['fake.a1'], config.readChunkSamples);
     try {
@@ -79,5 +81,20 @@ describe('hdf5-simulation-boundary', () => {
     } finally {
       session.file.close();
     }
+  });
+
+  it('разрешает отложенный выбор файла через connect form', async () => {
+    const config = resolveHdf5SimulationConfig({
+      adapterId: 'pedaling-emg-replay',
+      allowConnectFilePathOverride: true,
+      streamIds: ['trigno.avanti'],
+    });
+
+    expect(config).toMatchObject({
+      adapterId: 'pedaling-emg-replay',
+      allowConnectFilePathOverride: true,
+      filePath: '',
+      streamIds: ['trigno.avanti'],
+    });
   });
 });

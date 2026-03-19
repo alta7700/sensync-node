@@ -21,6 +21,7 @@
     "@sensync2/plugins-labels": "0.1.0",
     "@sensync2/plugins-processor-dfa-a1": "0.1.0",
     "@sensync2/plugins-processor-hr-from-rr": "0.1.0",
+    "@sensync2/plugins-processor-pedaling-emg": "0.1.0",
     "@sensync2/plugins-trigno": "0.1.0",
     "@sensync2/plugins-ui-gateway": "0.1.0"
   }

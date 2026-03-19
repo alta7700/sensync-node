@@ -26,6 +26,17 @@ const VeloergRecordingChannels = [
   { streamId: 'trigno.avanti.gyro.x', minSamples: 50, maxBufferedMs: 1_000 },
   { streamId: 'trigno.avanti.gyro.y', minSamples: 50, maxBufferedMs: 1_000 },
   { streamId: 'trigno.avanti.gyro.z', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'pedaling.phase.coarse', minSamples: 1, maxBufferedMs: 20_000 },
+  { streamId: 'pedaling.activity.vastus-lateralis', minSamples: 1, maxBufferedMs: 20_000 },
+  { streamId: 'pedaling.phase.confidence', minSamples: 1, maxBufferedMs: 20_000 },
+  { streamId: 'pedaling.emg.confidence', minSamples: 1, maxBufferedMs: 20_000 },
+  { streamId: 'pedaling.cycle.period-ms', minSamples: 1, maxBufferedMs: 20_000 },
+] as const;
+const PedalingEmgTestRecordingChannels = [
+  { streamId: 'trigno.avanti', minSamples: 500, maxBufferedMs: 500 },
+  { streamId: 'trigno.avanti.gyro.x', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.avanti.gyro.y', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.avanti.gyro.z', minSamples: 50, maxBufferedMs: 1_000 },
 ] as const;
 const SimulationSpeedOptions = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 6, 8] as const;
 
@@ -68,6 +79,17 @@ function makeVeloergRecordingStartPayload(): Record<string, unknown> {
       profile: 'veloerg',
     },
     channels: VeloergRecordingChannels.map((item) => ({ ...item })),
+  };
+}
+
+function makePedalingEmgTestRecordingStartPayload(): Record<string, unknown> {
+  return {
+    writer: 'local',
+    filenameTemplate: '{profile}-{startDateTime}',
+    metadata: {
+      profile: 'pedaling-emg-test',
+    },
+    channels: PedalingEmgTestRecordingChannels.map((item) => ({ ...item })),
   };
 }
 
@@ -206,6 +228,93 @@ function makeSimulationControlsWidget(adapterId: string, title: string): UiSchem
   };
 }
 
+function makeReplaySimulationControlsWidget(adapterId: string, title: string, modalForm: UiModalForm): UiSchema['widgets'][number] {
+  return {
+    kind: 'controls',
+    id: 'controls-main',
+    title,
+    controls: [
+      {
+        id: `toggle-${adapterId}`,
+        kind: 'button',
+        label: 'Выбрать HDF5 и запустить replay',
+        commandType: EventTypes.adapterConnectRequest,
+        payload: { adapterId },
+        modalForm,
+        variants: [
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+            label: 'Пауза replay',
+            commandType: EventTypes.simulationPauseRequest,
+            payload: { adapterId },
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'paused' },
+            label: 'Продолжить replay',
+            commandType: EventTypes.simulationResumeRequest,
+            payload: { adapterId },
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'connecting' },
+            label: 'Запуск replay...',
+            disabled: true,
+            isLoading: true,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+            label: 'Остановка replay...',
+            disabled: true,
+            isLoading: true,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnected' },
+            label: 'Выбрать HDF5 и запустить replay',
+            commandType: EventTypes.adapterConnectRequest,
+            payload: { adapterId },
+            modalForm,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'failed' },
+            label: 'Выбрать другой файл',
+            commandType: EventTypes.adapterConnectRequest,
+            payload: { adapterId },
+            modalForm,
+          },
+        ],
+      },
+      {
+        id: `disconnect-${adapterId}`,
+        kind: 'button',
+        label: 'Остановить replay',
+        hidden: true,
+        variants: [
+          {
+            when: {
+              or: [
+                { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+                { flag: `adapter.${adapterId}.state`, eq: 'paused' },
+              ],
+            },
+            label: 'Остановить replay',
+            commandType: EventTypes.adapterDisconnectRequest,
+            payload: { adapterId },
+            hidden: false,
+            disabled: false,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+            label: 'Остановка replay...',
+            hidden: false,
+            disabled: true,
+            isLoading: true,
+          },
+        ],
+      },
+      ...SimulationSpeedOptions.map((speed) => makeSimulationSpeedControl(adapterId, speed)),
+    ],
+  };
+}
+
 function makeMoxyScanPayload(adapterId: string): Record<string, unknown> {
   return {
     adapterId,
@@ -302,6 +411,32 @@ function makeTrignoConnectModalForm(adapterId: string): UiModalForm {
             min: 1,
             max: 16,
             step: 1,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function makePedalingReplayConnectModalForm(adapterId: string): UiModalForm {
+  return {
+    id: `connect-pedaling-replay-${adapterId}`,
+    title: 'Выбор HDF5 файла',
+    submitLabel: 'Запустить replay',
+    submitEventType: EventTypes.adapterConnectRequest,
+    submitPayload: {
+      adapterId,
+    },
+    fields: [
+      {
+        kind: 'column',
+        children: [
+          {
+            kind: 'fileInput',
+            fieldId: 'filePath',
+            label: 'HDF5 файл',
+            required: true,
+            mode: 'existing-file',
           },
         ],
       },
@@ -829,12 +964,15 @@ export function buildVeloergUiSchema(): UiSchema {
         id: 'main',
         title: 'Veloerg',
         widgetIds: [
-          'controls-trigno',
           'status-main',
+          'controls-trigno',
           'controls-main',
           'controls-zephyr',
+          'controls-recording',
           'chart-trigno-emg',
           'chart-trigno-gyro',
+          'chart-pedaling-confidence',
+          'chart-pedaling-cycle-period',
           'chart-moxy-smo2',
           'chart-moxy-thb',
           'chart-zephyr-rr',
@@ -851,19 +989,26 @@ export function buildVeloergUiSchema(): UiSchema {
               gap: 12,
               children: [
                 {
-                  kind: 'column',
-                  gap: 12,
-                  minWidth: 360,
-                  children: [
-                    { kind: 'widget', widgetId: 'controls-trigno' },
-                    { kind: 'widget', widgetId: 'controls-main' },
-                    { kind: 'widget', widgetId: 'controls-zephyr' },
-                  ],
-                },
-                {
                   kind: 'widget',
                   widgetId: 'status-main',
-                  minWidth: 420,
+                  minWidth: 320,
+                },
+                {
+                  kind: 'column',
+                  gap: 12,
+                  minWidth: 520,
+                  children: [
+                    { kind: 'widget', widgetId: 'controls-trigno' },
+                    {
+                      kind: 'row',
+                      gap: 12,
+                      children: [
+                        { kind: 'widget', widgetId: 'controls-main', minWidth: 250 },
+                        { kind: 'widget', widgetId: 'controls-zephyr', minWidth: 250 },
+                      ],
+                    },
+                    { kind: 'widget', widgetId: 'controls-recording' },
+                  ],
                 },
               ],
             },
@@ -873,6 +1018,14 @@ export function buildVeloergUiSchema(): UiSchema {
               children: [
                 { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
                 { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-pedaling-confidence', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-pedaling-cycle-period', minWidth: 420 },
               ],
             },
             {
@@ -1039,7 +1192,7 @@ export function buildVeloergUiSchema(): UiSchema {
       {
         kind: 'controls',
         id: 'controls-main',
-        title: 'ANT+ / Moxy / Recording',
+        title: 'ANT+ / Moxy',
         controls: [
           {
             id: 'scan-moxy',
@@ -1108,6 +1261,13 @@ export function buildVeloergUiSchema(): UiSchema {
               },
             ],
           },
+        ],
+      },
+      {
+        kind: 'controls',
+        id: 'controls-recording',
+        title: 'HDF5 recording',
+        controls: [
           {
             id: 'toggle-recording',
             kind: 'button',
@@ -1311,6 +1471,24 @@ export function buildVeloergUiSchema(): UiSchema {
             color: '#ff922b',
             lineWidth: 2,
           },
+          {
+            type: 'interval',
+            streamId: 'pedaling.phase.coarse',
+            label: 'phase=1',
+            color: '#9775fa',
+            alpha: 0.08,
+            startLabel: 1,
+            endLabel: 0,
+          },
+          {
+            type: 'interval',
+            streamId: 'pedaling.activity.vastus-lateralis',
+            label: 'VL active',
+            color: '#e03131',
+            alpha: 0.12,
+            startLabel: 1,
+            endLabel: 0,
+          },
         ],
       },
       {
@@ -1342,6 +1520,60 @@ export function buildVeloergUiSchema(): UiSchema {
             streamId: 'trigno.avanti.gyro.z',
             label: 'gyro.z',
             color: '#1c7ed6',
+            lineWidth: 2,
+          },
+          {
+            type: 'interval',
+            streamId: 'pedaling.phase.coarse',
+            label: 'phase=1',
+            color: '#9775fa',
+            alpha: 0.1,
+            startLabel: 1,
+            endLabel: 0,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-pedaling-confidence',
+        title: 'Pedaling confidence',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 0, max: 1, label: 'a.u.' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'pedaling.phase.confidence',
+            label: 'phase.conf',
+            color: '#7048e8',
+            lineWidth: 2,
+          },
+          {
+            type: 'line',
+            streamId: 'pedaling.emg.confidence',
+            label: 'emg.conf',
+            color: '#f08c00',
+            lineWidth: 2,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-pedaling-cycle-period',
+        title: 'Pedaling cycle period',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 300, max: 2_000, label: 'ms' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'pedaling.cycle.period-ms',
+            label: 'cycle.ms',
+            color: '#12b886',
             lineWidth: 2,
           },
         ],
@@ -1439,6 +1671,511 @@ export function buildVeloergUiSchema(): UiSchema {
             color: '#7048e8',
             lineWidth: 3,
           },
+        ],
+      },
+      {
+        kind: 'telemetry',
+        id: 'telemetry-main',
+        title: 'Telemetry',
+      },
+    ],
+  };
+}
+
+export function buildPedalingEmgTestUiSchema(): UiSchema {
+  const trignoAdapterId = 'trigno';
+  return {
+    version: 1,
+    pages: [
+      {
+        id: 'main',
+        title: 'Pedaling EMG test',
+        widgetIds: [
+          'status-main',
+          'controls-trigno',
+          'controls-recording',
+          'chart-trigno-emg',
+          'chart-trigno-gyro',
+          'chart-pedaling-confidence',
+          'chart-pedaling-cycle-period',
+          'telemetry-main',
+        ],
+        layout: {
+          kind: 'column',
+          gap: 12,
+          children: [
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'status-main', minWidth: 320 },
+                {
+                  kind: 'column',
+                  gap: 12,
+                  minWidth: 520,
+                  children: [
+                    { kind: 'widget', widgetId: 'controls-trigno' },
+                    { kind: 'widget', widgetId: 'controls-recording' },
+                  ],
+                },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-pedaling-confidence', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-pedaling-cycle-period', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'telemetry-main' },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+    widgets: [
+      {
+        kind: 'controls',
+        id: 'controls-trigno',
+        title: 'Trigno',
+        controls: [
+          {
+            id: 'connect-trigno',
+            kind: 'button',
+            label: 'Подключить Trigno',
+            commandType: EventTypes.adapterConnectRequest,
+            payload: { adapterId: trignoAdapterId },
+            modalForm: makeTrignoConnectModalForm(trignoAdapterId),
+            variants: [
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'connecting' },
+                label: 'Подключение Trigno...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'paused' },
+                label: 'Trigno подключен',
+                disabled: true,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                label: 'Trigno запущен',
+                disabled: true,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'failed' },
+                label: 'Повторить подключение Trigno',
+              },
+            ],
+          },
+          {
+            id: 'disconnect-trigno',
+            kind: 'button',
+            label: 'Отключить Trigno',
+            hidden: true,
+            variants: [
+              {
+                when: {
+                  or: [
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'paused' },
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'failed' },
+                  ],
+                },
+                label: 'Отключить Trigno',
+                commandType: EventTypes.adapterDisconnectRequest,
+                payload: { adapterId: trignoAdapterId },
+                hidden: false,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'disconnecting' },
+                label: 'Отключение Trigno...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+          {
+            id: 'start-trigno',
+            kind: 'button',
+            label: 'Старт Trigno',
+            hidden: true,
+            variants: [
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'paused' },
+                label: 'Старт Trigno',
+                commandType: TrignoEventTypes.streamStartRequest,
+                payload: { adapterId: trignoAdapterId },
+                hidden: false,
+              },
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'connecting' },
+                label: 'Запуск Trigno...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+          {
+            id: 'stop-trigno',
+            kind: 'button',
+            label: 'Стоп Trigno',
+            hidden: true,
+            variants: [
+              {
+                when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                label: 'Стоп Trigno',
+                commandType: TrignoEventTypes.streamStopRequest,
+                payload: { adapterId: trignoAdapterId },
+                hidden: false,
+              },
+            ],
+          },
+          {
+            id: 'refresh-trigno',
+            kind: 'button',
+            label: 'Обновить статус Trigno',
+            hidden: true,
+            variants: [
+              {
+                when: {
+                  or: [
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'paused' },
+                  ],
+                },
+                label: 'Обновить статус Trigno',
+                commandType: TrignoEventTypes.statusRefreshRequest,
+                payload: { adapterId: trignoAdapterId },
+                hidden: false,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        kind: 'controls',
+        id: 'controls-recording',
+        title: 'HDF5 recording',
+        controls: [
+          {
+            id: 'toggle-recording',
+            kind: 'button',
+            label: 'Запись недоступна',
+            disabled: true,
+            variants: [
+              {
+                when: {
+                  and: [
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                    {
+                      or: [
+                        { flag: 'recording.local.state', eq: 'idle' },
+                        { flag: 'recording.local.state', eq: 'failed' },
+                        { flag: 'recording.local.state', eq: null },
+                      ],
+                    },
+                  ],
+                },
+                label: 'Начать запись',
+                commandType: EventTypes.recordingStart,
+                payload: makePedalingEmgTestRecordingStartPayload(),
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'recording' },
+                label: 'Пауза записи',
+                commandType: EventTypes.recordingPause,
+                payload: { writer: 'local' },
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'paused' },
+                label: 'Продолжить запись',
+                commandType: EventTypes.recordingResume,
+                payload: { writer: 'local' },
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'starting' },
+                label: 'Открытие файла...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'stopping' },
+                label: 'Закрытие файла...',
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+          {
+            id: 'stop-recording',
+            kind: 'button',
+            label: 'Завершить запись',
+            hidden: true,
+            variants: [
+              {
+                when: {
+                  or: [
+                    { flag: 'recording.local.state', eq: 'recording' },
+                    { flag: 'recording.local.state', eq: 'paused' },
+                  ],
+                },
+                label: 'Завершить запись',
+                commandType: EventTypes.recordingStop,
+                payload: { writer: 'local' },
+                hidden: false,
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'stopping' },
+                label: 'Закрытие файла...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        kind: 'status',
+        id: 'status-main',
+        title: 'Состояние',
+        flagKeys: [
+          `adapter.${trignoAdapterId}.state`,
+          `adapter.${trignoAdapterId}.message`,
+          'trigno.host',
+          'trigno.sensorSlot',
+          'trigno.mode',
+          'trigno.startIndex',
+          'trigno.serial',
+          'trigno.firmware',
+          'trigno.backwardsCompatibility',
+          'trigno.upsampling',
+          'trigno.emgRateHz',
+          'trigno.gyroRateHz',
+          'recording.local.state',
+          'recording.local.filePath',
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-trigno-emg',
+        title: 'Trigno EMG',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'V' },
+        series: [
+          { type: 'line', streamId: 'trigno.avanti', label: 'EMG', color: '#ff922b', lineWidth: 2 },
+          { type: 'interval', streamId: 'pedaling.phase.coarse', label: 'phase=1', color: '#9775fa', alpha: 0.08, startLabel: 1, endLabel: 0 },
+          { type: 'interval', streamId: 'pedaling.activity.vastus-lateralis', label: 'VL active', color: '#e03131', alpha: 0.12, startLabel: 1, endLabel: 0 },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-trigno-gyro',
+        title: 'Trigno Gyroscope',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'deg/s' },
+        series: [
+          { type: 'line', streamId: 'trigno.avanti.gyro.x', label: 'gyro.x', color: '#f03e3e', lineWidth: 2 },
+          { type: 'line', streamId: 'trigno.avanti.gyro.y', label: 'gyro.y', color: '#2b8a3e', lineWidth: 2 },
+          { type: 'line', streamId: 'trigno.avanti.gyro.z', label: 'gyro.z', color: '#1c7ed6', lineWidth: 2 },
+          { type: 'interval', streamId: 'pedaling.phase.coarse', label: 'phase=1', color: '#9775fa', alpha: 0.1, startLabel: 1, endLabel: 0 },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-pedaling-confidence',
+        title: 'Pedaling confidence',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 0, max: 1, label: 'a.u.' },
+        series: [
+          { type: 'line', streamId: 'pedaling.phase.confidence', label: 'phase confidence', color: '#7048e8', lineWidth: 3 },
+          { type: 'line', streamId: 'pedaling.emg.confidence', label: 'EMG confidence', color: '#e03131', lineWidth: 3 },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-pedaling-cycle-period',
+        title: 'Pedaling cycle period',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'ms' },
+        series: [
+          { type: 'line', streamId: 'pedaling.cycle.period-ms', label: 'cycle period', color: '#12b886', lineWidth: 3 },
+        ],
+      },
+      {
+        kind: 'telemetry',
+        id: 'telemetry-main',
+        title: 'Telemetry',
+      },
+    ],
+  };
+}
+
+export function buildPedalingEmgReplayUiSchema(): UiSchema {
+  const adapterId = 'pedaling-emg-replay';
+  return {
+    version: 1,
+    pages: [
+      {
+        id: 'main',
+        title: 'Pedaling EMG replay',
+        widgetIds: [
+          'status-main',
+          'controls-main',
+          'chart-trigno-emg',
+          'chart-trigno-gyro',
+          'chart-pedaling-confidence',
+          'chart-pedaling-cycle-period',
+          'telemetry-main',
+        ],
+        layout: {
+          kind: 'column',
+          gap: 12,
+          children: [
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'status-main', minWidth: 320 },
+                { kind: 'widget', widgetId: 'controls-main', minWidth: 520 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-pedaling-confidence', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-pedaling-cycle-period', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'telemetry-main' },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+    widgets: [
+      makeReplaySimulationControlsWidget(
+        adapterId,
+        'HDF5 replay',
+        makePedalingReplayConnectModalForm(adapterId),
+      ),
+      {
+        kind: 'status',
+        id: 'status-main',
+        title: 'Состояние',
+        flagKeys: [
+          `adapter.${adapterId}.state`,
+          `adapter.${adapterId}.message`,
+          `simulation.${adapterId}.speed`,
+          `simulation.${adapterId}.batchMs`,
+          `simulation.${adapterId}.filePath`,
+          `simulation.${adapterId}.message`,
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-trigno-emg',
+        title: 'Trigno EMG',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'V' },
+        series: [
+          { type: 'line', streamId: 'trigno.avanti', label: 'EMG', color: '#ff922b', lineWidth: 2 },
+          { type: 'interval', streamId: 'pedaling.phase.coarse', label: 'phase=1', color: '#9775fa', alpha: 0.08, startLabel: 1, endLabel: 0 },
+          { type: 'interval', streamId: 'pedaling.activity.vastus-lateralis', label: 'VL active', color: '#e03131', alpha: 0.12, startLabel: 1, endLabel: 0 },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-trigno-gyro',
+        title: 'Trigno Gyroscope',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'deg/s' },
+        series: [
+          { type: 'line', streamId: 'trigno.avanti.gyro.x', label: 'gyro.x', color: '#f03e3e', lineWidth: 2 },
+          { type: 'line', streamId: 'trigno.avanti.gyro.y', label: 'gyro.y', color: '#2b8a3e', lineWidth: 2 },
+          { type: 'line', streamId: 'trigno.avanti.gyro.z', label: 'gyro.z', color: '#1c7ed6', lineWidth: 2 },
+          { type: 'interval', streamId: 'pedaling.phase.coarse', label: 'phase=1', color: '#9775fa', alpha: 0.1, startLabel: 1, endLabel: 0 },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-pedaling-confidence',
+        title: 'Pedaling confidence',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 0, max: 1, label: 'a.u.' },
+        series: [
+          { type: 'line', streamId: 'pedaling.phase.confidence', label: 'phase confidence', color: '#7048e8', lineWidth: 3 },
+          { type: 'line', streamId: 'pedaling.emg.confidence', label: 'EMG confidence', color: '#e03131', lineWidth: 3 },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-pedaling-cycle-period',
+        title: 'Pedaling cycle period',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'ms' },
+        series: [
+          { type: 'line', streamId: 'pedaling.cycle.period-ms', label: 'cycle period', color: '#12b886', lineWidth: 3 },
         ],
       },
       {

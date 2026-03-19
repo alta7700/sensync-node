@@ -17,6 +17,7 @@ import {
   closeHdf5SimulationSession,
   isAllowedSimulationSpeed,
   loadHdf5SimulationSession,
+  normalizeHdf5SimulationFilePath,
   readSimulationWindowForChannel,
   resetHdf5SimulationSessionCursor,
   resolveHdf5SimulationConfig,
@@ -31,6 +32,33 @@ const SimulationTickType = 'hdf5.simulation.tick';
 let config = { ...DefaultHdf5SimulationConfig };
 let session: SimulationSessionState | null = null;
 let runtimeState: SimulationRuntimeState = 'disconnected';
+
+function filePathFromConnectPayload(payload: AdapterConnectRequestPayload): string | null {
+  const rawFilePath = payload.formData?.filePath;
+  if (typeof rawFilePath !== 'string') {
+    return null;
+  }
+  const normalized = rawFilePath.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function closeCurrentSession(): void {
+  closeHdf5SimulationSession(session);
+  session = null;
+}
+
+function ensureSimulationSession(filePath: string): SimulationSessionState {
+  const normalizedFilePath = normalizeHdf5SimulationFilePath(filePath);
+  if (session && config.filePath === normalizedFilePath) {
+    return session;
+  }
+
+  closeCurrentSession();
+  const nextSession = loadHdf5SimulationSession(normalizedFilePath, config.streamIds, config.readChunkSamples);
+  session = nextSession;
+  config.filePath = normalizedFilePath;
+  return nextSession;
+}
 
 function makeAdapterStateEvent(
   adapterId: string,
@@ -134,11 +162,35 @@ async function setSimulationSpeed(ctx: PluginContext, payload: SimulationSpeedSe
 }
 
 async function connectSimulation(ctx: PluginContext, payload: AdapterConnectRequestPayload): Promise<void> {
-  if (!session) {
-    await emitRuntimeState(ctx, 'failed', 'Файл симуляции не загружен', payload.requestId);
+  if (runtimeState === 'connected' || runtimeState === 'paused' || runtimeState === 'connecting' || runtimeState === 'disconnecting') {
     return;
   }
-  if (runtimeState === 'connected' || runtimeState === 'paused' || runtimeState === 'connecting' || runtimeState === 'disconnecting') {
+
+  const connectFilePath = filePathFromConnectPayload(payload);
+  try {
+    if (connectFilePath) {
+      ensureSimulationSession(connectFilePath);
+    } else if (!session) {
+      if (config.allowConnectFilePathOverride) {
+        await emitRuntimeState(ctx, 'failed', 'Выберите HDF5 файл для replay', payload.requestId);
+        return;
+      }
+      if (config.filePath.length > 0) {
+        ensureSimulationSession(config.filePath);
+      }
+    }
+  } catch (error) {
+    await emitRuntimeState(
+      ctx,
+      'failed',
+      error instanceof Error ? error.message : String(error),
+      payload.requestId,
+    );
+    return;
+  }
+
+  if (!session) {
+    await emitRuntimeState(ctx, 'failed', 'Файл симуляции не загружен', payload.requestId);
     return;
   }
 
@@ -209,12 +261,19 @@ export default definePlugin({
   async onInit(ctx) {
     await h5wasm.ready;
     config = resolveHdf5SimulationConfig(ctx.getConfig<Hdf5SimulationAdapterConfig>());
-    session = loadHdf5SimulationSession(config.filePath, config.streamIds, config.readChunkSamples);
+    if (config.filePath.length > 0) {
+      session = loadHdf5SimulationSession(config.filePath, config.streamIds, config.readChunkSamples);
+    } else {
+      session = null;
+    }
     runtimeState = 'disconnected';
-    const missingMessage = session.missingStreamIds.length > 0
+    const missingMessage = session && session.missingStreamIds.length > 0
       ? `Часть потоков не найдена в файле: ${session.missingStreamIds.join(', ')}`
       : undefined;
-    await emitRuntimeState(ctx, 'disconnected', missingMessage);
+    const idleMessage = config.allowConnectFilePathOverride && config.filePath.length === 0
+      ? 'Выберите HDF5 файл для replay'
+      : missingMessage;
+    await emitRuntimeState(ctx, 'disconnected', idleMessage);
   },
   async onEvent(event: RuntimeEvent, ctx) {
     if (event.type === EventTypes.adapterConnectRequest) {
@@ -258,8 +317,7 @@ export default definePlugin({
   },
   async onShutdown(ctx) {
     stopTimer(ctx);
-    closeHdf5SimulationSession(session);
-    session = null;
+    closeCurrentSession();
     runtimeState = 'disconnected';
   },
 });

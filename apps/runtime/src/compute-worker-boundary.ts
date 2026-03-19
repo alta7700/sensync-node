@@ -18,7 +18,7 @@ export function resolveDevPythonComputeWorkerSpec(
       PYTHONUNBUFFERED: '1',
     },
     workerName: path.basename(relativeScriptPathFromRepoRoot),
-    readyTimeoutMs: 10_000,
+    readyTimeoutMs: 30_000,
     requestTimeoutMs: 10_000,
     shutdownTimeoutMs: 2_000,
     ...overrides,

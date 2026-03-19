@@ -94,6 +94,11 @@
 - путь к HDF5-файлу валидируется до построения композиции плагинов;
 - profile-модули в `apps/runtime/src/profiles/*` работают уже с нормализованными значениями.
 
+Оговорка:
+
+- не все replay-профили обязаны задавать HDF5-файл через env;
+- profile может разрешить отложенный выбор файла через UI `adapter.connect.request.formData.filePath`, если сам data-source boundary умеет такой режим.
+
 Что уже trusted:
 
 - `PluginDescriptor[]`, которые отдаёт profile-builder.
@@ -102,7 +107,7 @@
 
 Поток:
 
-`HDF5 file -> hdf5-simulation-boundary -> ChannelReaderState/SimulationSessionState -> signal.batch`
+`env/filePath formData/HDF5 file -> hdf5-simulation-boundary -> ChannelReaderState/SimulationSessionState -> signal.batch`
 
 Файлы:
 
@@ -112,6 +117,7 @@
 Что считается boundary:
 
 - путь к файлу;
+- `formData.filePath` из `adapter.connect.request`, если profile включает delayed file selection;
 - наличие `/channels`;
 - attrs каналов;
 - dataset shape/type;
@@ -121,6 +127,7 @@
 Что происходит:
 
 - boundary открывает файл;
+- при delayed file selection boundary сначала нормализует `formData.filePath`, а уже потом открывает файл;
 - проверяет структуру нового HDF5-формата;
 - строит session/channel reader state;
 - читает окна данных и формирует внутренние `signal.batch`.
