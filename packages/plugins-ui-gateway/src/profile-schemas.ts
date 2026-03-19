@@ -16,6 +16,17 @@ const FakeRecordingChannels = [
   { streamId: 'interval.label', minSamples: 1, maxBufferedMs: 500 },
   { streamId: 'activity.label', minSamples: 1, maxBufferedMs: 500 },
 ] as const;
+const VeloergRecordingChannels = [
+  { streamId: 'moxy.smo2', minSamples: 10, maxBufferedMs: 2_000 },
+  { streamId: 'moxy.thb', minSamples: 10, maxBufferedMs: 2_000 },
+  { streamId: 'zephyr.rr', minSamples: 10, maxBufferedMs: 2_000 },
+  { streamId: 'zephyr.hr', minSamples: 10, maxBufferedMs: 2_000 },
+  { streamId: 'zephyr.dfa_a1', minSamples: 1, maxBufferedMs: 5_000 },
+  { streamId: 'trigno.avanti', minSamples: 500, maxBufferedMs: 500 },
+  { streamId: 'trigno.avanti.gyro.x', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.avanti.gyro.y', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.avanti.gyro.z', minSamples: 50, maxBufferedMs: 1_000 },
+] as const;
 const SimulationSpeedOptions = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 6, 8] as const;
 
 const FakeDerivedFlags: NonNullable<UiSchema['derivedFlags']> = [
@@ -46,6 +57,17 @@ function makeFakeRecordingStartPayload(): Record<string, unknown> {
       profile: 'fake',
     },
     channels: FakeRecordingChannels.map((item) => ({ ...item })),
+  };
+}
+
+function makeVeloergRecordingStartPayload(): Record<string, unknown> {
+  return {
+    writer: 'local',
+    filenameTemplate: '{profile}-{startDateTime}',
+    metadata: {
+      profile: 'veloerg',
+    },
+    channels: VeloergRecordingChannels.map((item) => ({ ...item })),
   };
 }
 
@@ -817,6 +839,7 @@ export function buildVeloergUiSchema(): UiSchema {
           'chart-moxy-thb',
           'chart-zephyr-rr',
           'chart-zephyr-hr',
+          'chart-zephyr-dfa-a1',
           'telemetry-main',
         ],
         layout: {
@@ -866,6 +889,13 @@ export function buildVeloergUiSchema(): UiSchema {
               children: [
                 { kind: 'widget', widgetId: 'chart-zephyr-rr', minWidth: 420 },
                 { kind: 'widget', widgetId: 'chart-zephyr-hr', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-zephyr-dfa-a1', minWidth: 420 },
               ],
             },
             {
@@ -1009,7 +1039,7 @@ export function buildVeloergUiSchema(): UiSchema {
       {
         kind: 'controls',
         id: 'controls-main',
-        title: 'ANT+ / Moxy',
+        title: 'ANT+ / Moxy / Recording',
         controls: [
           {
             id: 'scan-moxy',
@@ -1072,6 +1102,88 @@ export function buildVeloergUiSchema(): UiSchema {
               {
                 when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'disconnecting' },
                 label: 'Отключение Moxy...',
+                hidden: false,
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+          {
+            id: 'toggle-recording',
+            kind: 'button',
+            label: 'Запись недоступна',
+            disabled: true,
+            variants: [
+              {
+                when: {
+                  and: [
+                    { flag: `adapter.${moxyAdapterId}.state`, eq: 'connected' },
+                    { flag: `adapter.${zephyrAdapterId}.state`, eq: 'connected' },
+                    { flag: `adapter.${trignoAdapterId}.state`, eq: 'connected' },
+                    {
+                      or: [
+                        { flag: 'recording.local.state', eq: 'idle' },
+                        { flag: 'recording.local.state', eq: 'failed' },
+                        { flag: 'recording.local.state', eq: null },
+                      ],
+                    },
+                  ],
+                },
+                label: 'Начать запись',
+                commandType: EventTypes.recordingStart,
+                payload: makeVeloergRecordingStartPayload(),
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'recording' },
+                label: 'Пауза записи',
+                commandType: EventTypes.recordingPause,
+                payload: { writer: 'local' },
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'paused' },
+                label: 'Продолжить запись',
+                commandType: EventTypes.recordingResume,
+                payload: { writer: 'local' },
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'starting' },
+                label: 'Открытие файла...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'stopping' },
+                label: 'Закрытие файла...',
+                disabled: true,
+                isLoading: true,
+              },
+            ],
+          },
+          {
+            id: 'stop-recording',
+            kind: 'button',
+            label: 'Завершить запись',
+            hidden: true,
+            variants: [
+              {
+                when: {
+                  or: [
+                    { flag: 'recording.local.state', eq: 'recording' },
+                    { flag: 'recording.local.state', eq: 'paused' },
+                  ],
+                },
+                label: 'Завершить запись',
+                commandType: EventTypes.recordingStop,
+                payload: { writer: 'local' },
+                hidden: false,
+                disabled: false,
+              },
+              {
+                when: { flag: 'recording.local.state', eq: 'stopping' },
+                label: 'Закрытие файла...',
                 hidden: false,
                 disabled: true,
                 isLoading: true,
@@ -1178,6 +1290,8 @@ export function buildVeloergUiSchema(): UiSchema {
           'trigno.upsampling',
           'trigno.emgRateHz',
           'trigno.gyroRateHz',
+          'recording.local.state',
+          'recording.local.filePath',
         ],
       },
       {
@@ -1304,6 +1418,25 @@ export function buildVeloergUiSchema(): UiSchema {
             streamId: 'zephyr.hr',
             label: 'HR',
             color: '#d6336c',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-zephyr-dfa-a1',
+        title: 'DFA-a1',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 120_000,
+        showLegend: true,
+        yAxis: { min: 0, max: 2, label: 'a.u.' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'zephyr.dfa_a1',
+            label: 'DFA-a1',
+            color: '#7048e8',
             lineWidth: 3,
           },
         ],

@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package sensync2_plugin_kit.ipc_worker;
+
+message Ready {
+  uint32 protocol_version = 1;
+  string worker_version = 2;
+  repeated string methods = 3;
+}
+
+message Request {
+  string request_id = 1;
+  string method = 2;
+  bytes payload = 3;
+}
+
+message WorkerError {
+  string code = 1;
+  string message = 2;
+}
+
+message Response {
+  string request_id = 1;
+  bool ok = 2;
+  bytes payload = 3;
+  WorkerError error = 4;
+}
+
+message Shutdown {}
+
+message Envelope {
+  oneof payload {
+    Ready ready = 1;
+    Request request = 2;
+    Response response = 3;
+    Shutdown shutdown = 4;
+  }
+}

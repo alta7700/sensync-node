@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package sensync2_processors.dfa_a1;
+
+import "sensync2_plugin_kit/ipc_worker/numeric_array.proto";
+
+message DfaA1FromRrRequest {
+  sensync2_plugin_kit.ipc_worker.NumericArray rr_intervals_ms = 1;
+  uint32 lower_scale = 2;
+  uint32 upper_scale = 3;
+}
+
+message DfaA1FromRrResponse {
+  double alpha1 = 1;
+}

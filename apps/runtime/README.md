@@ -33,8 +33,8 @@ Node runtime и хост plugin worker'ов.
 - В `fake`-профиле `fake-signal-adapter` сам переходит в `connected` только после общего system-event `runtime.started`, `shape-generator-adapter` остаётся manual, а `interval.label` теперь публикует generic `label-generator-adapter`.
 - В `fake`-профиле также включён profile-level `timeline reset` без reconnect transport'ов: coordinator синхронизирует новый `timelineId` на все worker'ы, а profile `participants` задают subset плагинов, для которых профиль явно описывает reset-lifecycle/policy.
 - Профиль `fake-hdf5-simulation` требует `SENSYNC2_HDF5_SIMULATION_FILE`; путь валидируется до старта worker'ов.
-- Профиль `veloerg` поднимает `ant-plus-adapter`, `zephyr-bioharness-3-adapter`, generic `hr-from-rr-processor`, `trigno-adapter` и `hdf5-recorder` в real mode по умолчанию.
-- `hr-from-rr-processor` не знает про Zephyr как устройство: профиль только связывает `zephyr.rr` как вход и `zephyr.hr` как derived output stream.
+- Профиль `veloerg` поднимает `ant-plus-adapter`, `zephyr-bioharness-3-adapter`, generic `hr-from-rr-processor`, `dfa-a1-from-rr-processor`, `trigno-adapter` и `hdf5-recorder` в real mode по умолчанию.
+- `hr-from-rr-processor` и `dfa-a1-from-rr-processor` не знают про Zephyr как устройство: профиль только связывает `zephyr.rr` как вход и derived output streams.
 - Для Trigno в `veloerg` runtime явно задаёт `BACKWARDS COMPATIBILITY = OFF` и `UPSAMPLE = OFF`, чтобы live `EMG` не уходил в legacy-совместимую частотную схему SDK ports.
 - В `veloerg` timeline reset теперь recorder-driven:
   - requester только `hdf5-recorder`;
@@ -47,7 +47,7 @@ Node runtime и хост plugin worker'ов.
 
 ## Взаимодействие
 
-- Использует `@sensync2/core`, `@sensync2/plugin-sdk`, `@sensync2/plugins-ant-plus`, `@sensync2/plugins-ble`, `@sensync2/plugins-trigno`, `@sensync2/plugins-fake`, `@sensync2/plugins-hdf5`, `@sensync2/plugins-labels`, `@sensync2/plugins-processors`, `@sensync2/plugins-ui-gateway`.
+- Использует `@sensync2/core`, `@sensync2/plugin-sdk`, `@sensync2/plugins-ant-plus`, `@sensync2/plugins-ble`, `@sensync2/plugins-trigno`, `@sensync2/plugins-fake`, `@sensync2/plugins-hdf5`, `@sensync2/plugins-labels`, `@sensync2/plugins-processor-hr-from-rr`, `@sensync2/plugins-processor-dfa-a1`, `@sensync2/plugins-ui-gateway`.
 - В `fake`-профиле поднимает recorder, в `fake-hdf5-simulation` — HDF5-источник с fake-каналами, а в `veloerg` — composite-сценарий ANT+/Moxy, BLE/Zephyr, derived HR-from-RR и TCP/Trigno.
 - Для live записи `veloerg` пишет HDF5 в repo-relative `recordings/veloerg`.
 - Может стартовать отдельно для отладки или через `apps/desktop`.

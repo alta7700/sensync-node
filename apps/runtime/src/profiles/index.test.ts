@@ -93,11 +93,19 @@ describe('launch profiles registry', () => {
   it('в veloerg-профиле подключает generic hr-from-rr processor', () => {
     const profile = buildLaunchProfile('veloerg');
     const processor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
+    const dfaProcessor = profile.plugins.find((plugin) => plugin.id === 'dfa-a1-from-rr-processor');
 
     expect(processor).toBeDefined();
     expect(processor?.config).toMatchObject({
       sourceStreamId: 'zephyr.rr',
       outputStreamId: 'zephyr.hr',
+    });
+    expect(dfaProcessor).toBeDefined();
+    expect(dfaProcessor?.config).toMatchObject({
+      sourceStreamId: 'zephyr.rr',
+      outputStreamId: 'zephyr.dfa_a1',
+      rrUnit: 's',
+      required: true,
     });
   });
 
@@ -106,6 +114,7 @@ describe('launch profiles registry', () => {
     const recorder = profile.plugins.find((plugin) => plugin.id === 'hdf5-recorder');
     const zephyr = profile.plugins.find((plugin) => plugin.id === 'zephyr-bioharness-3-adapter');
     const hrProcessor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
+    const dfaProcessor = profile.plugins.find((plugin) => plugin.id === 'dfa-a1-from-rr-processor');
 
     expect(profile.timelineReset).toMatchObject({
       enabled: true,
@@ -115,6 +124,7 @@ describe('launch profiles registry', () => {
         'ant-plus-adapter',
         'zephyr-bioharness-3-adapter',
         'hr-from-rr-processor',
+        'dfa-a1-from-rr-processor',
         'trigno-adapter',
         'hdf5-recorder',
       ],
@@ -140,6 +150,7 @@ describe('launch profiles registry', () => {
     });
     expect(zephyr?.config).toMatchObject({ required: true });
     expect(hrProcessor?.config).toMatchObject({ required: true });
+    expect(dfaProcessor?.config).toMatchObject({ required: true });
   });
 
   it('в fake-hdf5-simulation профиле применяет env overrides до сборки plugins', () => {

@@ -22,6 +22,7 @@
     "dev:desktop:fake-hdf5-simulation": "SENSYNC2_PROFILE=fake-hdf5-simulation npm --workspace @sensync2/desktop run dev",
     "dev:desktop:veloerg": "SENSYNC2_PROFILE=veloerg npm --workspace @sensync2/desktop run dev",
     "generate:runtime-event-map": "tsx ./scripts/generate_runtime_event_map.ts",
+    "generate:compute-proto": "./scripts/generate_compute_proto.sh",
     "smoke": "npm run smoke:fake-profile && npm run smoke:hdf5-recorder && npm run smoke:fake-hdf5-simulation",
     "smoke:fake-profile": "tsx ./scripts/smoke_fake_profile.ts",
     "smoke:hdf5-recorder": "tsx ./scripts/smoke_hdf5_recorder.ts",
@@ -34,6 +35,7 @@
     "verify": "npm run lint && npm run test && npm run build && npm run smoke"
   },
   "devDependencies": {
+    "@bufbuild/protobuf": "^2.10.2",
     "@esbuild/darwin-arm64": "^0.27.3",
     "@eslint/js": "^9.39.4",
     "@types/node": "^24.6.0",
@@ -44,6 +46,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
     "tsx": "^4.20.6",
+    "ts-proto": "^2.8.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.57.0",
     "vitest": "^3.2.4",

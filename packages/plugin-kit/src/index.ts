@@ -2,6 +2,7 @@ export * from './adapter-state-holder.ts';
 export * from './autoconnect-policy.ts';
 export * from './fact-store.ts';
 export * from './handlers.ts';
+export * from './ipc-worker/index.ts';
 export * from './input-map.ts';
 export * from './input-runtime.ts';
 export * from './manifest-fragment.ts';

@@ -305,6 +305,13 @@ describe('ui-gateway-plugin', () => {
           kind: 'row',
           gap: 12,
           children: [
+            { kind: 'widget', widgetId: 'chart-zephyr-dfa-a1', minWidth: 420 },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
             { kind: 'widget', widgetId: 'telemetry-main' },
           ],
         },
@@ -353,6 +360,30 @@ describe('ui-gateway-plugin', () => {
         ],
       },
     ]);
+
+    const mainControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-main' && widget.kind === 'controls';
+    });
+    expect(mainControlsWidget?.kind).toBe('controls');
+    if (!mainControlsWidget || mainControlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-main');
+    }
+
+    expect(mainControlsWidget.controls.map((control) => control.id)).toEqual([
+      'scan-moxy',
+      'disconnect-moxy',
+      'toggle-recording',
+      'stop-recording',
+    ]);
+
+    const statusWidget = initMessage.schema.widgets.find((widget) => widget.id === 'status-main');
+    expect(statusWidget).toMatchObject({
+      kind: 'status',
+      flagKeys: expect.arrayContaining([
+        'recording.local.state',
+        'recording.local.filePath',
+      ]),
+    });
   });
 
   it('патчит Trigno status flags в UI', async () => {

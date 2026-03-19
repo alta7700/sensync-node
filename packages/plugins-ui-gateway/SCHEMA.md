@@ -271,6 +271,7 @@ Derived flag для interval:
   - `chart-trigno-emg | chart-trigno-gyro`
   - `chart-moxy-smo2 | chart-moxy-thb`
   - `chart-zephyr-rr | chart-zephyr-hr`
+  - `chart-zephyr-dfa-a1`
   - `telemetry-main`
 
 ### Controls
@@ -310,6 +311,20 @@ Derived flag для interval:
   - видима только если `adapter.ant-plus.state ∈ { connected, failed, disconnecting }`
   - в `connected` отправляет `adapter.disconnect.request`
   - в `failed` тоже отправляет `adapter.disconnect.request`, чтобы сбросить состояние
+- `toggle-recording`
+  - если `adapter.ant-plus.state = connected`, `adapter.zephyr-bioharness.state = connected`, `adapter.trigno.state = connected`
+    и `recording.local.state ∈ { idle, failed, null }`
+    - label: `Начать запись`
+    - команда: `recording.start`
+  - если `recording.local.state = recording`
+    - label: `Пауза записи`
+    - команда: `recording.pause`
+  - если `recording.local.state = paused`
+    - label: `Продолжить запись`
+    - команда: `recording.resume`
+- `stop-recording`
+  - видима только если `recording.local.state ∈ { recording, paused, stopping }`
+  - основная команда: `recording.stop`
 - `scan-zephyr`
   - в базовом состоянии отправляет `adapter.scan.request` для `adapterId = zephyr-bioharness`
   - одновременно открывает локальную modal form `connect-zephyr-zephyr-bioharness`
@@ -344,6 +359,8 @@ Derived flag для interval:
 - `adapter.zephyr-bioharness.scanning`
 - `adapter.zephyr-bioharness.scanMessage`
 - `adapter.zephyr-bioharness.message`
+- `recording.local.state`
+- `recording.local.filePath`
 
 ### Графики
 
@@ -374,6 +391,10 @@ Derived flag для interval:
   - окно: `20_000 ms`
   - поток: `zephyr.hr`
   - ось Y: `[40, 220] bpm`
+- `chart-zephyr-dfa-a1`
+  - окно: `120_000 ms`
+  - поток: `zephyr.dfa_a1`
+  - ось Y: `[0.4, 1.8]`
 
 ### Telemetry
 

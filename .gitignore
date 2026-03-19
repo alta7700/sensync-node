@@ -7,3 +7,6 @@ playwright-report
 /recordings/
 .idea
 *.tsbuildinfo
+.venv/
+__pycache__/
+*.pyc

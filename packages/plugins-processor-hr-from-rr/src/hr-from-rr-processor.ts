@@ -55,7 +55,6 @@ type EstimatedHrBatch =
     timing: {
       timestampsMs: Float64Array;
       t0Ms?: number;
-      sampleRateHz?: number;
     };
   };
 
@@ -258,22 +257,13 @@ export default definePlugin({
     });
 
     applyManifestFragment(manifest, buildManifestFragmentFromInputs(inputMap));
-    applyManifestFragment(manifest, handlers.manifest());
-    timelineResetParticipant.initialize(ctx.currentTimelineId());
     await handlers.start(ctx);
   },
   async onEvent(event, ctx) {
-    await handlers?.dispatch(event, ctx);
-  },
-  async onShutdown(ctx) {
-    await handlers?.stop(ctx);
-    inputs?.clear();
-    estimator?.reset();
-    inputs = null;
-    handlers = null;
-    estimator = null;
-    emitUniformHr = null;
-    emitIrregularHr = null;
+    if (!handlers) {
+      return;
+    }
+    await handlers.dispatch(event, ctx);
   },
   async onTimelineResetPrepare(input, ctx) {
     await timelineResetParticipant.onPrepare(input, ctx);
@@ -283,5 +273,15 @@ export default definePlugin({
   },
   async onTimelineResetCommit(input, ctx) {
     await timelineResetParticipant.onCommit(input, ctx);
+  },
+  async onShutdown(ctx) {
+    await handlers?.stop(ctx);
+    inputs = null;
+    handlers = null;
+    estimator = null;
+    emitUniformHr = null;
+    emitIrregularHr = null;
+    cfg = { ...defaultConfig };
+    resetManifest();
   },
 });

@@ -9,10 +9,10 @@
 ## Как работает
 
 - `core` задаёт типы и wire-контракты.
-- `plugin-kit` даёт переиспользуемые helper'ы для adapter и processor authoring поверх `core` и `plugin-sdk`.
+- `plugin-kit` даёт переиспользуемые helper'ы для adapter и processor authoring поверх `core` и `plugin-sdk`, включая общий `ipc-worker` transport для внешних compute-процессов.
 - `plugin-sdk` задаёт модель worker-плагина.
 - `plugins-*` реализуют доменную логику поверх этих контрактов.
-- `plugins-processors` собирает generic signal-processors, которые не должны жить внутри transport-адаптеров.
+- `plugins-processor-*` собирают live/generic processor'ы по одному пакету на processor, чтобы не смешивать их зависимости, `.proto` и Python compute-side.
 - `plugins-labels` собирает generic label-generator плагины, которые не должны считаться fake-специфичными.
 - `plugins-ant-plus` отвечает за ANT+ scan/connect/data flow и transport boundary к stick.
 - `plugins-ble` отвечает за BLE scan/connect/notify/write flow и boundary к `noble`.

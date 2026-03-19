@@ -15,6 +15,11 @@
 - `input-map`, `manifest-fragment`, `signal-window`, `fact-store`, `state-cell`, `state-expression`, `input-runtime` и `handlers` дают generic helper-layer для processor logic.
 - `autoconnect-policy` только принимает и исполняет решение автоподключения; сам запуск нужно привязывать к безопасной lifecycle-точке, обычно к `runtime.started`, а не к `onInit()`.
 - `handlers` не расширяет runtime contract после `plugin.ready`: динамическое добавление разрешено только внутри заранее объявленного manifest superset.
+- `ipc-worker` даёт общий transport/process-management helper для внешних compute-worker'ов:
+  - `stdio` + binary framing;
+  - protobuf envelope;
+  - single-flight/latest-wins orchestration;
+  - базовый Python runtime в `python-runtime/`.
 - Для timeline-reset `v1` пакет даёт:
   - `createTimelineResetParticipant(...)` для локального lifecycle/resettable resources;
   - `clipSignalBatchToTimelineStart(...)` для clipping первого батча нового timeline.
@@ -32,3 +37,4 @@
 - Пакет зависит только от `@sensync2/core` и `@sensync2/plugin-sdk`.
 - Его используют и adapter-плагины, и processor-плагины из `packages/plugins-*`.
 - UI schema, device transport и boundary-валидация остаются вне этого пакета.
+- Путь к Python worker или packaged sidecar резолвится вне пакета, через boundary приложения.

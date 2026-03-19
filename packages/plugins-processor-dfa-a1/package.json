@@ -1,5 +1,5 @@
 {
-  "name": "@sensync2/plugins-processors",
+  "name": "@sensync2/plugins-processor-dfa-a1",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "^2.10.2",
     "@sensync2/core": "0.1.0",
     "@sensync2/plugin-kit": "0.1.0",
     "@sensync2/plugin-sdk": "0.1.0"

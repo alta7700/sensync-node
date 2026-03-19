@@ -9,6 +9,7 @@
     "./autoconnect-policy": "./src/autoconnect-policy.ts",
     "./fact-store": "./src/fact-store.ts",
     "./handlers": "./src/handlers.ts",
+    "./ipc-worker": "./src/ipc-worker/index.ts",
     "./input-map": "./src/input-map.ts",
     "./input-runtime": "./src/input-runtime.ts",
     "./manifest-fragment": "./src/manifest-fragment.ts",
@@ -22,6 +23,7 @@
     "./types": "./src/types.ts"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "^2.10.2",
     "@sensync2/core": "0.1.0",
     "@sensync2/plugin-sdk": "0.1.0"
   },

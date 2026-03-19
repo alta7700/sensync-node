@@ -15,6 +15,7 @@
 - `workspace-event-registry.ts` — единый registry событий workspace-уровня и валидация `(type, v)`/manifest.
 - `workspace-ui-command-boundary.ts` — агрегатор shared и plugin-specific UI guards для ingress из renderer.
 - `session-clock.ts` — относительное время сессии.
+- `compute-worker-boundary.ts` — boundary dev/runtime-конфига для внешних Python compute-worker'ов; он резолвит команду запуска, но не тащит transport-код в launch profiles.
 - `profiles/index.ts` — registry launch profiles и thin API `resolve/build`.
 - `profiles/*.ts` — отдельные profile-модули, которые собирают plugin composition и готовую `UiSchema`.
 - `profiles/shared.ts` — общие helper'ы для profile composition, например descriptor `ui-gateway`.
