@@ -9,11 +9,12 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 ## 1. Launch profiles
 
-Сейчас runtime profiles используют пять concrete-схем:
+Сейчас runtime profiles используют шесть concrete-схем:
 
 - `fake`
 - `fake-hdf5-simulation`
 - `veloerg`
+- `veloerg-replay`
 - `pedaling-emg-test`
 - `pedaling-emg-replay`
 
@@ -254,7 +255,7 @@ Derived flag для interval:
 Назначение:
 
 - live composite-профиль для ANT+/Moxy, BLE/Zephyr, generic HR-from-RR/DFA processors и TCP/Trigno;
-- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-графики `RR/HR/DFA-a1`, а `pedaling-emg-processor` строит phase/activity overlays и confidence-диагностику поверх raw `Trigno EMG + Gyroscope`.
+- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-графики `RR/HR/DFA-a1`, а Trigno пока остаётся только raw-источником `EMG + Gyroscope` без pedaling-derived слоёв.
 
 ### Страница
 
@@ -268,11 +269,12 @@ Derived flag для interval:
   - справа находится `column` с grid controls:
     - `controls-trigno` на всю ширину
     - ниже `row`: `controls-main | controls-zephyr`
+    - ниже `controls-lactate-power` на всю ширину
     - ниже `controls-recording` на всю ширину
 - ниже идут отдельные `row`:
   - `chart-trigno-emg | chart-trigno-gyro`
-  - `chart-pedaling-confidence | chart-pedaling-cycle-period`
   - `chart-moxy-smo2 | chart-moxy-thb`
+  - `chart-lactate | chart-power`
   - `chart-zephyr-rr | chart-zephyr-hr`
   - `chart-zephyr-dfa-a1`
   - `telemetry-main`
@@ -284,6 +286,7 @@ Derived flag для interval:
 - `controls-trigno`
 - `controls-main`
 - `controls-zephyr`
+- `controls-lactate-power`
 - `controls-recording`
 
 Кнопки:
@@ -315,6 +318,29 @@ Derived flag для interval:
   - видима только если `adapter.ant-plus.state ∈ { connected, failed, disconnecting }`
   - в `connected` отправляет `adapter.disconnect.request`
   - в `failed` тоже отправляет `adapter.disconnect.request`, чтобы сбросить состояние
+- `mark-lactate`
+  - находится в виджете `controls-lactate-power`
+  - открывает modal form `mark-lactate`
+  - submit формы отправляет `label.mark.request`
+  - payload содержит:
+    - `labelId = lactate`
+    - `atTimeMs`, собранный из `timelineTimeInput` как абсолютный `session time`
+    - `value`
+- `power-plus-30`
+  - находится в виджете `controls-lactate-power`
+  - отправляет `label.mark.request`
+  - payload содержит `labelId = power`
+  - `value` собирается на клиенте из derived UI-flag `power.current` через `payloadBindings`:
+    - fallback `0`
+    - затем `+30`
+    - итог округляется до integer
+- `set-power`
+  - находится в виджете `controls-lactate-power`
+  - открывает modal form `set-power`
+  - submit формы отправляет `label.mark.request`
+  - payload содержит:
+    - `labelId = power`
+    - `value`
 - `toggle-recording`
   - вынесена в отдельный виджет `controls-recording`
   - если `adapter.ant-plus.state = connected`, `adapter.zephyr-bioharness.state = connected`, `adapter.trigno.state = connected`
@@ -365,6 +391,9 @@ Derived flag для interval:
 - `adapter.zephyr-bioharness.scanning`
 - `adapter.zephyr-bioharness.scanMessage`
 - `adapter.zephyr-bioharness.message`
+- `power.current`
+  - задаётся через `schema.derivedFlags`
+  - materialize'ится по последнему numeric value из `power.label`
 - `recording.local.state`
 - `recording.local.filePath`
 
@@ -373,8 +402,6 @@ Derived flag для interval:
 - `chart-trigno-emg`
   - окно: `20_000 ms`
   - поток: `trigno.avanti`
-  - overlay interval stream: `pedaling.phase.coarse` (`1=start`, `0=end`)
-  - overlay interval stream: `pedaling.activity.vastus-lateralis` (`1=start`, `0=end`)
   - ось Y: `V`
 - `chart-trigno-gyro`
   - окно: `20_000 ms`
@@ -382,18 +409,7 @@ Derived flag для interval:
     - `trigno.avanti.gyro.x`
     - `trigno.avanti.gyro.y`
     - `trigno.avanti.gyro.z`
-  - overlay interval stream: `pedaling.phase.coarse` (`1=start`, `0=end`)
   - ось Y: `deg/s`
-- `chart-pedaling-confidence`
-  - окно: `20_000 ms`
-  - потоки:
-    - `pedaling.phase.confidence`
-    - `pedaling.emg.confidence`
-  - ось Y: `[0, 1] a.u.`
-- `chart-pedaling-cycle-period`
-  - окно: `20_000 ms`
-  - поток: `pedaling.cycle.period-ms`
-  - ось Y: `[300, 2000] ms`
 - `chart-moxy-smo2`
   - окно: `20_000 ms`
   - поток: `moxy.smo2`
@@ -402,6 +418,17 @@ Derived flag для interval:
   - окно: `20_000 ms`
   - поток: `moxy.thb`
   - ось Y: `[8, 18] g/dL`
+- `chart-lactate`
+  - окно: `1_200_000 ms`
+  - поток: `lactate.label`
+  - тип серии: `scatter`
+  - ось Y: `[0, auto] mmol/L`
+- `chart-power`
+  - окно: `1_200_000 ms`
+  - поток: `power.label`
+  - тип серии: `line`
+  - interpolation: `step-after`
+  - ось Y: `[0, auto] W`
 - `chart-zephyr-rr`
   - окно: `20_000 ms`
   - поток: `zephyr.rr`
@@ -420,9 +447,94 @@ Derived flag для interval:
 - `telemetry-main`
 - Для `veloerg` сюда также попадают latest metrics качества ANT+ канала от `ant-plus-adapter` и BLE/Zephyr transport metrics от `zephyr-bioharness-3-adapter`.
 
-## 5. Общие правила flags и stream declarations
+## 5. Профиль `veloerg-replay`
 
-## 5. Профиль `pedaling-emg-test`
+Назначение:
+
+- replay-профиль для HDF5-файлов, записанных из `veloerg`;
+- повторяет основной графический layout `veloerg`, но без live transport и без recorder control-блока.
+
+### Страница
+
+- Одна страница: `main`.
+- Заголовок страницы: `Veloerg replay`.
+
+Раскладка страницы:
+
+- `status-main | controls-main`
+- `chart-trigno-emg | chart-trigno-gyro`
+- `chart-moxy-smo2 | chart-moxy-thb`
+- `chart-lactate | chart-power`
+- `chart-zephyr-rr | chart-zephyr-hr`
+- `chart-zephyr-dfa-a1`
+- `telemetry-main`
+
+### Controls
+
+Виджеты:
+
+- `controls-main`
+
+Кнопки:
+
+- `toggle-veloerg-replay`
+  - в базовом состоянии открывает modal form выбора HDF5 и отправляет `adapter.connect.request`
+  - после подключения переключается в `simulation.pause.request`
+  - после паузы переключается в `simulation.resume.request`
+- `disconnect-veloerg-replay`
+  - видима только если replay уже подключён или на паузе
+  - отправляет `adapter.disconnect.request`
+- `speed-*`
+  - меняют `simulation.speed.set.request`
+
+### Status
+
+Показываемые флаги:
+
+- `adapter.veloerg-replay.state`
+- `adapter.veloerg-replay.message`
+- `simulation.veloerg-replay.speed`
+- `simulation.veloerg-replay.batchMs`
+- `simulation.veloerg-replay.filePath`
+- `simulation.veloerg-replay.message`
+- `power.current`
+  - задаётся через `schema.derivedFlags`
+  - materialize'ится по последнему numeric value из `power.label`
+
+### Графики
+
+- `chart-trigno-emg`
+  - поток: `trigno.avanti`
+- `chart-trigno-gyro`
+  - потоки:
+    - `trigno.avanti.gyro.x`
+    - `trigno.avanti.gyro.y`
+    - `trigno.avanti.gyro.z`
+- `chart-moxy-smo2`
+  - поток: `moxy.smo2`
+- `chart-moxy-thb`
+  - поток: `moxy.thb`
+- `chart-lactate`
+  - поток: `lactate.label`
+  - тип серии: `scatter`
+- `chart-power`
+  - поток: `power.label`
+  - тип серии: `line`
+  - interpolation: `step-after`
+- `chart-zephyr-rr`
+  - поток: `zephyr.rr`
+- `chart-zephyr-hr`
+  - поток: `zephyr.hr`
+- `chart-zephyr-dfa-a1`
+  - поток: `zephyr.dfa_a1`
+
+### Telemetry
+
+- `telemetry-main`
+
+## 6. Общие правила flags и stream declarations
+
+## 7. Профиль `pedaling-emg-test`
 
 Назначение:
 

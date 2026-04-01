@@ -3,6 +3,7 @@ import {
   type UiControlAction,
   type UiControlWhen,
   type UiControlVariant,
+  type UiDerivedFlagRule,
   type UiModalForm,
   type UiSchema,
 } from '@sensync2/core';
@@ -26,11 +27,8 @@ const VeloergRecordingChannels = [
   { streamId: 'trigno.avanti.gyro.x', minSamples: 50, maxBufferedMs: 1_000 },
   { streamId: 'trigno.avanti.gyro.y', minSamples: 50, maxBufferedMs: 1_000 },
   { streamId: 'trigno.avanti.gyro.z', minSamples: 50, maxBufferedMs: 1_000 },
-  { streamId: 'pedaling.phase.coarse', minSamples: 1, maxBufferedMs: 20_000 },
-  { streamId: 'pedaling.activity.vastus-lateralis', minSamples: 1, maxBufferedMs: 20_000 },
-  { streamId: 'pedaling.phase.confidence', minSamples: 1, maxBufferedMs: 20_000 },
-  { streamId: 'pedaling.emg.confidence', minSamples: 1, maxBufferedMs: 20_000 },
-  { streamId: 'pedaling.cycle.period-ms', minSamples: 1, maxBufferedMs: 20_000 },
+  { streamId: 'lactate.label', minSamples: 1, maxBufferedMs: 120_000 },
+  { streamId: 'power.label', minSamples: 1, maxBufferedMs: 120_000 },
 ] as const;
 const PedalingEmgTestRecordingChannels = [
   { streamId: 'trigno.avanti', minSamples: 500, maxBufferedMs: 500 },
@@ -40,7 +38,7 @@ const PedalingEmgTestRecordingChannels = [
 ] as const;
 const SimulationSpeedOptions = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 6, 8] as const;
 
-const FakeDerivedFlags: NonNullable<UiSchema['derivedFlags']> = [
+const FakeDerivedFlags: Array<Extract<UiDerivedFlagRule, { kind: 'latest-discrete-signal-value-map' }>> = [
   {
     kind: 'latest-discrete-signal-value-map',
     flagKey: 'interval.active',
@@ -50,6 +48,15 @@ const FakeDerivedFlags: NonNullable<UiSchema['derivedFlags']> = [
       1: true,
       0: false,
     },
+  },
+];
+
+const VeloergDerivedFlags: NonNullable<UiSchema['derivedFlags']> = [
+  {
+    kind: 'latest-numeric-signal-value',
+    flagKey: 'power.current',
+    sourceStreamId: 'power.label',
+    initialValue: null,
   },
 ];
 
@@ -418,9 +425,69 @@ function makeTrignoConnectModalForm(adapterId: string): UiModalForm {
   };
 }
 
-function makePedalingReplayConnectModalForm(adapterId: string): UiModalForm {
+function makeLactateMarkModalForm(): UiModalForm {
   return {
-    id: `connect-pedaling-replay-${adapterId}`,
+    id: 'mark-lactate',
+    title: 'Добавить lactate',
+    submitLabel: 'Добавить',
+    submitEventType: EventTypes.labelMarkRequest,
+    submitPayload: {
+      labelId: 'lactate',
+    },
+    fields: [
+      {
+        kind: 'row',
+        children: [
+          {
+            kind: 'timelineTimeInput',
+            fieldId: 'atTimeMs',
+            label: 'Время',
+            required: true,
+            submitTarget: 'payload',
+            defaultValue: '0:00',
+            placeholder: '2:45',
+          },
+          {
+            kind: 'decimalInput',
+            fieldId: 'value',
+            label: 'Лактат',
+            required: true,
+            submitTarget: 'payload',
+            min: 0,
+            step: 0.1,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function makePowerSetModalForm(): UiModalForm {
+  return {
+    id: 'set-power',
+    title: 'Установить мощность',
+    submitLabel: 'Установить',
+    submitEventType: EventTypes.labelMarkRequest,
+    submitPayload: {
+      labelId: 'power',
+    },
+    fields: [
+      {
+        kind: 'numberInput',
+        fieldId: 'value',
+        label: 'Мощность',
+        required: true,
+        submitTarget: 'payload',
+        min: 0,
+        step: 1,
+      },
+    ],
+  };
+}
+
+function makeReplayConnectModalForm(adapterId: string, formId: string): UiModalForm {
+  return {
+    id: formId,
     title: 'Выбор HDF5 файла',
     submitLabel: 'Запустить replay',
     submitEventType: EventTypes.adapterConnectRequest,
@@ -959,6 +1026,7 @@ export function buildVeloergUiSchema(): UiSchema {
   const trignoAdapterId = 'trigno';
   return {
     version: 1,
+    derivedFlags: VeloergDerivedFlags,
     pages: [
       {
         id: 'main',
@@ -968,13 +1036,14 @@ export function buildVeloergUiSchema(): UiSchema {
           'controls-trigno',
           'controls-main',
           'controls-zephyr',
+          'controls-lactate-power',
           'controls-recording',
           'chart-trigno-emg',
           'chart-trigno-gyro',
-          'chart-pedaling-confidence',
-          'chart-pedaling-cycle-period',
           'chart-moxy-smo2',
           'chart-moxy-thb',
+          'chart-lactate',
+          'chart-power',
           'chart-zephyr-rr',
           'chart-zephyr-hr',
           'chart-zephyr-dfa-a1',
@@ -1007,6 +1076,7 @@ export function buildVeloergUiSchema(): UiSchema {
                         { kind: 'widget', widgetId: 'controls-zephyr', minWidth: 250 },
                       ],
                     },
+                    { kind: 'widget', widgetId: 'controls-lactate-power' },
                     { kind: 'widget', widgetId: 'controls-recording' },
                   ],
                 },
@@ -1024,16 +1094,16 @@ export function buildVeloergUiSchema(): UiSchema {
               kind: 'row',
               gap: 12,
               children: [
-                { kind: 'widget', widgetId: 'chart-pedaling-confidence', minWidth: 420 },
-                { kind: 'widget', widgetId: 'chart-pedaling-cycle-period', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-moxy-smo2', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-moxy-thb', minWidth: 420 },
               ],
             },
             {
               kind: 'row',
               gap: 12,
               children: [
-                { kind: 'widget', widgetId: 'chart-moxy-smo2', minWidth: 420 },
-                { kind: 'widget', widgetId: 'chart-moxy-thb', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
               ],
             },
             {
@@ -1354,6 +1424,45 @@ export function buildVeloergUiSchema(): UiSchema {
       },
       {
         kind: 'controls',
+        id: 'controls-lactate-power',
+        title: 'Лактат / Мощность',
+        controls: [
+          {
+            id: 'mark-lactate',
+            kind: 'button',
+            label: 'Добавить lactate',
+            modalForm: makeLactateMarkModalForm(),
+          },
+          {
+            id: 'power-plus-30',
+            kind: 'button',
+            label: '+30 W',
+            commandType: EventTypes.labelMarkRequest,
+            payload: {
+              labelId: 'power',
+            },
+            payloadBindings: [
+              {
+                kind: 'number-from-flag',
+                payloadKey: 'value',
+                flagKey: 'power.current',
+                fallbackValue: 0,
+                add: 30,
+                min: 0,
+                round: 'integer',
+              },
+            ],
+          },
+          {
+            id: 'set-power',
+            kind: 'button',
+            label: 'Задать мощность',
+            modalForm: makePowerSetModalForm(),
+          },
+        ],
+      },
+      {
+        kind: 'controls',
         id: 'controls-zephyr',
         title: 'BLE / Zephyr',
         controls: [
@@ -1450,6 +1559,7 @@ export function buildVeloergUiSchema(): UiSchema {
           'trigno.upsampling',
           'trigno.emgRateHz',
           'trigno.gyroRateHz',
+          'power.current',
           'recording.local.state',
           'recording.local.filePath',
         ],
@@ -1470,24 +1580,6 @@ export function buildVeloergUiSchema(): UiSchema {
             label: 'EMG',
             color: '#ff922b',
             lineWidth: 2,
-          },
-          {
-            type: 'interval',
-            streamId: 'pedaling.phase.coarse',
-            label: 'phase=1',
-            color: '#9775fa',
-            alpha: 0.08,
-            startLabel: 1,
-            endLabel: 0,
-          },
-          {
-            type: 'interval',
-            streamId: 'pedaling.activity.vastus-lateralis',
-            label: 'VL active',
-            color: '#e03131',
-            alpha: 0.12,
-            startLabel: 1,
-            endLabel: 0,
           },
         ],
       },
@@ -1520,60 +1612,6 @@ export function buildVeloergUiSchema(): UiSchema {
             streamId: 'trigno.avanti.gyro.z',
             label: 'gyro.z',
             color: '#1c7ed6',
-            lineWidth: 2,
-          },
-          {
-            type: 'interval',
-            streamId: 'pedaling.phase.coarse',
-            label: 'phase=1',
-            color: '#9775fa',
-            alpha: 0.1,
-            startLabel: 1,
-            endLabel: 0,
-          },
-        ],
-      },
-      {
-        kind: 'chart',
-        id: 'chart-pedaling-confidence',
-        title: 'Pedaling confidence',
-        renderer: 'echarts',
-        height: 320,
-        timeWindowMs: 20_000,
-        showLegend: true,
-        yAxis: { min: 0, max: 1, label: 'a.u.' },
-        series: [
-          {
-            type: 'line',
-            streamId: 'pedaling.phase.confidence',
-            label: 'phase.conf',
-            color: '#7048e8',
-            lineWidth: 2,
-          },
-          {
-            type: 'line',
-            streamId: 'pedaling.emg.confidence',
-            label: 'emg.conf',
-            color: '#f08c00',
-            lineWidth: 2,
-          },
-        ],
-      },
-      {
-        kind: 'chart',
-        id: 'chart-pedaling-cycle-period',
-        title: 'Pedaling cycle period',
-        renderer: 'echarts',
-        height: 320,
-        timeWindowMs: 20_000,
-        showLegend: true,
-        yAxis: { min: 300, max: 2_000, label: 'ms' },
-        series: [
-          {
-            type: 'line',
-            streamId: 'pedaling.cycle.period-ms',
-            label: 'cycle.ms',
-            color: '#12b886',
             lineWidth: 2,
           },
         ],
@@ -1613,6 +1651,347 @@ export function buildVeloergUiSchema(): UiSchema {
             label: 'tHb',
             color: '#58a6ff',
             lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-lactate',
+        title: 'Lactate',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 1_200_000,
+        showLegend: true,
+        yAxis: { min: 0, label: 'mmol/L' },
+        series: [
+          {
+            type: 'scatter',
+            streamId: 'lactate.label',
+            label: 'Lactate',
+            color: '#da77f2',
+            size: 9,
+            marker: 'diamond',
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-power',
+        title: 'Power',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 1_200_000,
+        showLegend: true,
+        yAxis: { min: 0, label: 'W' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'power.label',
+            label: 'Power',
+            color: '#f76707',
+            lineWidth: 3,
+            interpolation: 'step-after',
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-zephyr-rr',
+        title: 'RR',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 0.3, max: 1.8, label: 's' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'zephyr.rr',
+            label: 'RR',
+            color: '#1f6feb',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-zephyr-hr',
+        title: 'HR',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 40, max: 220, label: 'bpm' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'zephyr.hr',
+            label: 'HR',
+            color: '#d6336c',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-zephyr-dfa-a1',
+        title: 'DFA-a1',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 120_000,
+        showLegend: true,
+        yAxis: { min: 0, max: 2, label: 'a.u.' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'zephyr.dfa_a1',
+            label: 'DFA-a1',
+            color: '#7048e8',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'telemetry',
+        id: 'telemetry-main',
+        title: 'Telemetry',
+      },
+    ],
+  };
+}
+
+export function buildVeloergReplayUiSchema(): UiSchema {
+  const adapterId = 'veloerg-replay';
+  return {
+    version: 1,
+    derivedFlags: VeloergDerivedFlags,
+    pages: [
+      {
+        id: 'main',
+        title: 'Veloerg replay',
+        widgetIds: [
+          'status-main',
+          'controls-main',
+          'chart-trigno-emg',
+          'chart-trigno-gyro',
+          'chart-moxy-smo2',
+          'chart-moxy-thb',
+          'chart-lactate',
+          'chart-power',
+          'chart-zephyr-rr',
+          'chart-zephyr-hr',
+          'chart-zephyr-dfa-a1',
+          'telemetry-main',
+        ],
+        layout: {
+          kind: 'column',
+          gap: 12,
+          children: [
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'status-main', minWidth: 320 },
+                { kind: 'widget', widgetId: 'controls-main', minWidth: 520 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-moxy-smo2', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-moxy-thb', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-zephyr-rr', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-zephyr-hr', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-zephyr-dfa-a1', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'telemetry-main' },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+    widgets: [
+      makeReplaySimulationControlsWidget(
+        adapterId,
+        'HDF5 replay',
+        makeReplayConnectModalForm(adapterId, `connect-${adapterId}`),
+      ),
+      {
+        kind: 'status',
+        id: 'status-main',
+        title: 'Состояние',
+        flagKeys: [
+          `adapter.${adapterId}.state`,
+          `adapter.${adapterId}.message`,
+          `simulation.${adapterId}.speed`,
+          `simulation.${adapterId}.batchMs`,
+          `simulation.${adapterId}.filePath`,
+          `simulation.${adapterId}.message`,
+          'power.current',
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-trigno-emg',
+        title: 'Trigno EMG',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'V' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'trigno.avanti',
+            label: 'EMG',
+            color: '#ff922b',
+            lineWidth: 2,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-trigno-gyro',
+        title: 'Trigno Gyroscope',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { label: 'deg/s' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'trigno.avanti.gyro.x',
+            label: 'gyro.x',
+            color: '#f03e3e',
+            lineWidth: 2,
+          },
+          {
+            type: 'line',
+            streamId: 'trigno.avanti.gyro.y',
+            label: 'gyro.y',
+            color: '#2b8a3e',
+            lineWidth: 2,
+          },
+          {
+            type: 'line',
+            streamId: 'trigno.avanti.gyro.z',
+            label: 'gyro.z',
+            color: '#1c7ed6',
+            lineWidth: 2,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-moxy-smo2',
+        title: 'SmO2',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 40, max: 100, label: '%' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'moxy.smo2',
+            label: 'SmO2',
+            color: '#3fb950',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-moxy-thb',
+        title: 'tHb',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 20_000,
+        showLegend: true,
+        yAxis: { min: 8, max: 18, label: 'g/dL' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'moxy.thb',
+            label: 'tHb',
+            color: '#58a6ff',
+            lineWidth: 3,
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-lactate',
+        title: 'Lactate',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 1_200_000,
+        showLegend: true,
+        yAxis: { min: 0, label: 'mmol/L' },
+        series: [
+          {
+            type: 'scatter',
+            streamId: 'lactate.label',
+            label: 'Lactate',
+            color: '#da77f2',
+            size: 9,
+            marker: 'diamond',
+          },
+        ],
+      },
+      {
+        kind: 'chart',
+        id: 'chart-power',
+        title: 'Power',
+        renderer: 'echarts',
+        height: 320,
+        timeWindowMs: 1_200_000,
+        showLegend: true,
+        yAxis: { min: 0, label: 'W' },
+        series: [
+          {
+            type: 'line',
+            streamId: 'power.label',
+            label: 'Power',
+            color: '#f76707',
+            lineWidth: 3,
+            interpolation: 'step-after',
           },
         ],
       },
@@ -2105,7 +2484,7 @@ export function buildPedalingEmgReplayUiSchema(): UiSchema {
       makeReplaySimulationControlsWidget(
         adapterId,
         'HDF5 replay',
-        makePedalingReplayConnectModalForm(adapterId),
+        makeReplayConnectModalForm(adapterId, `connect-${adapterId}`),
       ),
       {
         kind: 'status',

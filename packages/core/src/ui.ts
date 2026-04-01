@@ -17,7 +17,9 @@ export interface UiSchema {
   derivedFlags?: UiDerivedFlagRule[];
 }
 
-export type UiDerivedFlagRule = UiDerivedLatestDiscreteSignalValueMapFlagRule;
+export type UiDerivedFlagRule =
+  | UiDerivedLatestDiscreteSignalValueMapFlagRule
+  | UiDerivedLatestNumericSignalValueFlagRule;
 
 /**
  * Берёт последнее дискретное значение из указанного потока и маппит его в UI-флаг.
@@ -31,6 +33,19 @@ export interface UiDerivedLatestDiscreteSignalValueMapFlagRule {
   sourceStreamId: string;
   initialValue: UiFlagValue;
   valueMap: Record<string, UiFlagValue>;
+}
+
+/**
+ * Берёт последнее числовое значение из указанного потока и сохраняет его в UI-флаг как есть.
+ *
+ * Нужен для UI-сценариев, где кнопки должны опираться на текущий numeric setpoint,
+ * а отдельный runtime fact для этого избыточен.
+ */
+export interface UiDerivedLatestNumericSignalValueFlagRule {
+  kind: 'latest-numeric-signal-value';
+  flagKey: string;
+  sourceStreamId: string;
+  initialValue: number | null;
 }
 
 export interface UiPage {
@@ -119,6 +134,7 @@ export interface UiChartLineSeries extends UiChartSeriesBase {
   type: 'line';
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
+  interpolation?: 'linear' | 'step-after';
   fill?: boolean;
   fillAlpha?: number;
 }
@@ -169,6 +185,7 @@ export interface UiControlAction {
   commandType?: UiCommandEventType;
   commandVersion?: UiCommandEventVersion;
   payload?: Record<string, unknown>;
+  payloadBindings?: UiControlPayloadBinding[];
   modalForm?: UiModalForm;
   disabled?: boolean;
   isLoading?: boolean;
@@ -184,12 +201,26 @@ export interface UiControlVariant {
   commandType?: UiCommandEventType;
   commandVersion?: UiCommandEventVersion;
   payload?: Record<string, unknown>;
+  payloadBindings?: UiControlPayloadBinding[];
   modalForm?: UiModalForm;
   disabled?: boolean;
   isLoading?: boolean;
   visible?: boolean;
   hidden?: boolean;
 }
+
+export interface UiControlPayloadBindingNumberFromFlag {
+  kind: 'number-from-flag';
+  payloadKey: string;
+  flagKey: string;
+  fallbackValue?: number;
+  add?: number;
+  min?: number;
+  max?: number;
+  round?: 'none' | 'integer';
+}
+
+export type UiControlPayloadBinding = UiControlPayloadBindingNumberFromFlag;
 
 export type UiControlWhen = UiControlWhenEq | UiControlWhenAnd | UiControlWhenOr | UiControlWhenNot;
 
@@ -224,6 +255,7 @@ export type UiModalFormNode =
   | UiModalFormRow
   | UiModalFormColumn
   | UiModalFormTextInput
+  | UiModalFormTimelineTimeInput
   | UiModalFormNumberInput
   | UiModalFormDecimalInput
   | UiModalFormFileInput
@@ -243,10 +275,17 @@ interface UiModalFormFieldBase {
   fieldId: string;
   label: string;
   required?: boolean;
+  submitTarget?: 'payload' | 'formData';
 }
 
 export interface UiModalFormTextInput extends UiModalFormFieldBase {
   kind: 'textInput';
+  defaultValue?: string;
+  placeholder?: string;
+}
+
+export interface UiModalFormTimelineTimeInput extends UiModalFormFieldBase {
+  kind: 'timelineTimeInput';
   defaultValue?: string;
   placeholder?: string;
 }

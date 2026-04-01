@@ -21,7 +21,6 @@ export const veloergProfile: LaunchProfileDefinition = {
           'zephyr-bioharness-3-adapter',
           'hr-from-rr-processor',
           'dfa-a1-from-rr-processor',
-          'pedaling-emg-processor',
           'trigno-adapter',
           'hdf5-recorder',
         ],
@@ -89,36 +88,21 @@ export const veloergProfile: LaunchProfileDefinition = {
           },
         },
         {
-          id: 'pedaling-emg-processor',
-          modulePath: moduleFileUrl('packages/plugins-processor-pedaling-emg/src/pedaling-emg-processor.ts'),
+          id: 'label-generator-adapter',
+          modulePath: moduleFileUrl('packages/plugins-labels/src/label-generator-adapter.ts'),
           config: {
-            gyroStreamIds: {
-              x: 'trigno.avanti.gyro.x',
-              y: 'trigno.avanti.gyro.y',
-              z: 'trigno.avanti.gyro.z',
-            },
-            emgStreamId: 'trigno.avanti',
-            phaseLabelStreamId: 'pedaling.phase.coarse',
-            activityLabelStreamId: 'pedaling.activity.vastus-lateralis',
-            phaseConfidenceStreamId: 'pedaling.phase.confidence',
-            emgConfidenceStreamId: 'pedaling.emg.confidence',
-            cyclePeriodStreamId: 'pedaling.cycle.period-ms',
-            activeWindowPhaseStart: 0.15,
-            activeWindowPhaseEnd: 0.65,
-            windowPrePaddingMs: 120,
-            windowPostPaddingMs: 120,
-            minCyclePeriodMs: 400,
-            maxCyclePeriodMs: 2_000,
-            axisLockHoldMs: 1_500,
-            phaseConfidenceThreshold: 0.35,
-            required: true,
-            computeWorker: resolveDevPythonComputeWorkerSpec(
-              'packages/plugins-processor-pedaling-emg/python_worker/main.py',
-              {
-                workerName: 'pedaling-emg-worker',
-                requestTimeoutMs: 15_000,
+            labels: {
+              lactate: {
+                streamId: 'lactate.label',
+                sampleFormat: 'f32',
+                units: 'mmol/L',
               },
-            ),
+              power: {
+                streamId: 'power.label',
+                sampleFormat: 'f32',
+                units: 'W',
+              },
+            },
           },
         },
         {

@@ -1,5 +1,5 @@
 import type { DecodedUiSignalFrame, UiStreamDeclaration } from '@sensync2/core';
-import type { StreamBufferStore, StreamWindowData } from './types.ts';
+import type { StreamBufferStore, StreamWindowData, StreamWindowOptions } from './types.ts';
 
 interface StreamRing {
   capacity: number;
@@ -55,7 +55,7 @@ export class TypedArrayRingBufferStore implements StreamBufferStore {
     }
   }
 
-  getVisibleWindow(streamId: string, rangeMs: number, endMs?: number): StreamWindowData {
+  getVisibleWindow(streamId: string, rangeMs: number, endMs?: number, options?: StreamWindowOptions): StreamWindowData {
     const ring = this.rings.get(streamId);
     if (!ring || ring.size === 0) {
       return { x: new Float64Array(0), y: new Float32Array(0), length: 0 };
@@ -67,9 +67,22 @@ export class TypedArrayRingBufferStore implements StreamBufferStore {
     }
     const windowEndMs = endMs ?? latestTime;
     const threshold = windowEndMs - rangeMs;
+    const includeLastSampleBeforeStart = options?.includeLastSampleBeforeStart === true;
+
+    let lastIdxBeforeThreshold: number | null = null;
+    if (includeLastSampleBeforeStart) {
+      for (let i = 0; i < ring.size; i += 1) {
+        const idx = (ring.writeIndex - ring.size + i + ring.capacity) % ring.capacity;
+        if (ring.time[idx]! < threshold) {
+          lastIdxBeforeThreshold = idx;
+          continue;
+        }
+        break;
+      }
+    }
 
     // Сначала считаем размер окна, затем выделяем итоговые массивы.
-    let count = 0;
+    let count = lastIdxBeforeThreshold === null ? 0 : 1;
     for (let i = 0; i < ring.size; i += 1) {
       const idx = (ring.writeIndex - ring.size + i + ring.capacity) % ring.capacity;
       if (ring.time[idx]! >= threshold) count += 1;
@@ -78,6 +91,11 @@ export class TypedArrayRingBufferStore implements StreamBufferStore {
     const x = new Float64Array(count);
     const y = new Float32Array(count);
     let out = 0;
+    if (lastIdxBeforeThreshold !== null) {
+      x[out] = ring.time[lastIdxBeforeThreshold]!;
+      y[out] = ring.value[lastIdxBeforeThreshold]!;
+      out += 1;
+    }
     for (let i = 0; i < ring.size; i += 1) {
       const idx = (ring.writeIndex - ring.size + i + ring.capacity) % ring.capacity;
       const t = ring.time[idx]!;

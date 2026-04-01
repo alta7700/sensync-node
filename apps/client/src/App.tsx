@@ -14,17 +14,19 @@ import type {
   UiCommandEventType,
   UiCommandEventVersion,
   UiControlWhen,
-  UiFormOption,
   UiControlsWidget,
   UiLineChartWidget,
   UiModalForm,
-  UiModalFormNode,
-  UiModalFormSelect,
   UiStatusWidget,
   UiTelemetryWidget,
   UiWidget,
 } from '@sensync2/core';
 import { ElectronBridgeTransport } from './electronTransport.ts';
+import {
+  buildModalInitialValues,
+  buildModalSubmitPayload,
+  resolveControlPayload,
+} from './ui-schema-runtime.ts';
 
 echarts.use([GridComponent, LegendComponent, MarkAreaComponent, TooltipComponent, LineChart, ScatterChart, CanvasRenderer]);
 
@@ -49,6 +51,7 @@ interface ResolvedControlAction {
   commandType: UiCommandEventType | undefined;
   commandVersion: UiCommandEventVersion;
   payload: Record<string, unknown> | undefined;
+  payloadBindings: UiControlAction['payloadBindings'];
   modalForm: UiModalForm | undefined;
   disabled: boolean;
   isLoading: boolean;
@@ -105,6 +108,7 @@ function compileControlAction(control: UiControlAction): CompiledControlResolver
       label: control.label,
       commandType: control.commandType,
       payload: control.payload,
+      payloadBindings: control.payloadBindings,
       modalForm: control.modalForm,
       disabled: control.disabled,
       isLoading: control.isLoading,
@@ -122,6 +126,7 @@ function compileControlAction(control: UiControlAction): CompiledControlResolver
       commandType: hasCommand ? merged.commandType : undefined,
       commandVersion: merged.commandVersion ?? 1,
       payload: merged.payload,
+      payloadBindings: merged.payloadBindings,
       modalForm: merged.modalForm,
       // Если у варианта нет команды (например, состояние "подключение"), кнопку блокируем автоматически.
       disabled: Boolean(merged.disabled) || !hasAction,
@@ -138,106 +143,6 @@ function resolveControlAction(control: UiControlAction, flags: UiFlagsMap): Reso
     compiledControlResolvers.set(control, resolver);
   }
   return resolver(flags);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function visitModalFormFields(nodes: UiModalFormNode[], visitor: (field: Exclude<UiModalFormNode, { kind: 'row' | 'column' }>) => void): void {
-  for (const node of nodes) {
-    if (node.kind === 'row' || node.kind === 'column') {
-      visitModalFormFields(node.children, visitor);
-      continue;
-    }
-    visitor(node);
-  }
-}
-
-function buildModalInitialValues(form: UiModalForm): Record<string, string> {
-  const values: Record<string, string> = {};
-  visitModalFormFields(form.fields, (field) => {
-    if (field.kind === 'textInput') {
-      values[field.fieldId] = field.defaultValue ?? '';
-      return;
-    }
-    if (field.kind === 'numberInput' || field.kind === 'decimalInput') {
-      values[field.fieldId] = field.defaultValue !== undefined ? String(field.defaultValue) : '';
-      return;
-    }
-    if (field.kind === 'fileInput' || field.kind === 'select') {
-      values[field.fieldId] = field.defaultValue ?? '';
-    }
-  });
-  return values;
-}
-
-function findSelectedOption(field: UiModalFormSelect, formOptions: Record<string, UiFormOption[]>, value: string): UiFormOption | undefined {
-  const options = formOptions[field.sourceId] ?? [];
-  return options.find((option) => option.value === value);
-}
-
-function buildModalSubmitPayload(
-  form: UiModalForm,
-  values: Record<string, string>,
-  formOptions: Record<string, UiFormOption[]>,
-): { ok: true; payload: Record<string, unknown> } | { ok: false; error: string } {
-  const fieldValues: Record<string, unknown> = {};
-  const mergedOptionPayloads: Record<string, unknown> = {};
-
-  let validationError: string | null = null;
-
-  visitModalFormFields(form.fields, (field) => {
-    if (validationError) return;
-
-    const rawValue = values[field.fieldId] ?? '';
-    const trimmed = rawValue.trim();
-    if (field.required && trimmed.length === 0) {
-      validationError = `Поле "${field.label}" обязательно`;
-      return;
-    }
-    if (trimmed.length === 0) {
-      return;
-    }
-
-    if (field.kind === 'textInput' || field.kind === 'fileInput') {
-      fieldValues[field.fieldId] = rawValue;
-      return;
-    }
-
-    if (field.kind === 'numberInput' || field.kind === 'decimalInput') {
-      const parsed = Number(rawValue);
-      if (!Number.isFinite(parsed)) {
-        validationError = `Поле "${field.label}" должно быть числом`;
-        return;
-      }
-      fieldValues[field.fieldId] = parsed;
-      return;
-    }
-
-    fieldValues[field.fieldId] = rawValue;
-    if (!field.mergeSelectedOptionPayload) return;
-    const selectedOption = findSelectedOption(field, formOptions, rawValue);
-    if (selectedOption?.payload) {
-      Object.assign(mergedOptionPayloads, selectedOption.payload);
-    }
-  });
-
-  if (validationError) {
-    return { ok: false, error: validationError };
-  }
-
-  const payload = { ...(form.submitPayload ?? {}) };
-  const baseFormData = isRecord(payload.formData) ? { ...payload.formData } : {};
-  const mergedFormData = {
-    ...baseFormData,
-    ...fieldValues,
-    ...mergedOptionPayloads,
-  };
-  if (Object.keys(mergedFormData).length > 0 || payload.formData !== undefined) {
-    payload.formData = mergedFormData;
-  }
-  return { ok: true, payload };
 }
 
 function ControlsWidget(
@@ -261,7 +166,8 @@ function ControlsWidget(
               aria-busy={resolved.isLoading || undefined}
               onClick={() => {
                 if (resolved.commandType) {
-                  void runtimeSingleton.sendCommand(resolved.commandType, resolved.commandVersion, resolved.payload);
+                  const runtimePayload = resolveControlPayload(resolved.payload, resolved.payloadBindings, flags);
+                  void runtimeSingleton.sendCommand(resolved.commandType, resolved.commandVersion, runtimePayload);
                 }
                 if (resolved.modalForm) {
                   onOpenModal(resolved.modalForm);
@@ -527,7 +433,7 @@ function ModalFormDialog(
       );
     }
 
-    const inputType = node.kind === 'textInput' ? 'text' : 'number';
+    const inputType = node.kind === 'textInput' || node.kind === 'timelineTimeInput' ? 'text' : 'number';
     return (
       <label key={node.fieldId} style={{ display: 'grid', gap: 6 }}>
         <span style={{ fontSize: 13, color: 'var(--muted)' }}>{node.label}</span>
@@ -541,7 +447,7 @@ function ModalFormDialog(
           step={node.kind === 'numberInput' || node.kind === 'decimalInput' ? (node.step ?? (node.kind === 'numberInput' ? 1 : 'any')) : undefined}
           min={node.kind === 'numberInput' || node.kind === 'decimalInput' ? node.min : undefined}
           max={node.kind === 'numberInput' || node.kind === 'decimalInput' ? node.max : undefined}
-          placeholder={node.kind === 'textInput' ? node.placeholder : undefined}
+          placeholder={node.kind === 'textInput' || node.kind === 'timelineTimeInput' ? node.placeholder : undefined}
           style={modalInputStyle}
         />
       </label>
@@ -1089,7 +995,9 @@ function buildChartWindows(widget: UiChartWidget, timeWindowMs: number): Map<str
   const windowsByStream = new Map<string, StreamWindowData>();
   for (const series of widget.series) {
     if (!windowsByStream.has(series.streamId)) {
-      const win = runtimeSingleton.getVisibleWindow(series.streamId, timeWindowMs);
+      const win = runtimeSingleton.getVisibleWindow(series.streamId, timeWindowMs, {
+        includeLastSampleBeforeStart: series.type === 'line' && series.interpolation === 'step-after',
+      });
       windowsByStream.set(series.streamId, win);
       // Диагностику монотонности проверяем только для line-серий.
       // Для scatter/label потоков одинаковые timestamp могут быть валидным случаем.
@@ -1188,13 +1096,21 @@ function buildEchartsOption(widget: UiChartWidget, windowsByStream: Map<string, 
     }
 
     if (series.type === 'line') {
+      const linePoints = [...points];
+      if (series.interpolation === 'step-after' && linePoints.length > 0) {
+        const lastPoint = linePoints[linePoints.length - 1];
+        if (lastPoint && lastPoint[0] < xMaxMs) {
+          linePoints.push([xMaxMs, lastPoint[1]]);
+        }
+      }
       const lineSeries: SeriesOption = {
         id,
         name,
         type: 'line',
-        data: points,
+        data: linePoints,
         animation: false,
         showSymbol: false,
+        step: series.interpolation === 'step-after' ? 'end' : undefined,
         lineStyle: {
           color,
           width: series.lineWidth ?? 2,
@@ -1512,7 +1428,7 @@ export function App() {
 
   async function submitModal(): Promise<void> {
     if (!modal) return;
-    const built = buildModalSubmitPayload(modal.form, modal.values, snapshot.formOptions);
+    const built = buildModalSubmitPayload(modal.form, modal.values, snapshot.formOptions, snapshot.clock);
     if (!built.ok) {
       setModalError(built.error);
       return;

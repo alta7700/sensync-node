@@ -42,10 +42,18 @@ const streamsById = new Map<string, UiStreamDeclaration>();
 const formOptionsBySourceId = new Map<string, UiFormOption[]>();
 const derivedFlagRulesByStreamId = new Map<string, CompiledDerivedFlagRule[]>();
 
-interface CompiledDerivedFlagRule {
+interface CompiledDerivedDiscreteFlagRule {
+  kind: 'latest-discrete-signal-value-map';
   flagKey: string;
   valueMap: Map<number, UiFlagValue>;
 }
+
+interface CompiledDerivedNumericFlagRule {
+  kind: 'latest-numeric-signal-value';
+  flagKey: string;
+}
+
+type CompiledDerivedFlagRule = CompiledDerivedDiscreteFlagRule | CompiledDerivedNumericFlagRule;
 
 function emitControl(message: UiControlMessage, clientId?: string) {
   const payload: UiControlOutPayload = { message };
@@ -129,9 +137,20 @@ function compileDerivedFlags(schema: UiSchema): UiFlagSnapshot {
 function registerDerivedFlagRule(rule: UiDerivedFlagRule) {
   switch (rule.kind) {
     case 'latest-discrete-signal-value-map': {
-      const compiledRule: CompiledDerivedFlagRule = {
+      const compiledRule: CompiledDerivedDiscreteFlagRule = {
+        kind: 'latest-discrete-signal-value-map',
         flagKey: rule.flagKey,
         valueMap: parseDiscreteValueMap(rule),
+      };
+      const rules = derivedFlagRulesByStreamId.get(rule.sourceStreamId) ?? [];
+      rules.push(compiledRule);
+      derivedFlagRulesByStreamId.set(rule.sourceStreamId, rules);
+      return;
+    }
+    case 'latest-numeric-signal-value': {
+      const compiledRule: CompiledDerivedNumericFlagRule = {
+        kind: 'latest-numeric-signal-value',
+        flagKey: rule.flagKey,
       };
       const rules = derivedFlagRulesByStreamId.get(rule.sourceStreamId) ?? [];
       rules.push(compiledRule);
@@ -147,17 +166,27 @@ function deriveFlagPatchFromSignal(event: SignalBatchEvent): UiFlagPatch | null 
     return null;
   }
   const lastValue = latestNumericValue(event);
-  if (lastValue === null || !Number.isInteger(lastValue)) {
+  if (lastValue === null) {
     return null;
   }
 
   const patch: UiFlagPatch = {};
   for (const rule of rules) {
-    const nextValue = rule.valueMap.get(lastValue);
-    if (nextValue === undefined || flags[rule.flagKey] === nextValue) {
+    if (rule.kind === 'latest-discrete-signal-value-map') {
+      if (!Number.isInteger(lastValue)) {
+        continue;
+      }
+      const nextValue = rule.valueMap.get(lastValue);
+      if (nextValue === undefined || flags[rule.flagKey] === nextValue) {
+        continue;
+      }
+      patch[rule.flagKey] = nextValue;
       continue;
     }
-    patch[rule.flagKey] = nextValue;
+    if (flags[rule.flagKey] === lastValue) {
+      continue;
+    }
+    patch[rule.flagKey] = lastValue;
   }
 
   return Object.keys(patch).length > 0 ? patch : null;

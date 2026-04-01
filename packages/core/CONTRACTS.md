@@ -245,6 +245,8 @@ Generic label-stream'ы управляются shared command `label.mark.reques
 Правила:
 
 - `atTimeMs`, если задан, трактуется только как `session time`;
+- human-readable строка времени вроде `2:45` не является частью runtime-контракта;
+- UI ingress обязан перевести такой текст в numeric `atTimeMs` до отправки `label.mark.request`;
 - для одного `labelId` время меток должно быть неубывающим;
 - interval/open-close semantics не являются частью shared-команды и задаются уже profile/UI-слоем.
 
@@ -330,12 +332,13 @@ Generic label-stream'ы управляются shared command `label.mark.reques
 - `pages[].widgetIds` — полный набор виджетов страницы.
 - `derivedFlags[]`
   - описывает локальные UI-флаги, которые materialize'ятся не из отдельного runtime fact, а из других уже известных UI-данных;
-  - в `v1` поддерживается только правило `latest-discrete-signal-value-map`;
+  - в `v1` поддерживаются правила `latest-discrete-signal-value-map` и `latest-numeric-signal-value`;
   - `initialValue` попадает в `ui.init.flags` ещё до первого live-batch;
   - `sourceStreamId` должен совпадать с точным `streamId`, prefix-механики здесь нет;
   - `latest-discrete-signal-value-map` предназначен только для integer-like значений (`0/1`, enum-коды и т.п.);
   - `valueMap` обязан использовать только целочисленные ключи;
-  - непрерывные `f32/f64` сравнения по exact value в это правило не входят и требуют отдельного rule-kind.
+  - `latest-numeric-signal-value` сохраняет последнее numeric-значение потока в UI-flag без дополнительного `valueMap`;
+  - непрерывные `f32/f64` сравнения по exact value не входят в `latest-discrete-signal-value-map` и требуют отдельного rule-kind.
 - `pages[].layout`
   - если задан, renderer должен использовать именно это дерево layout;
   - `row` задаёт горизонтальную группу;
@@ -350,6 +353,8 @@ Generic label-stream'ы управляются shared command `label.mark.reques
   - `line` — линейная серия;
   - `scatter` — точечная серия;
   - `interval` — интервальная overlay-серия поверх label-stream.
+  - `line.interpolation = step-after` означает ступенчатую серию по точкам setpoint/change-event;
+  - для `step-after` renderer может подтягивать последнюю точку до начала окна и протягивать последнее значение до правой границы окна.
 
 ## 9. Control Variants
 
@@ -376,6 +381,8 @@ Generic label-stream'ы управляются shared command `label.mark.reques
 - `commandVersion`, если задан, должен отправляться в `UiCommandMessage`.
 - Если `commandVersion` не задан, renderer использует `v=1`.
 - `commandType` в schema теперь не произвольная строка, а union допустимых UI-команд из boundary-registry.
+- `payloadBindings` — это client-side derivation payload до отправки команды;
+- `payloadBindings.kind = number-from-flag` читает numeric UI-flag, применяет optional arithmetic/clamp/round и пишет итог в top-level payload по `payloadKey`.
 
 Поддерживаемые логические операторы:
 
@@ -399,12 +406,15 @@ Generic label-stream'ы управляются shared command `label.mark.reques
 - `uiCommandMessageToRuntimeEventInput(...)` — единственный sanctioned helper для bridge между UI boundary и внутренним `RuntimeEventInput`;
 - `submitEventVersion`, если не задан, трактуется как `1`;
 - поля формы по умолчанию собираются в `payload.formData`, если renderer не вводит более узкое поведение.
+- поле формы может явно отправляться в top-level payload через `submitTarget = payload`;
+- `timelineTimeInput` — это UI-only поле времени относительно текущего `timeline`, которое ingress обязан конвертировать в absolute `session time`.
 
 Поддерживаемые node-виды `v1`:
 
 - `row`
 - `column`
 - `textInput`
+- `timelineTimeInput`
 - `numberInput`
 - `decimalInput`
 - `fileInput`

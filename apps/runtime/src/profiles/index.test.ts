@@ -6,7 +6,7 @@ import { runtimeRepoRoot } from '../launch-profile-boundary.ts';
 import { buildLaunchProfile, LaunchProfiles, resolveLaunchProfile } from './index.ts';
 
 function uiGatewayConfig(
-  profileId: 'fake' | 'fake-hdf5-simulation' | 'veloerg' | 'pedaling-emg-test' | 'pedaling-emg-replay',
+  profileId: 'fake' | 'fake-hdf5-simulation' | 'veloerg' | 'veloerg-replay' | 'pedaling-emg-test' | 'pedaling-emg-replay',
   env: NodeJS.ProcessEnv = process.env,
 ) {
   const profile = buildLaunchProfile(profileId, env);
@@ -98,6 +98,11 @@ describe('launch profiles registry', () => {
     expect(config.schema.pages[0]?.title).toBe('Pedaling EMG test');
   });
 
+  it('в veloerg-replay профиле передает replay schema в ui-gateway', () => {
+    const config = uiGatewayConfig('veloerg-replay');
+    expect(config.schema.pages[0]?.title).toBe('Veloerg replay');
+  });
+
   it('в pedaling-emg-replay профиле передает replay schema в ui-gateway', () => {
     const config = uiGatewayConfig('pedaling-emg-replay');
     expect(config.schema.pages[0]?.title).toBe('Pedaling EMG replay');
@@ -107,7 +112,7 @@ describe('launch profiles registry', () => {
     const profile = buildLaunchProfile('veloerg');
     const processor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
     const dfaProcessor = profile.plugins.find((plugin) => plugin.id === 'dfa-a1-from-rr-processor');
-    const pedalingProcessor = profile.plugins.find((plugin) => plugin.id === 'pedaling-emg-processor');
+    const labelGenerator = profile.plugins.find((plugin) => plugin.id === 'label-generator-adapter');
 
     expect(processor).toBeDefined();
     expect(processor?.config).toMatchObject({
@@ -121,12 +126,20 @@ describe('launch profiles registry', () => {
       rrUnit: 's',
       required: true,
     });
-    expect(pedalingProcessor).toBeDefined();
-    expect(pedalingProcessor?.config).toMatchObject({
-      emgStreamId: 'trigno.avanti',
-      phaseLabelStreamId: 'pedaling.phase.coarse',
-      activityLabelStreamId: 'pedaling.activity.vastus-lateralis',
-      required: true,
+    expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
+    expect(labelGenerator?.config).toMatchObject({
+      labels: {
+        lactate: {
+          streamId: 'lactate.label',
+          sampleFormat: 'f32',
+          units: 'mmol/L',
+        },
+        power: {
+          streamId: 'power.label',
+          sampleFormat: 'f32',
+          units: 'W',
+        },
+      },
     });
   });
 
@@ -136,7 +149,6 @@ describe('launch profiles registry', () => {
     const zephyr = profile.plugins.find((plugin) => plugin.id === 'zephyr-bioharness-3-adapter');
     const hrProcessor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
     const dfaProcessor = profile.plugins.find((plugin) => plugin.id === 'dfa-a1-from-rr-processor');
-    const pedalingProcessor = profile.plugins.find((plugin) => plugin.id === 'pedaling-emg-processor');
 
     expect(profile.timelineReset).toMatchObject({
       enabled: true,
@@ -147,7 +159,6 @@ describe('launch profiles registry', () => {
         'zephyr-bioharness-3-adapter',
         'hr-from-rr-processor',
         'dfa-a1-from-rr-processor',
-        'pedaling-emg-processor',
         'trigno-adapter',
         'hdf5-recorder',
       ],
@@ -174,7 +185,7 @@ describe('launch profiles registry', () => {
     expect(zephyr?.config).toMatchObject({ required: true });
     expect(hrProcessor?.config).toMatchObject({ required: true });
     expect(dfaProcessor?.config).toMatchObject({ required: true });
-    expect(pedalingProcessor?.config).toMatchObject({ required: true });
+    expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
   });
 
   it('в pedaling-emg-test профиле включает Trigno, pedaling processor и raw HDF5 recorder', () => {
@@ -241,6 +252,34 @@ describe('launch profiles registry', () => {
       activityLabelStreamId: 'pedaling.activity.vastus-lateralis',
       required: true,
     });
+  });
+
+  it('в veloerg-replay профиле включает HDF5 replay с выбором файла и только veloerg streamIds', () => {
+    const profile = buildLaunchProfile('veloerg-replay');
+    const simulation = profile.plugins.find((plugin) => plugin.id === 'hdf5-simulation-adapter');
+
+    expect(profile.timelineReset).toBeUndefined();
+    expect(simulation?.config).toMatchObject({
+      adapterId: 'veloerg-replay',
+      allowConnectFilePathOverride: true,
+      streamIds: [
+        'moxy.smo2',
+        'moxy.thb',
+        'zephyr.rr',
+        'zephyr.hr',
+        'zephyr.dfa_a1',
+        'trigno.avanti',
+        'trigno.avanti.gyro.x',
+        'trigno.avanti.gyro.y',
+        'trigno.avanti.gyro.z',
+        'lactate.label',
+        'power.label',
+      ],
+      batchMs: 50,
+      speed: 1,
+    });
+    expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
+    expect(profile.plugins.some((plugin) => plugin.id === 'hdf5-recorder')).toBe(false);
   });
 
   it('в fake-hdf5-simulation профиле применяет env overrides до сборки plugins', () => {

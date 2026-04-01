@@ -10,7 +10,7 @@ import {
 } from '@sensync2/core';
 import { TrignoEventTypes } from '@sensync2/plugins-trigno';
 import plugin from './ui-gateway-plugin.ts';
-import { buildFakeUiSchema, buildVeloergUiSchema } from './profile-schemas.ts';
+import { buildFakeUiSchema, buildVeloergReplayUiSchema, buildVeloergUiSchema } from './profile-schemas.ts';
 
 interface CapturedEvent {
   event: RuntimeEventInput;
@@ -151,6 +151,53 @@ describe('ui-gateway-plugin', () => {
     expect(lastPatch?.patch['interval.active']).toBe(true);
   });
 
+  it('деривит последнее числовое значение потока в numeric flag', async () => {
+    const schema: UiSchema = {
+      version: 1,
+      pages: [],
+      widgets: [],
+      derivedFlags: [
+        {
+          kind: 'latest-numeric-signal-value',
+          flagKey: 'power.current',
+          sourceStreamId: 'power.label',
+          initialValue: null,
+        },
+      ],
+    };
+    const { ctx, emitted } = createTestContext(schema);
+    await plugin.onInit(ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.signalBatch,
+      v: 1,
+      kind: 'data',
+      priority: 'data',
+      payload: {
+        streamId: 'power.label',
+        sampleFormat: 'f32',
+        frameKind: 'label-batch',
+        t0Ms: 500,
+        sampleCount: 1,
+        values: new Float32Array([210]),
+        timestampsMs: new Float64Array([500]),
+      },
+    })), ctx as never);
+
+    const lastPatch = emitted
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<RuntimeEventInput, { type: typeof EventTypes.uiControlOut }> => {
+        return event.type === EventTypes.uiControlOut;
+      })
+      .map((event) => event.payload.message)
+      .filter((message): message is Extract<UiControlMessage, { type: 'ui.flags.patch' }> => {
+        return message.type === 'ui.flags.patch';
+      })
+      .at(-1);
+
+    expect(lastPatch?.patch['power.current']).toBe(210);
+  });
+
   it('на timeline reset commit выпускает ui.timeline.reset и сбрасывает derived flags', async () => {
     const { ctx, emitted } = createTestContext(buildFakeUiSchema());
     await plugin.onInit(ctx as never);
@@ -279,6 +326,7 @@ describe('ui-gateway-plugin', () => {
                     { kind: 'widget', widgetId: 'controls-zephyr', minWidth: 250 },
                   ],
                 },
+                { kind: 'widget', widgetId: 'controls-lactate-power' },
                 { kind: 'widget', widgetId: 'controls-recording' },
               ],
             },
@@ -296,16 +344,16 @@ describe('ui-gateway-plugin', () => {
           kind: 'row',
           gap: 12,
           children: [
-            { kind: 'widget', widgetId: 'chart-pedaling-confidence', minWidth: 420 },
-            { kind: 'widget', widgetId: 'chart-pedaling-cycle-period', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-moxy-smo2', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-moxy-thb', minWidth: 420 },
           ],
         },
         {
           kind: 'row',
           gap: 12,
           children: [
-            { kind: 'widget', widgetId: 'chart-moxy-smo2', minWidth: 420 },
-            { kind: 'widget', widgetId: 'chart-moxy-thb', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
           ],
         },
         {
@@ -389,6 +437,56 @@ describe('ui-gateway-plugin', () => {
       'disconnect-moxy',
     ]);
 
+    const lactatePowerControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-lactate-power' && widget.kind === 'controls';
+    });
+    expect(lactatePowerControlsWidget?.kind).toBe('controls');
+    if (!lactatePowerControlsWidget || lactatePowerControlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-lactate-power');
+    }
+
+    expect(lactatePowerControlsWidget.controls.map((control) => control.id)).toEqual([
+      'mark-lactate',
+      'power-plus-30',
+      'set-power',
+    ]);
+
+    expect(lactatePowerControlsWidget.controls.find((control) => control.id === 'mark-lactate')).toMatchObject({
+      modalForm: {
+        submitEventType: EventTypes.labelMarkRequest,
+        submitPayload: { labelId: 'lactate' },
+        fields: [
+          {
+            kind: 'row',
+            children: [
+              {
+                kind: 'timelineTimeInput',
+                fieldId: 'atTimeMs',
+                submitTarget: 'payload',
+              },
+              {
+                kind: 'decimalInput',
+                fieldId: 'value',
+                submitTarget: 'payload',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(lactatePowerControlsWidget.controls.find((control) => control.id === 'power-plus-30')).toMatchObject({
+      commandType: EventTypes.labelMarkRequest,
+      payload: { labelId: 'power' },
+      payloadBindings: [
+        {
+          kind: 'number-from-flag',
+          payloadKey: 'value',
+          flagKey: 'power.current',
+          add: 30,
+        },
+      ],
+    });
+
     const recordingControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
       return widget.id === 'controls-recording' && widget.kind === 'controls';
     });
@@ -402,12 +500,124 @@ describe('ui-gateway-plugin', () => {
       'stop-recording',
     ]);
 
+    expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-pedaling-confidence');
+    expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-pedaling-cycle-period');
+
     const statusWidget = initMessage.schema.widgets.find((widget) => widget.id === 'status-main');
     expect(statusWidget).toMatchObject({
       kind: 'status',
       flagKeys: expect.arrayContaining([
+        'power.current',
         'recording.local.state',
         'recording.local.filePath',
+      ]),
+    });
+  });
+
+  it('материализует replay controls и графики в veloerg-replay schema', async () => {
+    const { ctx, emitted } = createTestContext(buildVeloergReplayUiSchema());
+    await plugin.onInit(ctx as never);
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.uiClientConnected,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: { clientId: 'client-1' },
+    })), ctx as never);
+
+    const message = extractControlMessage(emitted);
+    expect(message).not.toBeNull();
+    if (!message || message.type !== 'ui.init') {
+      throw new Error('Ожидалось ui.init сообщение');
+    }
+    const initMessage = message as UiInitMessage;
+
+    expect(initMessage.schema.pages[0]?.layout).toEqual({
+      kind: 'column',
+      gap: 12,
+      children: [
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'status-main', minWidth: 320 },
+            { kind: 'widget', widgetId: 'controls-main', minWidth: 520 },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'chart-moxy-smo2', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-moxy-thb', minWidth: 420 },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'chart-zephyr-rr', minWidth: 420 },
+            { kind: 'widget', widgetId: 'chart-zephyr-hr', minWidth: 420 },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'chart-zephyr-dfa-a1', minWidth: 420 },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'telemetry-main' },
+          ],
+        },
+      ],
+    });
+
+    const controlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-main' && widget.kind === 'controls';
+    });
+    expect(controlsWidget?.kind).toBe('controls');
+    if (!controlsWidget || controlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-main');
+    }
+
+    expect(controlsWidget.controls.map((control) => control.id)).toContain('toggle-veloerg-replay');
+    expect(initMessage.schema.derivedFlags).toEqual([
+      {
+        kind: 'latest-numeric-signal-value',
+        flagKey: 'power.current',
+        sourceStreamId: 'power.label',
+        initialValue: null,
+      },
+    ]);
+
+    const statusWidget = initMessage.schema.widgets.find((widget) => widget.id === 'status-main');
+    expect(statusWidget).toMatchObject({
+      kind: 'status',
+      flagKeys: expect.arrayContaining([
+        'simulation.veloerg-replay.speed',
+        'simulation.veloerg-replay.filePath',
+        'power.current',
       ]),
     });
   });

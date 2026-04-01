@@ -16,6 +16,7 @@ Runtime слой для renderer/UI.
 - `ui.warning` materialize'ится отдельно от `ui.error`, но попадает в тот же список уведомлений.
 - `ui.timeline.reset` очищает только timeline-local буферы, но не теряет schema и stream registry.
 - `getVisibleWindow(...)` возвращает X уже относительно `clock.timelineStartSessionMs`, а не относительно глобального старта runtime-сессии.
+- `getVisibleWindow(...)` теперь может по запросу включать последнюю точку до начала окна, чтобы ступенчатые setpoint-графики не рвались на левом краю.
 
 ## Взаимодействие
 

@@ -29,6 +29,7 @@ Node runtime и хост plugin worker'ов.
   - `fake`;
   - `fake-hdf5-simulation`;
   - `veloerg`;
+  - `veloerg-replay`;
   - `pedaling-emg-test`;
   - `pedaling-emg-replay`.
 - Профиль выбирается через `SENSYNC2_PROFILE`; если значение не задано, runtime поднимает `fake`.
@@ -37,9 +38,10 @@ Node runtime и хост plugin worker'ов.
 - Профиль `fake-hdf5-simulation` требует `SENSYNC2_HDF5_SIMULATION_FILE`; путь валидируется до старта worker'ов.
 - Профиль `pedaling-emg-test` поднимает только `Trigno EMG + Gyroscope`, `pedaling-emg-processor`, recorder и UI для отдельного цикла записи сырых данных.
 - Профиль `pedaling-emg-replay` поднимает HDF5 replay того же сырого `Trigno EMG + Gyroscope` набора; файл выбирается через `adapter.connect.request.formData.filePath`, а не через env.
-- Профиль `veloerg` поднимает `ant-plus-adapter`, `zephyr-bioharness-3-adapter`, generic `hr-from-rr-processor`, `dfa-a1-from-rr-processor`, `pedaling-emg-processor`, `trigno-adapter` и `hdf5-recorder` в real mode по умолчанию.
+- Профиль `veloerg-replay` поднимает HDF5 replay записей `veloerg`; файл тоже выбирается через `adapter.connect.request.formData.filePath`, а не через env.
+- Профиль `veloerg` поднимает `ant-plus-adapter`, `zephyr-bioharness-3-adapter`, generic `hr-from-rr-processor`, `dfa-a1-from-rr-processor`, generic `label-generator-adapter`, `trigno-adapter` и `hdf5-recorder` в real mode по умолчанию.
 - `hr-from-rr-processor` и `dfa-a1-from-rr-processor` не знают про Zephyr как устройство: профиль только связывает `zephyr.rr` как вход и derived output streams.
-- `pedaling-emg-processor` тоже остаётся device-agnostic по коду: профиль `veloerg` только связывает raw `Trigno EMG + gyro` со stream'ами `pedaling.*` и dev-boundary Python worker'а.
+- `pedaling-emg-processor` пока исключён именно из `veloerg`, потому что при live-нагрузке он переполнял mailbox; сам пакет остаётся для специализированных профилей `pedaling-emg-test` и `pedaling-emg-replay`.
 - Для Trigno в `veloerg` runtime явно задаёт `BACKWARDS COMPATIBILITY = OFF` и `UPSAMPLE = OFF`, чтобы live `EMG` не уходил в legacy-совместимую частотную схему SDK ports.
 - В `veloerg` timeline reset теперь recorder-driven:
   - requester только `hdf5-recorder`;
@@ -53,6 +55,6 @@ Node runtime и хост plugin worker'ов.
 ## Взаимодействие
 
 - Использует `@sensync2/core`, `@sensync2/plugin-sdk`, `@sensync2/plugins-ant-plus`, `@sensync2/plugins-ble`, `@sensync2/plugins-trigno`, `@sensync2/plugins-fake`, `@sensync2/plugins-hdf5`, `@sensync2/plugins-labels`, `@sensync2/plugins-processor-hr-from-rr`, `@sensync2/plugins-processor-dfa-a1`, `@sensync2/plugins-processor-pedaling-emg`, `@sensync2/plugins-ui-gateway`.
-- В `fake`-профиле поднимает recorder, в `fake-hdf5-simulation` — HDF5-источник с fake-каналами, в `pedaling-emg-test` — live `Trigno EMG + Gyroscope` с записью raw-каналов, в `pedaling-emg-replay` — replay тех же raw-каналов из HDF5, а в `veloerg` — composite-сценарий ANT+/Moxy, BLE/Zephyr, derived HR-from-RR и TCP/Trigno.
+- В `fake`-профиле поднимает recorder, в `fake-hdf5-simulation` — HDF5-источник с fake-каналами, в `pedaling-emg-test` — live `Trigno EMG + Gyroscope` с записью raw-каналов, в `pedaling-emg-replay` — replay тех же raw-каналов из HDF5, в `veloerg-replay` — replay composite `veloerg` записи, а в `veloerg` — live-сценарий ANT+/Moxy, BLE/Zephyr, derived HR-from-RR, sparse `lactate/power` и TCP/Trigno.
 - Для live записи `veloerg` пишет HDF5 в repo-relative `recordings/veloerg`.
 - Может стартовать отдельно для отладки или через `apps/desktop`.

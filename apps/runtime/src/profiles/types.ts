@@ -4,6 +4,7 @@ export const LaunchProfiles = [
   'fake',
   'fake-hdf5-simulation',
   'veloerg',
+  'veloerg-replay',
   'pedaling-emg-test',
   'pedaling-emg-replay',
 ] as const;

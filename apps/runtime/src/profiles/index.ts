@@ -2,6 +2,7 @@ import { fakeProfile } from './fake.ts';
 import { fakeHdf5SimulationProfile } from './fake-hdf5-simulation.ts';
 import { pedalingEmgReplayProfile } from './pedaling-emg-replay.ts';
 import { pedalingEmgTestProfile } from './pedaling-emg-test.ts';
+import { veloergReplayProfile } from './veloerg-replay.ts';
 import { veloergProfile } from './veloerg.ts';
 import { LaunchProfiles, type LaunchProfile, type LaunchProfileDefinition, type ResolvedLaunchProfile } from './types.ts';
 
@@ -11,6 +12,7 @@ const LaunchProfileRegistry: Record<LaunchProfile, LaunchProfileDefinition> = {
   fake: fakeProfile,
   'fake-hdf5-simulation': fakeHdf5SimulationProfile,
   veloerg: veloergProfile,
+  'veloerg-replay': veloergReplayProfile,
   'pedaling-emg-test': pedalingEmgTestProfile,
   'pedaling-emg-replay': pedalingEmgReplayProfile,
 };

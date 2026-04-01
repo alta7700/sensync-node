@@ -13,6 +13,7 @@
 - Здесь же теперь живут exact union `UiCommandMessage`, расширяемая карта `UiCommandBoundaryEventMap` и допустимые `commandType/submitEventType` для schema-driven UI.
 - Здесь же теперь живёт declarative layout-модель `UiPage.layout`, чтобы renderer не угадывал сложную раскладку по `widgetRows`.
 - Здесь же теперь живут declarative `UiSchema.derivedFlags`, чтобы UI мог выводить локальные флаги из live-потоков без отдельного runtime fact.
+- Здесь же теперь живут client-side `payloadBindings`, `timelineTimeInput` и `submitTarget`, чтобы schema-driven UI мог собирать top-level payload без ad-hoc логики в профилях.
 - Здесь же теперь живут helper'ы `createUiCommandMessage(...)` и `uiCommandMessageToRuntimeEventInput(...)`, чтобы bridge-cast не дублировался по runtime и client-runtime.
 
 ## Как работает

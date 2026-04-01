@@ -15,6 +15,7 @@ React renderer для `sensync2`.
 - Внутри renderer создаётся `ClientRuntime`, который принимает control-сообщения и binary batches через Electron bridge.
 - React хранит layout и подписки, а потоковые данные читает из `ClientRuntime`, а не из component state.
 - Явная раскладка страницы теперь приходит из `UiPage.layout` (`row/column/widget`), а `widgetRows` используется только как упрощённый fallback.
+- Renderer также конвертирует timeline-relative UI-ввод вроде `2:45` в абсолютный `session time` до отправки shared-команд в runtime.
 
 ## Взаимодействие
 

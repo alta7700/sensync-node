@@ -20,7 +20,7 @@
 - `shared-event-contracts.ts` — shared runtime-контракты, которые знает вся система.
 - `ui-command-boundary.ts` — boundary guards для UI-команд до попадания в шину и расширяемая карта `UiCommandBoundaryEventMap` для shared/plugin-specific UI-команд, включая `label.mark.request`.
 - `plugin.ts` — manifest, subscriptions, telemetry и plugin snapshot.
-- `ui.ts` — schema-driven UI модель, declarative layout `row/column/widget`, control rules, modal forms, dynamic form options, stream declarations, `derivedFlags` и helper'ы `createUiCommandMessage(...)` / `uiCommandMessageToRuntimeEventInput(...)`.
+- `ui.ts` — schema-driven UI модель, declarative layout `row/column/widget`, control rules, modal forms, dynamic form options, stream declarations, `derivedFlags`, `payloadBindings`, timeline-relative time inputs и helper'ы `createUiCommandMessage(...)` / `uiCommandMessageToRuntimeEventInput(...)`.
 - `ui-wire.ts` — бинарный формат батчей для UI.
 - `ui-command-helpers.test.ts` — точечный тест на bridge между UI-командой и внутренним runtime-event input.
 - `worker-protocol.ts` — протокол сообщений между main runtime и plugin worker'ом.

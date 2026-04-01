@@ -14,6 +14,7 @@ import type {
   ClientRuntimeStateSnapshot,
   ClientTransport,
   StreamBufferStore,
+  StreamWindowOptions,
   StreamWindowData,
 } from './types.ts';
 
@@ -212,8 +213,8 @@ export class ClientRuntime {
     return snapshot;
   }
 
-  getVisibleWindow(streamId: string, rangeMs: number): StreamWindowData {
-    const window = this.bufferStore.getVisibleWindow(streamId, rangeMs, this.latestSessionMs);
+  getVisibleWindow(streamId: string, rangeMs: number, options?: StreamWindowOptions): StreamWindowData {
+    const window = this.bufferStore.getVisibleWindow(streamId, rangeMs, this.latestSessionMs, options);
     if (!this.clock || window.length === 0) {
       return window;
     }

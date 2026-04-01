@@ -23,8 +23,11 @@ UI gateway plugin.
 - В `veloerg` схема теперь composite:
   - отдельный control-блок Trigno с modal form `host + sensorSlot`;
   - явный layout с левой колонкой control-виджетов и отдельной правой панелью статуса;
-  - live-графики `EMG` и `Gyroscope`;
+  - отдельный control-блок для `lactate` и `power`;
+  - raw-графики `EMG` и `Gyroscope` без pedaling-derived overlays;
+  - sparse-графики `Lactate` и ступенчатый `Power`;
   - рядом остаются Moxy (`SmO2`, `tHb`) и Zephyr (`RR`).
+- В `veloerg-replay` схема использует те же графики `veloerg`, но вместо live transport/recording controls даёт один replay-control блок для выбора HDF5, pause/resume и смены скорости.
 - `ui.telemetry` теперь несёт не только runtime queue snapshot, но и latest plugin metrics, например качество ANT+ канала и BLE/Zephyr transport.
 
 ## Взаимодействие

@@ -4,5 +4,6 @@ export {
   buildFakeHdf5SimulationUiSchema,
   buildPedalingEmgReplayUiSchema,
   buildPedalingEmgTestUiSchema,
+  buildVeloergReplayUiSchema,
   buildVeloergUiSchema,
 } from './profile-schemas.ts';

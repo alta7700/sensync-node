@@ -23,6 +23,10 @@ export interface StreamWindowData {
   length: number;
 }
 
+export interface StreamWindowOptions {
+  includeLastSampleBeforeStart?: boolean;
+}
+
 export interface ClientRuntimeNotification {
   id: string;
   level: 'warning' | 'error';
@@ -47,7 +51,7 @@ export interface ClientRuntimeStateSnapshot {
 export interface StreamBufferStore {
   ensureStream(stream: UiStreamDeclaration): void;
   appendFrame(stream: UiStreamDeclaration, frame: DecodedUiSignalFrame): void;
-  getVisibleWindow(streamId: string, rangeMs: number, endMs?: number): StreamWindowData;
+  getVisibleWindow(streamId: string, rangeMs: number, endMs?: number, options?: StreamWindowOptions): StreamWindowData;
   getLatestTime(streamId: string): number | null;
   clear(): void;
 }
