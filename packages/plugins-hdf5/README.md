@@ -16,6 +16,7 @@
 - `hdf5-simulation-adapter.ts` лениво читает те же datasets с помощью `h5wasm.slice()` и формирует новые runtime-batch по окну `batchMs`.
 - `hdf5-simulation-adapter.ts` может ограничивать воспроизведение только выбранными `streamIds`, которые пришли в plugin config.
 - `hdf5-simulation-adapter.ts` может работать и без заранее заданного `filePath`, если в config включён `allowConnectFilePathOverride`; в таком режиме путь приходит через `adapter.connect.request.formData.filePath`.
+- `hdf5-simulation-adapter.ts` не переписывает timestamps из datasets ради replay UI; вместо этого он пробрасывает `recordingStartSessionMs` из root attrs в `simulation.state.changed`.
 - File-boundary для симуляции вынесен в `src/hdf5-simulation-boundary.ts`, чтобы адаптер не смешивал runtime-state machine и разбор внешнего HDF5.
 - Внутренний тик симуляции зарегистрирован рядом в `src/event-contracts.ts`.
 - Оба плагина используют один и тот же HDF5 контракт, описанный отдельно.
@@ -27,6 +28,7 @@
 - Recorder подключается к live-источникам, а simulation-плагин работает как отдельный data-source profile.
 - В live-profile `veloerg` recorder сам инициирует `timeline reset` на start/stop записи; UI больше не считается requester'ом этого reset-flow.
 - В replay-профилях simulation boundary принимает путь к HDF5 либо из env/profile config, либо из UI `connect`-формы, но дальше адаптер работает уже только с нормализованным `SimulationSessionState`.
+- Если replay-файл был записан не с начала runtime-сессии, UI может всё равно начать график с `00:00`, потому что origin берётся из `recordingStartSessionMs`, а не из первого sample.
 
 Дополнительно:
 

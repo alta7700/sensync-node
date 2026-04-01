@@ -19,6 +19,7 @@ UI gateway plugin.
 - Shared fact `command.rejected` materialize'ится в `ui.warning`, чтобы мягкие отказы UI-команд не выглядели как немой no-op.
 - Для fake interval control `interval.active` больше не приходит отдельным runtime fact: `ui-gateway` materialize'ит его по declarative `schema.derivedFlags`, а не по жёсткому special-case в коде.
 - Во время timeline reset `ui-gateway` выпускает `ui.timeline.reset`, пересобирает derived flags в initial defaults и не рвёт schema/stream registry.
+- Для HDF5 replay `ui-gateway` также умеет локально сдвигать UI timeline origin по `simulation.state.changed.recordingStartSessionMs`, не переписывая stream timestamps.
 - Concrete `UiSchema` теперь строится вне плагина в runtime launch profile и передаётся в `ui-gateway` уже готовой.
 - В `veloerg` схема теперь composite:
   - отдельный control-блок Trigno с modal form `host + sensorSlot`;

@@ -84,6 +84,7 @@ function makeSimulationStateEvent(
   speed: number,
   batchMs: number,
   filePath: string,
+  recordingStartSessionMs?: number,
   message?: string,
   requestId?: string,
 ) {
@@ -93,6 +94,7 @@ function makeSimulationStateEvent(
     speed,
     batchMs,
     filePath,
+    ...(recordingStartSessionMs !== undefined ? { recordingStartSessionMs } : {}),
   };
   if (message !== undefined) payload.message = message;
   if (requestId !== undefined) payload.requestId = requestId;
@@ -108,11 +110,29 @@ function makeSimulationStateEvent(
 async function emitRuntimeState(ctx: PluginContext, nextState: SimulationRuntimeState, message?: string, requestId?: string): Promise<void> {
   runtimeState = nextState;
   await ctx.emit(makeAdapterStateEvent(config.adapterId, nextState, message, requestId));
-  await ctx.emit(makeSimulationStateEvent(config.adapterId, nextState, config.speed, config.batchMs, config.filePath, message, requestId));
+  await ctx.emit(makeSimulationStateEvent(
+    config.adapterId,
+    nextState,
+    config.speed,
+    config.batchMs,
+    config.filePath,
+    session?.recordingStartSessionMs,
+    message,
+    requestId,
+  ));
 }
 
 async function emitSimulationSnapshot(ctx: PluginContext, message?: string, requestId?: string): Promise<void> {
-  await ctx.emit(makeSimulationStateEvent(config.adapterId, runtimeState, config.speed, config.batchMs, config.filePath, message, requestId));
+  await ctx.emit(makeSimulationStateEvent(
+    config.adapterId,
+    runtimeState,
+    config.speed,
+    config.batchMs,
+    config.filePath,
+    session?.recordingStartSessionMs,
+    message,
+    requestId,
+  ));
 }
 
 function stopTimer(ctx: PluginContext): void {

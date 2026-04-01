@@ -190,6 +190,7 @@ export interface SimulationStateChangedPayload {
   speed: number;
   batchMs: number;
   filePath: string;
+  recordingStartSessionMs?: number;
   requestId?: string;
   message?: string;
 }

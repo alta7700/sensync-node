@@ -41,6 +41,7 @@ let timelineStartSessionMs = 0;
 const streamsById = new Map<string, UiStreamDeclaration>();
 const formOptionsBySourceId = new Map<string, UiFormOption[]>();
 const derivedFlagRulesByStreamId = new Map<string, CompiledDerivedFlagRule[]>();
+const simulationStatesByAdapterId = new Map<string, SimulationStateChangedPayload['state']>();
 
 interface CompiledDerivedDiscreteFlagRule {
   kind: 'latest-discrete-signal-value-map';
@@ -83,6 +84,14 @@ function patchFlags(patch: UiFlagPatch): { patch: UiFlagPatch; version: number }
   flags = { ...flags, ...patch };
   flagVersion += 1;
   return { patch, version: flagVersion };
+}
+
+function isReplayConnectTransition(
+  previousState: SimulationStateChangedPayload['state'] | undefined,
+  nextState: SimulationStateChangedPayload['state'],
+): boolean {
+  if (nextState !== 'connected') return false;
+  return previousState !== 'connected' && previousState !== 'paused';
 }
 
 function latestNumericValue(event: SignalBatchEvent): number | null {
@@ -282,6 +291,7 @@ export default definePlugin({
     flags = compileDerivedFlags(currentSchema);
     currentTimelineId = ctx.currentTimelineId();
     timelineStartSessionMs = ctx.timelineStartSessionMs();
+    simulationStatesByAdapterId.clear();
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.uiClientConnected) {
@@ -398,10 +408,29 @@ export default definePlugin({
 
     if (event.type === EventTypes.simulationStateChanged) {
       const payload: SimulationStateChangedPayload = event.payload;
+      const previousState = simulationStatesByAdapterId.get(payload.adapterId);
+      simulationStatesByAdapterId.set(payload.adapterId, payload.state);
+
+      if (
+        payload.recordingStartSessionMs !== undefined
+        && isReplayConnectTransition(previousState, payload.state)
+        && timelineStartSessionMs !== payload.recordingStartSessionMs
+      ) {
+        // Replay сохраняет исходный session time файла, поэтому UI сдвигает только origin timeline.
+        timelineStartSessionMs = payload.recordingStartSessionMs;
+        await ctx.emit(emitControl({
+          type: 'ui.timeline.reset',
+          timelineId: currentTimelineId,
+          timelineStartSessionMs,
+          clearBuffers: true,
+        }));
+      }
+
       const { patch, version } = patchFlags({
         [`simulation.${payload.adapterId}.speed`]: payload.speed,
         [`simulation.${payload.adapterId}.batchMs`]: payload.batchMs,
         [`simulation.${payload.adapterId}.filePath`]: payload.filePath,
+        [`simulation.${payload.adapterId}.recordingStartSessionMs`]: payload.recordingStartSessionMs ?? null,
         [`simulation.${payload.adapterId}.message`]: payload.message ?? null,
       });
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
@@ -481,5 +510,6 @@ export default definePlugin({
     currentTimelineId = 'timeline-initializing';
     timelineStartSessionMs = 0;
     derivedFlagRulesByStreamId.clear();
+    simulationStatesByAdapterId.clear();
   },
 });

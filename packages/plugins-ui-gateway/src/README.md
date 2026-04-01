@@ -15,7 +15,8 @@
   - materialize'ит dynamic options для локальных форм;
   - переводит shared `command.rejected` в `ui.warning`;
   - кодирует `signal.batch` в binary UI frames;
-  - отправляет `ui.init`, patch-сообщения и telemetry.
+  - отправляет `ui.init`, patch-сообщения и telemetry;
+  - для replay умеет локально делать `ui.timeline.reset` по `recordingStartSessionMs`, не трогая данные потока.
 - `profile-schemas.ts`:
   - хранит concrete demo-схемы `fake`, `fake-hdf5-simulation`, `veloerg`, `veloerg-replay` и `pedaling-emg-*`;
   - экспортирует schema builders, которые вызывают runtime profile-модули.

@@ -246,6 +246,66 @@ describe('ui-gateway-plugin', () => {
     });
   });
 
+  it('при первом connected replay-состоянии с recordingStartSessionMs сдвигает только UI timeline', async () => {
+    const { ctx, emitted } = createTestContext(buildVeloergReplayUiSchema());
+    await plugin.onInit(ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.simulationStateChanged,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: {
+        adapterId: 'veloerg-replay',
+        state: 'connecting',
+        speed: 1,
+        batchMs: 50,
+        filePath: '/tmp/replay.h5',
+        recordingStartSessionMs: 12_345,
+      },
+    })), ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.simulationStateChanged,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: {
+        adapterId: 'veloerg-replay',
+        state: 'connected',
+        speed: 1,
+        batchMs: 50,
+        filePath: '/tmp/replay.h5',
+        recordingStartSessionMs: 12_345,
+      },
+    })), ctx as never);
+
+    const messages = emitted
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<RuntimeEventInput, { type: typeof EventTypes.uiControlOut }> => {
+        return event.type === EventTypes.uiControlOut;
+      })
+      .map((event) => event.payload.message);
+
+    expect(messages).toContainEqual({
+      type: 'ui.timeline.reset',
+      timelineId: 'timeline-test',
+      timelineStartSessionMs: 12_345,
+      clearBuffers: true,
+    });
+    expect(messages).toContainEqual({
+      type: 'ui.flags.patch',
+      patch: {
+        'simulation.veloerg-replay.speed': 1,
+        'simulation.veloerg-replay.batchMs': 50,
+        'simulation.veloerg-replay.filePath': '/tmp/replay.h5',
+        'simulation.veloerg-replay.recordingStartSessionMs': 12_345,
+        'simulation.veloerg-replay.message': null,
+      },
+      version: expect.any(Number),
+    });
+  });
+
   it('materializeит command.rejected в ui.warning', async () => {
     const { ctx, emitted } = createTestContext(buildFakeUiSchema());
     await plugin.onInit(ctx as never);

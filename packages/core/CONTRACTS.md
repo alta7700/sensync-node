@@ -191,6 +191,7 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
   - при активной симуляции должен пересобрать внутренний timer cadence.
 - `simulation.state.changed`
   - несёт `adapterId`, `state`, `speed`, `batchMs` и `filePath`;
+  - для HDF5 replay может дополнительно нести `recordingStartSessionMs` из file metadata;
   - нужен для UI и отладки профиля симуляции.
 
 Ограничения `v1`:
@@ -200,6 +201,8 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - `connect` всегда начинает чтение файла с начала;
 - `disconnect` сбрасывает курсоры;
 - `seek` и `loop` не реализованы.
+- HDF5 replay не должен переписывать `signal.batch` timestamps только ради UI;
+  - display-origin `00:00` должен строиться отдельно по `recordingStartSessionMs`, а не за счёт мутации данных потока.
 
 ## 5.1 Adapter Scan Events
 

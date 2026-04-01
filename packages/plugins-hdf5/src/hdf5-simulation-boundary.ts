@@ -46,6 +46,7 @@ export interface SimulationSessionState {
   filePath: string;
   channels: ChannelReaderState[];
   missingStreamIds: string[];
+  recordingStartSessionMs: number;
   dataStartMs: number;
   dataEndMs: number;
   currentWindowStartMs: number;
@@ -173,6 +174,16 @@ function readOptionalNumberAttribute(group: H5Group, name: string): number | und
   const value = attr.json_value;
   if (typeof value !== 'number') {
     throw new Error(`Attr ${group.path}/${name} должен быть number`);
+  }
+  return value;
+}
+
+function readOptionalFileNumberAttribute(file: H5File, name: string): number | undefined {
+  const attr = file.attrs[name];
+  if (!attr) return undefined;
+  const value = attr.json_value;
+  if (typeof value !== 'number') {
+    throw new Error(`Attr ${file.path}/${name} должен быть number`);
   }
   return value;
 }
@@ -502,11 +513,17 @@ export function loadHdf5SimulationSession(
       throw new Error(`В файле ${filePath} не найдено ни одного непустого потока`);
     }
 
+    const recordedStartMs = readOptionalFileNumberAttribute(file, 'recordingStartSessionMs');
+    const recordingStartSessionMs = recordedStartMs !== undefined && recordedStartMs <= globalStartMs
+      ? recordedStartMs
+      : globalStartMs;
+
     return {
       file,
       filePath,
       channels,
       missingStreamIds,
+      recordingStartSessionMs,
       dataStartMs: globalStartMs,
       dataEndMs: globalEndMs,
       currentWindowStartMs: globalStartMs,

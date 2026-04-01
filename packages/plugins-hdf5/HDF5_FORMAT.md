@@ -79,3 +79,6 @@ Recorder сейчас пишет как минимум:
 - в один цикл симуляции каждый поток может отдать максимум один `signal.batch`;
 - `uniform-signal-batch` восстанавливается только если в attrs есть `sampleRateHz`;
 - если `frameKind = uniform-signal-batch`, но `sampleRateHz` отсутствует, адаптер имеет право деградировать поток до `irregular-signal-batch` с explicit `timestampsMs`.
+- `signal.batch` timestamps из datasets не должны переписываться только ради replay UI.
+- Если в корневых attrs есть `recordingStartSessionMs`, replay-adapter должен пробросить его наружу как metadata для display-origin timeline в UI.
+- Если `recordingStartSessionMs` отсутствует или оказывается позже первого sample, replay должен fallback'нуться к `dataStartMs` файла.

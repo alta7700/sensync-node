@@ -18,6 +18,7 @@ async function createFixtureFile(): Promise<string> {
   await h5wasm.ready;
   const file = new h5wasm.File(filePath, 'w', { track_order: true });
   try {
+    createAttribute(file, 'recordingStartSessionMs', 1234);
     const channels = file.create_group('channels', true);
     const group = channels.create_group('trigno.avanti', true);
     createAttribute(group, 'streamId', 'trigno.avanti');
@@ -28,7 +29,7 @@ async function createFixtureFile(): Promise<string> {
 
     group.create_dataset({
       name: 'timestamps',
-      data: new Float64Array([0, 1, 2, 3]),
+      data: new Float64Array([1234, 1235, 1236, 1237]),
       shape: [4],
       dtype: '<d',
     });
@@ -115,8 +116,12 @@ describe('hdf5-simulation-adapter', () => {
 
     const states = emitted
       .filter((event) => event.type === EventTypes.simulationStateChanged)
-      .map((event) => event.payload.state);
-    expect(states).toContain('connecting');
-    expect(states).toContain('connected');
+      .map((event) => event.payload);
+    expect(states.map((payload) => payload.state)).toContain('connecting');
+    expect(states.map((payload) => payload.state)).toContain('connected');
+    expect(states.at(-1)).toMatchObject({
+      state: 'connected',
+      recordingStartSessionMs: 1234,
+    });
   });
 });

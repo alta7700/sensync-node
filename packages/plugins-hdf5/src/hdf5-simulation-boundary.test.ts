@@ -21,20 +21,21 @@ async function createFixtureFile(): Promise<string> {
   await h5wasm.ready;
   const file = new h5wasm.File(filePath, 'w', { track_order: true });
   try {
+    createAttribute(file, 'recordingStartSessionMs', 5);
     const channels = file.create_group('channels', true);
     const group = channels.create_group('fake.a1', true);
     createAttribute(group, 'streamId', 'fake.a1');
     createAttribute(group, 'sampleFormat', 'f32');
     createAttribute(group, 'frameKind', 'uniform-signal-batch');
     createAttribute(group, 'sampleRateHz', 100);
-    createAttribute(group, 'units', 'mV');
+      createAttribute(group, 'units', 'mV');
 
-    group.create_dataset({
-      name: 'timestamps',
-      data: new Float64Array([0, 10, 20, 30]),
-      shape: [4],
-      dtype: '<d',
-    });
+      group.create_dataset({
+        name: 'timestamps',
+        data: new Float64Array([10, 20, 30, 40]),
+        shape: [4],
+        dtype: '<d',
+      });
     group.create_dataset({
       name: 'values',
       data: new Float32Array([1, 2, 3, 4]),
@@ -73,7 +74,8 @@ describe('hdf5-simulation-boundary', () => {
     const session = loadHdf5SimulationSession(filePath, ['fake.a1'], config.readChunkSamples);
     try {
       expect(session.channels).toHaveLength(1);
-      const firstEvent = readSimulationWindowForChannel(session.channels[0]!, 25);
+      expect(session.recordingStartSessionMs).toBe(5);
+      const firstEvent = readSimulationWindowForChannel(session.channels[0]!, 35);
       expect(firstEvent).not.toBeNull();
       expect(firstEvent?.payload.streamId).toBe('fake.a1');
       expect(firstEvent?.payload.sampleCount).toBe(3);
@@ -96,5 +98,44 @@ describe('hdf5-simulation-boundary', () => {
       filePath: '',
       streamIds: ['trigno.avanti'],
     });
+  });
+
+  it('если recordingStartSessionMs отсутствует или позже первого sample, использует dataStartMs', async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'sensync2-hdf5-boundary-fallback-'));
+    const filePath = path.join(tempDir, 'fixture.h5');
+
+    await h5wasm.ready;
+    const file = new h5wasm.File(filePath, 'w', { track_order: true });
+    try {
+      createAttribute(file, 'recordingStartSessionMs', 50);
+      const channels = file.create_group('channels', true);
+      const group = channels.create_group('fake.a1', true);
+      createAttribute(group, 'streamId', 'fake.a1');
+      createAttribute(group, 'sampleFormat', 'f32');
+      createAttribute(group, 'frameKind', 'uniform-signal-batch');
+      createAttribute(group, 'sampleRateHz', 100);
+
+      group.create_dataset({
+        name: 'timestamps',
+        data: new Float64Array([10, 20, 30]),
+        shape: [3],
+        dtype: '<d',
+      });
+      group.create_dataset({
+        name: 'values',
+        data: new Float32Array([1, 2, 3]),
+        shape: [3],
+        dtype: '<f',
+      });
+    } finally {
+      file.close();
+    }
+
+    const session = loadHdf5SimulationSession(filePath, ['fake.a1'], 2);
+    try {
+      expect(session.recordingStartSessionMs).toBe(10);
+    } finally {
+      session.file.close();
+    }
   });
 });
