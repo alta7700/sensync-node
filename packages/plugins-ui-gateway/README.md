@@ -30,6 +30,7 @@ UI gateway plugin.
   - raw-графики `EMG` и `Gyroscope` без pedaling-derived overlays;
   - sparse-графики `Lactate` и ступенчатый `Power`;
   - рядом остаются Moxy (`SmO2`, `tHb`) и Zephyr (`RR`).
+- ANT+ блок уже разбит на профильный connect flow: `muscle-oxygen` и `train.red` используют один raw decode и те же streamId, но различаются на уровне scan/connect entry point и UI-подписи.
 - В `veloerg-replay` схема использует те же графики `veloerg`, но вместо live transport/recording controls даёт один replay-control блок для выбора HDF5, pause/resume и смены скорости.
 - В `veloerg-viewer` и `pedaling-emg-viewer` схема использует те же графики соответствующих replay/live профилей, но переводит их в history-режим для интерактивного pan/zoom без simulation cadence.
 - `ui.telemetry` теперь несёт не только runtime queue snapshot, но и latest plugin metrics, например качество ANT+ канала и BLE/Zephyr transport.

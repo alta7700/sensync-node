@@ -396,26 +396,26 @@ function makeViewerControlsWidget(adapterId: string, title: string, modalForm: U
   };
 }
 
-function makeMoxyScanPayload(adapterId: string): Record<string, unknown> {
+function makeMoxyScanPayload(adapterId: string, profile: 'muscle-oxygen' | 'train-red' = 'muscle-oxygen'): Record<string, unknown> {
   return {
     adapterId,
     timeoutMs: 5_000,
     formData: {
-      profile: 'muscle-oxygen',
+      profile,
     },
   };
 }
 
-function makeMoxyConnectModalForm(adapterId: string): UiModalForm {
+function makeMoxyConnectModalForm(adapterId: string, profile: 'muscle-oxygen' | 'train-red' = 'muscle-oxygen', title = 'Выбор Moxy'): UiModalForm {
   return {
-    id: `connect-moxy-${adapterId}`,
-    title: 'Выбор Moxy',
+    id: `connect-${profile}-${adapterId}`,
+    title,
     submitLabel: 'Подключить',
     submitEventType: EventTypes.adapterConnectRequest,
     submitPayload: {
       adapterId,
       formData: {
-        profile: 'muscle-oxygen',
+        profile,
       },
     },
     fields: [
@@ -425,7 +425,9 @@ function makeMoxyConnectModalForm(adapterId: string): UiModalForm {
         label: 'Устройство',
         required: true,
         sourceId: scanCandidatesSourceId(adapterId),
-        placeholder: 'Выберите Moxy из результатов scan',
+        placeholder: profile === 'train-red'
+          ? 'Выберите train.red из результатов scan'
+          : 'Выберите Moxy из результатов scan',
         mergeSelectedOptionPayload: true,
       },
     ],
@@ -1343,9 +1345,9 @@ export function buildVeloergUiSchema(): UiSchema {
             kind: 'button',
             label: 'Подключить Moxy',
             commandType: EventTypes.adapterScanRequest,
-            payload: makeMoxyScanPayload(moxyAdapterId),
+            payload: makeMoxyScanPayload(moxyAdapterId, 'muscle-oxygen'),
             // Модалка живет полностью в renderer, а runtime только присылает варианты выбора.
-            modalForm: makeMoxyConnectModalForm(moxyAdapterId),
+            modalForm: makeMoxyConnectModalForm(moxyAdapterId, 'muscle-oxygen', 'Выбор Moxy'),
             variants: [
               {
                 when: { flag: `adapter.${moxyAdapterId}.scanning`, eq: true },
@@ -1373,6 +1375,43 @@ export function buildVeloergUiSchema(): UiSchema {
               {
                 when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'failed' },
                 label: 'Повторить поиск Moxy',
+              },
+            ],
+          },
+          {
+            id: 'scan-train-red',
+            kind: 'button',
+            label: 'Подключить train.red',
+            commandType: EventTypes.adapterScanRequest,
+            payload: makeMoxyScanPayload(moxyAdapterId, 'train-red'),
+            modalForm: makeMoxyConnectModalForm(moxyAdapterId, 'train-red', 'Выбор train.red'),
+            variants: [
+              {
+                when: { flag: `adapter.${moxyAdapterId}.scanning`, eq: true },
+                label: 'Ищем train.red...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'connecting' },
+                label: 'Подключение train.red...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'connected' },
+                label: 'train.red подключен',
+                disabled: true,
+              },
+              {
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'disconnecting' },
+                label: 'Отключение train.red...',
+                disabled: true,
+                isLoading: true,
+              },
+              {
+                when: { flag: `adapter.${moxyAdapterId}.state`, eq: 'failed' },
+                label: 'Повторить поиск train.red',
               },
             ],
           },

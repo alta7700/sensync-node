@@ -18,6 +18,14 @@
   - оценивает baseline cadence broadcast по живому потоку, чтобы не считать нормальные кадры пропусками;
   - автоматически переподключается по `detached` сигналу библиотеки и по watchdog'у тишины пакетов;
   - умеет `real` transport для Moxy через `ant-plus` и `fake` transport для локальной отладки.
+- `ant-plus-profiles.ts`:
+  - хранит профильный registry `muscle-oxygen` и `train-red`;
+  - выбирает профиль по `formData.profile`, `candidateId` или `deviceType`;
+  - описывает UI-метаданные scan-кандидатов и helper'ы для connect payload.
+- `ant-plus-transport.ts`:
+  - держит generic stick helpers;
+  - изолирует ожидание `startup`/`shutdown` и безопасное закрытие stick;
+  - не знает о streamId и профильном decode.
 - `ant-plus-boundary.ts` изолирует внешний boundary:
   - env overrides;
   - formData -> transport requests;

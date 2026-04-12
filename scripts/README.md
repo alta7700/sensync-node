@@ -14,7 +14,8 @@
 - `probe_ant_plus.ts` открывает ANT+ stick, переводит его в scan mode и печатает:
   - первые raw extended frames;
   - `deviceId`, `deviceType` и `transmissionType` из эфира;
-  - snapshot'ы от известных ANT+ scanner-классов, если устройство совпадает со стандартным профилем.
+  - snapshot'ы от известных ANT+ scanner-классов, если устройство совпадает со стандартным профилем;
+  - для `muscle-oxygen` дополнительно печатает canonical список полей со статусом `present/missing`, а также первые сырые страницы `0x01`, `0x50`, `0x51`, `0x52`, если они встречаются.
   - служебные heartbeat-сообщения раз в секунду, чтобы было видно, где probe ждёт.
 - `generate_compute_proto.sh` генерирует shared protobuf-артефакты для `plugin-kit/ipc-worker` и автоматически обходит все `packages/*/proto`, чтобы собрать локальные protobuf-артефакты для Python-backed processor'ов без ручного списка `.proto`.
 - На уровне корня репозитория эти сценарии агрегируются командами `npm run smoke` и `npm run verify`.

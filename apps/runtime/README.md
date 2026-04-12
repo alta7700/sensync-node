@@ -44,6 +44,7 @@ Node runtime и хост plugin worker'ов.
 - Профиль `veloerg-replay` поднимает HDF5 replay записей `veloerg`; файл тоже выбирается через `adapter.connect.request.formData.filePath`, а не через env.
 - Профиль `veloerg-viewer` поднимает HDF5 viewer записей `veloerg`; viewer отдает историю целиком для интерактивного UI, а не эмулирует live cadence.
 - Профиль `veloerg` поднимает `ant-plus-adapter`, `zephyr-bioharness-3-adapter`, generic `hr-from-rr-processor`, `dfa-a1-from-rr-processor`, generic `label-generator-adapter`, `trigno-adapter` и `hdf5-recorder` в real mode по умолчанию.
+- ANT+ часть профиля теперь профильная: `ant-plus-adapter` выбирает `muscle-oxygen` или `train.red` по `formData.profile` / `candidateId`, а не через отдельный hardcoded adapter.
 - `hr-from-rr-processor` и `dfa-a1-from-rr-processor` не знают про Zephyr как устройство: профиль только связывает `zephyr.rr` как вход и derived output streams.
 - `pedaling-emg-processor` пока исключён именно из `veloerg`, потому что при live-нагрузке он переполнял mailbox; сам пакет остаётся для специализированных профилей `pedaling-emg-test` и `pedaling-emg-replay`.
 - Для Trigno в `veloerg` runtime явно задаёт `BACKWARDS COMPATIBILITY = OFF` и `UPSAMPLE = OFF`, чтобы live `EMG` не уходил в legacy-совместимую частотную схему SDK ports.

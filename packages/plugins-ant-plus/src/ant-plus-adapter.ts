@@ -23,7 +23,6 @@ import {
   readAntPlusEnvOverrides,
   realPacketFromState,
   resolveAntPlusConfig,
-  type AntEventEmitterLike,
   type AntPlusAdapterConfig,
   type AntPlusApi,
   type AntPlusSensor,
@@ -35,6 +34,21 @@ import {
   type RawMoxyPacketMeta,
   type RealMuscleOxygenState,
 } from './ant-plus-boundary.ts';
+import {
+  AntPlusProfileRegistry,
+  makeAntPlusCandidateConnectFormData,
+  makeAntPlusCandidateDetails,
+  makeAntPlusCandidateId,
+  makeAntPlusCandidateTitle,
+  resolveAntPlusProfileSelection,
+  type AntPlusProfileId,
+  type AntPlusProfileMetadata,
+} from './ant-plus-profiles.ts';
+import {
+  closeStickSafely,
+  sleep,
+  waitForEmitterEvent,
+} from './ant-plus-transport.ts';
 
 interface AntTransportScanResult {
   scanId: string;
@@ -58,9 +72,11 @@ interface AntTransport {
 
 interface MoxyScanCandidateData {
   profile?: string;
+  profileId?: AntPlusProfileId;
   scanId?: string;
   transportCandidateId?: string;
   deviceId?: number;
+  deviceType?: number;
 }
 
 const PacketPollType = 'ant-plus.packet.poll';
@@ -71,6 +87,7 @@ const MoxyOutputs = createOutputRegistry({
 const moxyEmitter = createUniformSignalEmitter(MoxyOutputs);
 let config = resolveAntPlusConfig(undefined);
 let transport: AntTransport | null = null;
+let activeProfile: AntPlusProfileMetadata = AntPlusProfileRegistry['muscle-oxygen'];
 let scanInFlight = false;
 let manualDisconnectRequested = false;
 let lastConnectRequest: AntTransportConnectRequest | null = null;
@@ -120,10 +137,6 @@ const timelineResetParticipant = createTimelineResetParticipant({
   },
 });
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function normalizeError(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
     return error.message;
@@ -131,45 +144,10 @@ function normalizeError(error: unknown): string {
   return String(error);
 }
 
-function waitForEmitterEvent(
-  emitter: AntEventEmitterLike,
-  eventName: string,
-  timeoutMs: number,
-  timeoutMessage: string,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let timeoutId: NodeJS.Timeout | null = null;
-    const listener = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      emitter.removeListener(eventName, listener);
-      resolve();
-    };
-
-    timeoutId = setTimeout(() => {
-      emitter.removeListener(eventName, listener);
-      reject(new Error(timeoutMessage));
-    }, timeoutMs);
-
-    emitter.on(eventName, listener);
-  });
-}
-
-async function closeStickSafely(stick: AntPlusStick | null): Promise<void> {
-  if (!stick) return;
-
-  try {
-    const shutdownPromise = waitForEmitterEvent(stick, 'shutdown', 1_000, 'ANT+ stick не прислал shutdown');
-    stick.close();
-    await shutdownPromise.catch(() => undefined);
-  } catch {
-    // Игнорируем ошибки закрытия: при следующем scan/connect попробуем открыть новый stick.
-  }
-}
-
 function emitMoxyQualityMetrics(ctx: PluginContext): void {
   const tags = {
     adapterId: config.adapterId,
-    profile: 'muscle-oxygen',
+    profile: activeProfile.telemetryFamily,
   };
 
   if (lastBroadcastDeltaMs !== null) {
@@ -211,6 +189,7 @@ class FakeAntTransport implements AntTransport {
   private eventCount = 0;
   private sampleIndex = 0;
   private lastScanId: string | null = null;
+  private lastProfile: AntPlusProfileMetadata = AntPlusProfileRegistry['muscle-oxygen'];
 
   constructor(config: FakeAntTransportConfig) {
     this.config = config;
@@ -222,26 +201,25 @@ class FakeAntTransport implements AntTransport {
       throw new Error('ANT+ stick не найден');
     }
 
+    const profile = resolveAntPlusProfileSelection(request.profile);
+    this.lastProfile = profile;
     const scanId = randomUUID();
     this.lastScanId = scanId;
-    const candidateId = this.candidateId();
+    const candidateId = this.candidateId(profile);
     return {
       scanId,
       candidates: [
         {
           candidateId,
-          title: `Moxy ${this.config.candidateDeviceId}`,
-          subtitle: request.profile === 'muscle-oxygen' ? 'Muscle Oxygen' : 'ANT+ устройство',
-          details: {
-            deviceId: this.config.candidateDeviceId,
-            transmissionType: this.config.transmissionType,
-          },
-          connectFormData: {
-            profile: request.profile ?? 'muscle-oxygen',
+          title: makeAntPlusCandidateTitle(profile, this.config.candidateDeviceId),
+          subtitle: profile.uiSubtitle,
+          details: makeAntPlusCandidateDetails(profile, this.config.candidateDeviceId, this.config.transmissionType),
+          connectFormData: makeAntPlusCandidateConnectFormData(
+            profile,
             scanId,
             candidateId,
-            deviceId: this.config.candidateDeviceId,
-          },
+            this.config.candidateDeviceId,
+          ),
         },
       ],
     };
@@ -254,7 +232,9 @@ class FakeAntTransport implements AntTransport {
     if (request.scanId && this.lastScanId && request.scanId !== this.lastScanId) {
       throw new Error('Выбранный scanId больше не актуален');
     }
-    if (request.candidateId && request.candidateId !== this.candidateId()) {
+    const profile = resolveAntPlusProfileSelection(request.profile, request.candidateId, request.deviceType);
+    this.lastProfile = profile;
+    if (request.candidateId && request.candidateId !== this.candidateId(profile)) {
       throw new Error('Выбранное устройство не найдено в последнем scan');
     }
     this.connected = true;
@@ -287,8 +267,8 @@ class FakeAntTransport implements AntTransport {
     return null;
   }
 
-  private candidateId(): string {
-    return `moxy:${this.config.candidateDeviceId}:31:${this.config.transmissionType}`;
+  private candidateId(profile: AntPlusProfileMetadata): string {
+    return makeAntPlusCandidateId(profile, this.config.candidateDeviceId);
   }
 }
 
@@ -307,6 +287,7 @@ class RealAntTransport implements AntTransport {
   private oxygenDataListener: ((...args: unknown[]) => void) | null = null;
   private detachedListener: ((...args: unknown[]) => void) | null = null;
   private connectionSignal: string | null = null;
+  private lastProfile: AntPlusProfileMetadata = AntPlusProfileRegistry['muscle-oxygen'];
 
   private ensureApi(): AntPlusApi {
     if (this.api) return this.api;
@@ -404,6 +385,8 @@ class RealAntTransport implements AntTransport {
     const scanner = new api.MuscleOxygenScanner(stick);
     const scanId = randomUUID();
     const candidates = new Map<string, AdapterScanCandidate>();
+    const profile = resolveAntPlusProfileSelection(request.profile);
+    this.lastProfile = profile;
 
     const onOxygenData = (...args: unknown[]) => {
       const state = args[0] as RealMuscleOxygenState | undefined;
@@ -411,20 +394,14 @@ class RealAntTransport implements AntTransport {
         return;
       }
 
-      const candidateId = `moxy:${state.DeviceID}`;
+      const candidateId = makeAntPlusCandidateId(profile, state.DeviceID);
+      const details = makeAntPlusCandidateDetails(profile, state.DeviceID, config.transmissionType);
       candidates.set(candidateId, {
         candidateId,
-        title: `Moxy ${state.DeviceID}`,
-        subtitle: request.profile === 'muscle-oxygen' ? 'Muscle Oxygen' : 'ANT+ устройство',
-        details: {
-          deviceId: state.DeviceID,
-        },
-        connectFormData: {
-          profile: request.profile ?? 'muscle-oxygen',
-          scanId,
-          candidateId,
-          deviceId: state.DeviceID,
-        },
+        title: makeAntPlusCandidateTitle(profile, state.DeviceID),
+        subtitle: profile.uiSubtitle,
+        details,
+        connectFormData: makeAntPlusCandidateConnectFormData(profile, scanId, candidateId, state.DeviceID),
       });
     };
 
@@ -467,6 +444,8 @@ class RealAntTransport implements AntTransport {
     const stick = await this.openStick();
     const api = this.ensureApi();
     const sensor = new api.MuscleOxygenSensor(stick);
+    const profile = resolveAntPlusProfileSelection(request.profile, request.candidateId, request.deviceType);
+    this.lastProfile = profile;
     const fallbackDeviceId = request.candidateId ? this.lastScanDevices.get(request.candidateId) : undefined;
     if (request.candidateId && fallbackDeviceId === undefined && request.deviceId === undefined) {
       await closeStickSafely(stick);
@@ -650,6 +629,9 @@ function buildConnectRequestFromCandidate(formData: Record<string, unknown> | un
     if (connectRequest.profile === undefined && scannedCandidate.profile !== undefined) {
       connectRequest.profile = scannedCandidate.profile;
     }
+    if (connectRequest.profile === undefined && scannedCandidate.profileId !== undefined) {
+      connectRequest.profile = scannedCandidate.profileId;
+    }
     if (scannedCandidate.scanId !== undefined) {
       connectRequest.scanId = scannedCandidate.scanId;
     }
@@ -658,6 +640,9 @@ function buildConnectRequestFromCandidate(formData: Record<string, unknown> | un
     }
     if (connectRequest.deviceId === undefined && scannedCandidate.deviceId !== undefined) {
       connectRequest.deviceId = scannedCandidate.deviceId;
+    }
+    if (connectRequest.deviceType === undefined && scannedCandidate.deviceType !== undefined) {
+      connectRequest.deviceType = scannedCandidate.deviceType;
     }
   }
 
@@ -755,14 +740,21 @@ async function handleScan(ctx: PluginContext, payload: AdapterScanRequestPayload
       const scanRequest = buildAntTransportScanRequest(scanPayload.formData, scanPayload.timeoutMs);
       const result = await activeTransport.scan(scanRequest);
       return result.candidates.map((candidate) => {
-        const profile = stringFormField(candidate.connectFormData, 'profile');
+        const profileId = stringFormField(candidate.connectFormData, 'profile');
         const deviceId = numberFormField(candidate.connectFormData, 'deviceId');
+        const deviceType = numberFormField(candidate.connectFormData, 'deviceType');
         const candidateData: MoxyScanCandidateData = {
           scanId: result.scanId,
           transportCandidateId: stringFormField(candidate.connectFormData, 'candidateId') ?? candidate.candidateId,
+          profileId: resolveAntPlusProfileSelection(
+            profileId ?? scanRequest.profile,
+            stringFormField(candidate.connectFormData, 'candidateId') ?? candidate.candidateId,
+            deviceType,
+          ).profileId,
         };
-        if (profile !== undefined) candidateData.profile = profile;
+        if (profileId !== undefined) candidateData.profile = profileId;
         if (deviceId !== undefined) candidateData.deviceId = deviceId;
+        if (deviceType !== undefined) candidateData.deviceType = deviceType;
 
         return {
           title: candidate.title,
@@ -788,6 +780,11 @@ async function handleConnect(ctx: PluginContext, payload: AdapterConnectRequestP
   }
 
   const connectRequest = buildConnectRequestFromCandidate(payload.formData);
+  activeProfile = resolveAntPlusProfileSelection(
+    connectRequest.profile,
+    connectRequest.candidateId,
+    connectRequest.deviceType,
+  );
 
   manualDisconnectRequested = false;
   lastConnectRequest = connectRequest;
@@ -1016,6 +1013,7 @@ export default definePlugin({
       ...readAntPlusEnvOverrides(process.env),
     });
     transport = createTransport();
+    activeProfile = AntPlusProfileRegistry['muscle-oxygen'];
     antState = createAdapterStateHolder({ adapterId: config.adapterId });
     antScanFlow = createScanFlow<MoxyScanCandidateData>({ adapterId: config.adapterId });
     reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
@@ -1061,6 +1059,7 @@ export default definePlugin({
       await transport.disconnect();
       transport = null;
     }
+    activeProfile = AntPlusProfileRegistry['muscle-oxygen'];
     antState = createAdapterStateHolder({ adapterId: config.adapterId });
     antScanFlow = createScanFlow<MoxyScanCandidateData>({ adapterId: config.adapterId });
     reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });

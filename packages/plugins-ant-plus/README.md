@@ -6,7 +6,7 @@ ANT+ plugin worker'ы и transport-обёртки.
 
 - Содержит runtime-плагины для ANT+ устройств.
 - Держит transport boundary к USB stick отдельно от UI и core-контрактов.
-- Начинает с `Muscle Oxygen`/Moxy сценария, но архитектурно готов к другим ANT+ профилям.
+- Начинает с `Muscle Oxygen`/Moxy сценария, но профильная развязка уже позволяет подключать `train.red` как отдельный профиль без нового hardcoded adapter.
 
 ## Как работает
 
@@ -14,6 +14,7 @@ ANT+ plugin worker'ы и transport-обёртки.
 - Внутри адаптера есть transport-абстракция:
   - `real` transport поверх библиотеки `ant-plus` для USB ANT+ stick;
   - `fake` transport для scan/connect/data flow без железа.
+- Профили ANT+ описываются отдельно и выбираются по `formData.profile`, `deviceType` или `candidateId`.
 - Внешние ingress-границы вынесены в `src/ant-plus-boundary.ts`, чтобы env/formData/raw driver packets нормализовались до входа в runtime-логику адаптера.
 - В live-режиме таймлайн Moxy строится от первого пакета по реальной межпакетной дельте хоста.
 - Lifecycle, scan cache, reconnect timer и emit path адаптера теперь собраны на `@sensync2/plugin-kit`.
@@ -28,6 +29,7 @@ ANT+ plugin worker'ы и transport-обёртки.
   - `adapter.scan.*`;
   - `adapter.state.changed`;
   - `signal.batch` для `moxy.smo2` и `moxy.thb`.
+- `train.red` сейчас использует тот же raw decode и те же streamId, что и Moxy, но живёт как отдельный профиль в registry.
 
 ## Взаимодействие
 

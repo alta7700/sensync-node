@@ -18,6 +18,7 @@ export interface AntPlusAdapterConfig {
 
 export interface AntTransportScanRequest {
   profile?: string;
+  deviceType?: number;
   timeoutMs?: number;
 }
 
@@ -26,6 +27,7 @@ export interface AntTransportConnectRequest {
   scanId?: string;
   candidateId?: string;
   deviceId?: number;
+  deviceType?: number;
 }
 
 export interface AntTransportPacket {
@@ -321,13 +323,29 @@ function selectedDeviceId(formData: Record<string, unknown> | undefined): number
   return undefined;
 }
 
+function selectedDeviceType(formData: Record<string, unknown> | undefined): number | undefined {
+  const rawValue = formData?.deviceType;
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue) && rawValue > 0) {
+    return Math.trunc(rawValue);
+  }
+  if (typeof rawValue === 'string' && rawValue.trim().length > 0) {
+    const parsed = Number(rawValue);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.trunc(parsed);
+    }
+  }
+  return undefined;
+}
+
 export function buildAntTransportScanRequest(
   formData: Record<string, unknown> | undefined,
   timeoutMs?: number,
 ): AntTransportScanRequest {
   const request: AntTransportScanRequest = {};
   const profile = selectedProfile(formData);
+  const deviceType = selectedDeviceType(formData);
   if (profile !== undefined) request.profile = profile;
+  if (deviceType !== undefined) request.deviceType = deviceType;
   if (timeoutMs !== undefined) request.timeoutMs = timeoutMs;
   return request;
 }
@@ -340,10 +358,12 @@ export function buildAntTransportConnectRequest(
   const scanId = selectedScanId(formData);
   const candidateId = selectedCandidateId(formData);
   const deviceId = selectedDeviceId(formData);
+  const deviceType = selectedDeviceType(formData);
 
   if (profile !== undefined) request.profile = profile;
   if (scanId !== undefined) request.scanId = scanId;
   if (candidateId !== undefined) request.candidateId = candidateId;
   if (deviceId !== undefined) request.deviceId = deviceId;
+  if (deviceType !== undefined) request.deviceType = deviceType;
   return request;
 }

@@ -257,6 +257,10 @@ Derived flag для interval:
 Назначение:
 
 - live composite-профиль для ANT+/Moxy, BLE/Zephyr, generic HR-from-RR/DFA processors и TCP/Trigno;
+- ANT+ часть уже разбита на профильные entry point'ы:
+  - `muscle-oxygen`;
+  - `train.red`;
+  - оба варианта используют тот же raw decode и те же streamId `moxy.smo2` / `moxy.thb`, но UI показывает их как разные scan/connect пути;
 - Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-графики `RR/HR/DFA-a1`, а Trigno пока остаётся только raw-источником `EMG + Gyroscope` без pedaling-derived слоёв.
 
 ### Страница
@@ -313,7 +317,14 @@ Derived flag для interval:
   - отправляет `trigno.status.refresh.request`
 - `scan-moxy`
   - в базовом состоянии отправляет `adapter.scan.request` для `adapterId = ant-plus`
-  - одновременно открывает локальную modal form `connect-moxy-ant-plus`
+  - передаёт `formData.profile = "muscle-oxygen"`
+  - одновременно открывает локальную modal form `connect-muscle-oxygen-ant-plus`
+  - форма содержит `select`, который читает runtime-driven options из `adapter.ant-plus.scan.candidates`
+  - submit формы отправляет `adapter.connect.request`
+- `scan-train-red`
+  - в базовом состоянии отправляет `adapter.scan.request` для `adapterId = ant-plus`
+  - передаёт `formData.profile = "train-red"`
+  - одновременно открывает локальную modal form `connect-train-red-ant-plus`
   - форма содержит `select`, который читает runtime-driven options из `adapter.ant-plus.scan.candidates`
   - submit формы отправляет `adapter.connect.request`
 - `disconnect-moxy`

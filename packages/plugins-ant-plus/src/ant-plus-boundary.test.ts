@@ -23,8 +23,9 @@ describe('ant-plus-boundary', () => {
       logPacketTiming: true,
     });
 
-    expect(buildAntTransportScanRequest({ profile: 'muscle-oxygen' }, 1200)).toEqual({
+    expect(buildAntTransportScanRequest({ profile: 'muscle-oxygen', deviceType: '31' }, 1200)).toEqual({
       profile: 'muscle-oxygen',
+      deviceType: 31,
       timeoutMs: 1200,
     });
 
@@ -33,11 +34,13 @@ describe('ant-plus-boundary', () => {
       scanId: 'scan-1',
       candidateId: 'moxy:1',
       deviceId: '123',
+      deviceType: '31',
     })).toEqual({
       profile: 'muscle-oxygen',
       scanId: 'scan-1',
       candidateId: 'moxy:1',
       deviceId: 123,
+      deviceType: 31,
     });
   });
 

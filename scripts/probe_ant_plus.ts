@@ -12,6 +12,12 @@ type RawDeviceSummary = {
   hex: string;
 };
 
+type MuscleOxygenPageSummary = {
+  page: number;
+  hex: string;
+  decoded: Record<string, unknown>;
+};
+
 type ScannerEntry = {
   kind: string;
   scanner: {
@@ -63,6 +69,87 @@ function normalizeStateSnapshot(state: Record<string, unknown>): Record<string, 
     }
   }
   return snapshot;
+}
+
+const MuscleOxygenKnownFields = [
+  'DeviceID',
+  '_EventCount',
+  'UTCTimeRequired',
+  'SupportANTFS',
+  'MeasurementInterval',
+  'TotalHemoglobinConcentration',
+  'PreviousSaturatedHemoglobinPercentage',
+  'CurrentSaturatedHemoglobinPercentage',
+  'HwVersion',
+  'ManId',
+  'ModelNum',
+  'SwVersion',
+  'SerialNumber',
+  'OperatingTime',
+  'BatteryVoltage',
+  'BatteryStatus',
+] as const;
+
+function formatMuscleOxygenSnapshot(snapshot: Record<string, unknown>): Record<string, unknown> {
+  const formatted: Record<string, unknown> = {};
+  for (const field of MuscleOxygenKnownFields) {
+    if (Object.prototype.hasOwnProperty.call(snapshot, field)) {
+      formatted[field] = snapshot[field];
+    } else {
+      formatted[field] = '(отсутствует)';
+    }
+  }
+  return formatted;
+}
+
+function parseMuscleOxygenPage(data: Buffer): MuscleOxygenPageSummary | null {
+  if (data.length <= antBuild.Messages.BUFFER_INDEX_MSG_DATA) {
+    return null;
+  }
+
+  const page = data.readUInt8(antBuild.Messages.BUFFER_INDEX_MSG_DATA);
+  if (page !== 0x01 && page !== 0x50 && page !== 0x51 && page !== 0x52) {
+    return null;
+  }
+
+  const hex = data.toString('hex');
+  const decoded: Record<string, unknown> = { page };
+
+  if (page === 0x01 && data.length >= 12) {
+    const eventCount = data.readUInt8(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 1);
+    const notifications = data.readUInt8(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 2);
+    const capabilities = data.readUInt16LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 3);
+    const total = data.readUInt16LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 4) & 0xFFF;
+    const previous = (data.readUInt16LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 5) >> 4) & 0x3FF;
+    const current = (data.readUInt16LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 6) >> 6) & 0x3FF;
+    decoded.eventCount = eventCount;
+    decoded.notifications = notifications;
+    decoded.capabilities = capabilities;
+    decoded.totalHemoglobin = total;
+    decoded.previousSmo2 = previous;
+    decoded.currentSmo2 = current;
+  } else if (page === 0x50 && data.length >= 11) {
+    decoded.hwVersion = data.readUInt8(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 3);
+    decoded.manufacturerId = data.readUInt16LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 4);
+    decoded.modelNumber = data.readUInt16LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 6);
+  } else if (page === 0x51 && data.length >= 11) {
+    const swRevSup = data.readUInt8(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 2);
+    const swRevMain = data.readUInt8(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 3);
+    const serial = data.readInt32LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 4);
+    decoded.swVersion = swRevSup === 0xff ? swRevMain : swRevMain + (swRevSup / 1000);
+    if (serial !== 0xffffffff) {
+      decoded.serialNumber = serial;
+    }
+  } else if (page === 0x52 && data.length >= 12) {
+    const operatingTimeRaw = data.readUInt32LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 3) & 0xffffff;
+    const batteryFrac = data.readInt32LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 6);
+    const batteryStatus = data.readInt32LE(antBuild.Messages.BUFFER_INDEX_MSG_DATA + 7);
+    decoded.operatingTime = operatingTimeRaw * (((batteryStatus & 0x80) === 0x80) ? 2 : 16);
+    decoded.batteryVoltage = (batteryStatus & 0x0f) + (batteryFrac / 256);
+    decoded.batteryStatus = batteryStatus;
+  }
+
+  return { page, hex, decoded };
 }
 
 function parseRawFrame(data: Buffer): RawDeviceSummary | null {
@@ -172,6 +259,7 @@ async function main(): Promise<void> {
   }
 
   const rawDevices = new Map<string, RawDeviceSummary>();
+  const seenMuscleOxygenPages = new Set<number>();
   const seenScannerKinds = new Set<string>();
   const scannerEntries = createScannerEntries(stick);
 
@@ -187,6 +275,17 @@ async function main(): Promise<void> {
         event: 'raw-device',
         ...parsed,
       }, null, 2));
+    }
+
+    if (parsed.kind === 'muscle-oxygen') {
+      const pageSummary = parseMuscleOxygenPage(data);
+      if (pageSummary && !seenMuscleOxygenPages.has(pageSummary.page)) {
+        seenMuscleOxygenPages.add(pageSummary.page);
+        console.log(JSON.stringify({
+          event: 'muscle-oxygen-page',
+          ...pageSummary,
+        }, null, 2));
+      }
     }
   });
 
@@ -212,7 +311,9 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({
       event: 'scanner-state',
       kind: opener.kind,
-      snapshot: normalizeStateSnapshot(state as Record<string, unknown>),
+      snapshot: opener.kind === 'muscle-oxygen'
+        ? formatMuscleOxygenSnapshot(normalizeStateSnapshot(state as Record<string, unknown>))
+        : normalizeStateSnapshot(state as Record<string, unknown>),
     }, null, 2));
   });
   opener.scanner.scan();
@@ -231,7 +332,9 @@ async function main(): Promise<void> {
       console.log(JSON.stringify({
         event: 'scanner-state',
         kind: entry.kind,
-        snapshot: normalizeStateSnapshot(state as Record<string, unknown>),
+        snapshot: entry.kind === 'muscle-oxygen'
+          ? formatMuscleOxygenSnapshot(normalizeStateSnapshot(state as Record<string, unknown>))
+          : normalizeStateSnapshot(state as Record<string, unknown>),
       }, null, 2));
     });
     try {

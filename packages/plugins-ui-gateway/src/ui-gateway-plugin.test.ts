@@ -585,6 +585,7 @@ describe('ui-gateway-plugin', () => {
 
     expect(mainControlsWidget.controls.map((control) => control.id)).toEqual([
       'scan-moxy',
+      'scan-train-red',
       'disconnect-moxy',
     ]);
 

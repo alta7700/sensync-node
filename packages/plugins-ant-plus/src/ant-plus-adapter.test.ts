@@ -85,6 +85,54 @@ describe('ant-plus-adapter', () => {
     expect(harness.timers.has('ant-plus.poll')).toBe(true);
   });
 
+  it('поддерживает train.red как отдельный профиль поверх той же ANT+ базы', async () => {
+    const harness = createHarness({
+      adapterId: 'ant-plus',
+      mode: 'fake',
+      stickPresent: true,
+      scanDelayMs: 1,
+      packetIntervalMs: 250,
+      measurementIntervalMs: 250,
+    });
+    activeHarness = harness;
+
+    await antPlusAdapter.onInit(harness.ctx);
+    await harness.dispatch({
+      type: EventTypes.adapterScanRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'ant-plus',
+        formData: { profile: 'train-red' },
+      },
+    });
+
+    const candidatesEvent = (
+      harness.emitted.find((event) => event.type === EventTypes.adapterScanCandidates)
+    ) as RuntimeEventInputOf<typeof EventTypes.adapterScanCandidates, 1>;
+    const candidate = candidatesEvent.payload.candidates[0];
+    expect(candidate?.title).toContain('train.red');
+    expect(candidate?.details).toMatchObject({ profile: 'train-red', deviceType: 31 });
+    expect(candidate?.connectFormData).toEqual({ candidateId: candidate?.candidateId });
+    expect(candidate?.candidateId).toMatch(/^ant-plus-scan-\d+-candidate-\d+$/);
+
+    await harness.dispatch({
+      type: EventTypes.adapterConnectRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'ant-plus',
+        formData: {
+          candidateId: candidate?.candidateId,
+        },
+      },
+    });
+
+    expect(lastAdapterState(harness.emitted, 'ant-plus')?.state).toBe('connected');
+  });
+
   it('публикует moxy потоки после fake connect и packet poll', async () => {
     const harness = createHarness({
       adapterId: 'ant-plus',

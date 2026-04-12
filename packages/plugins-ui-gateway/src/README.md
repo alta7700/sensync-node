@@ -22,6 +22,10 @@
 - `profile-schemas.ts`:
   - хранит concrete demo-схемы `fake`, `fake-hdf5-simulation`, `veloerg`, `veloerg-replay`, `veloerg-viewer` и `pedaling-emg-*`;
   - экспортирует schema builders, которые вызывают runtime profile-модули.
+- ANT+ часть схемы теперь описывает профильный connect flow:
+  - `muscle-oxygen`;
+  - `train.red`;
+  - оба варианта используют одинаковые графики и raw streamId, но разные scan/connect entry point'ы и подписи.
 - Control schema может задавать `commandVersion` / `submitEventVersion`; если они не указаны, renderer использует `v=1`.
 - Control schema теперь также может задавать `payloadBindings`, а modal forms — `submitTarget` и `timelineTimeInput`, чтобы собирать top-level payload без runtime-specific UI-хаков.
 - Для `fake-hdf5-simulation` схема отдельная: по графикам она совместима с fake-демо, но управляющие кнопки уже относятся к simulation-источнику.
