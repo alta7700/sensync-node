@@ -17,6 +17,7 @@ Runtime слой для renderer/UI.
 - `ui.timeline.reset` очищает только timeline-local буферы, но не теряет schema и stream registry.
 - `getVisibleWindow(...)` возвращает X уже относительно `clock.timelineStartSessionMs`, а не относительно глобального старта runtime-сессии.
 - `getVisibleWindow(...)` теперь может по запросу включать последнюю точку до начала окна, чтобы ступенчатые setpoint-графики не рвались на левом краю.
+- Если UI загружает history-viewer поток одним большим batch, store автоматически расширяет кольцевой буфер под размер этого snapshot, чтобы не терять историю.
 
 ## Взаимодействие
 

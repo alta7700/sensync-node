@@ -85,6 +85,13 @@ export const SharedEventContracts = {
     priority: 'system',
     visibility: 'shared',
   }),
+  viewerStateChanged: defineEventContract({
+    type: EventTypes.viewerStateChanged,
+    v: 1,
+    kind: 'fact',
+    priority: 'system',
+    visibility: 'shared',
+  }),
   recordingStart: defineEventContract({
     type: EventTypes.recordingStart,
     v: 1,

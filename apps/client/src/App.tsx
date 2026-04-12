@@ -995,7 +995,10 @@ function buildChartWindows(widget: UiChartWidget, timeWindowMs: number): Map<str
   const windowsByStream = new Map<string, StreamWindowData>();
   for (const series of widget.series) {
     if (!windowsByStream.has(series.streamId)) {
-      const win = runtimeSingleton.getVisibleWindow(series.streamId, timeWindowMs, {
+      const requestedRangeMs = widget.viewportMode === 'history'
+        ? Number.MAX_SAFE_INTEGER
+        : timeWindowMs;
+      const win = runtimeSingleton.getVisibleWindow(series.streamId, requestedRangeMs, undefined, {
         includeLastSampleBeforeStart: series.type === 'line' && series.interpolation === 'step-after',
       });
       windowsByStream.set(series.streamId, win);
@@ -1007,6 +1010,38 @@ function buildChartWindows(widget: UiChartWidget, timeWindowMs: number): Map<str
     }
   }
   return windowsByStream;
+}
+
+function buildChartXRange(widget: UiChartWidget, windowsByStream: Map<string, StreamWindowData>): { min: number; max: number } {
+  const timeWindowMs = widget.timeWindowMs ?? 10_000;
+  let xMinMs = 0;
+  let xMaxMs = 0;
+  let hasAnyTime = false;
+
+  for (const win of windowsByStream.values()) {
+    if (win.length === 0) continue;
+    const first = win.x[0]!;
+    const last = win.x[win.length - 1]!;
+    if (!hasAnyTime || first < xMinMs) xMinMs = first;
+    if (!hasAnyTime || last > xMaxMs) xMaxMs = last;
+    hasAnyTime = true;
+  }
+
+  if (!hasAnyTime) {
+    return { min: 0, max: timeWindowMs };
+  }
+
+  if (widget.viewportMode === 'history') {
+    if (xMaxMs <= xMinMs) {
+      return { min: xMinMs, max: xMinMs + Math.max(1_000, timeWindowMs) };
+    }
+    return { min: xMinMs, max: xMaxMs };
+  }
+
+  return {
+    min: Math.max(0, xMaxMs - timeWindowMs),
+    max: xMaxMs,
+  };
 }
 
 function buildChartYRange(widget: UiChartWidget, windowsByStream: Map<string, StreamWindowData>): { min: number; max: number } {
@@ -1043,19 +1078,7 @@ function buildChartYRange(widget: UiChartWidget, windowsByStream: Map<string, St
 }
 
 function buildEchartsOption(widget: UiChartWidget, windowsByStream: Map<string, StreamWindowData>): EChartsOption {
-  const timeWindowMs = widget.timeWindowMs ?? 10_000;
-  let xMaxMs = 0;
-  let hasAnyTime = false;
-  for (const win of windowsByStream.values()) {
-    if (win.length === 0) continue;
-    const last = win.x[win.length - 1]!;
-    if (!hasAnyTime || last > xMaxMs) xMaxMs = last;
-    hasAnyTime = true;
-  }
-  if (!hasAnyTime) {
-    xMaxMs = timeWindowMs;
-  }
-  const xMinMs = Math.max(0, xMaxMs - timeWindowMs);
+  const { min: xMinMs, max: xMaxMs } = buildChartXRange(widget, windowsByStream);
   const { min: yMin, max: yMax } = buildChartYRange(widget, windowsByStream);
   const fallbackPalette = ['#58a6ff', '#3fb950', '#f85149', '#d29922', '#a371f7', '#ffa657', '#79c0ff'];
 
@@ -1153,7 +1176,7 @@ function buildEchartsOption(widget: UiChartWidget, windowsByStream: Map<string, 
       left: 56,
       right: 16,
       top: widget.showLegend ? 36 : 12,
-      bottom: 28,
+      bottom: widget.viewportMode === 'history' ? 60 : 28,
     },
     tooltip: {
       trigger: 'axis',
@@ -1195,6 +1218,25 @@ function buildEchartsOption(widget: UiChartWidget, windowsByStream: Map<string, 
     },
     series: seriesOptions,
   };
+
+  if (widget.viewportMode === 'history') {
+    option.dataZoom = [
+      {
+        id: `${widget.id}-history-slider`,
+        type: 'slider',
+        xAxisIndex: 0,
+        filterMode: 'none',
+        bottom: 12,
+        height: 20,
+      },
+      {
+        id: `${widget.id}-history-inside`,
+        type: 'inside',
+        xAxisIndex: 0,
+        filterMode: 'none',
+      },
+    ];
+  }
 
   return option;
 }

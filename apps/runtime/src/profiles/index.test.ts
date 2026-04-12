@@ -6,7 +6,15 @@ import { runtimeRepoRoot } from '../launch-profile-boundary.ts';
 import { buildLaunchProfile, LaunchProfiles, resolveLaunchProfile } from './index.ts';
 
 function uiGatewayConfig(
-  profileId: 'fake' | 'fake-hdf5-simulation' | 'veloerg' | 'veloerg-replay' | 'pedaling-emg-test' | 'pedaling-emg-replay',
+  profileId:
+    | 'fake'
+    | 'fake-hdf5-simulation'
+    | 'veloerg'
+    | 'veloerg-replay'
+    | 'veloerg-viewer'
+    | 'pedaling-emg-test'
+    | 'pedaling-emg-replay'
+    | 'pedaling-emg-viewer',
   env: NodeJS.ProcessEnv = process.env,
 ) {
   const profile = buildLaunchProfile(profileId, env);
@@ -106,6 +114,16 @@ describe('launch profiles registry', () => {
   it('в pedaling-emg-replay профиле передает replay schema в ui-gateway', () => {
     const config = uiGatewayConfig('pedaling-emg-replay');
     expect(config.schema.pages[0]?.title).toBe('Pedaling EMG replay');
+  });
+
+  it('в veloerg-viewer профиле передает viewer schema в ui-gateway', () => {
+    const config = uiGatewayConfig('veloerg-viewer');
+    expect(config.schema.pages[0]?.title).toBe('Veloerg viewer');
+  });
+
+  it('в pedaling-emg-viewer профиле передает viewer schema в ui-gateway', () => {
+    const config = uiGatewayConfig('pedaling-emg-viewer');
+    expect(config.schema.pages[0]?.title).toBe('Pedaling EMG viewer');
   });
 
   it('в veloerg-профиле подключает generic hr-from-rr processor', () => {
@@ -277,6 +295,57 @@ describe('launch profiles registry', () => {
       ],
       batchMs: 50,
       speed: 1,
+    });
+    expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
+    expect(profile.plugins.some((plugin) => plugin.id === 'hdf5-recorder')).toBe(false);
+  });
+
+  it('в pedaling-emg-viewer профиле включает HDF5 viewer с выбором файла и pedaling processor', () => {
+    const profile = buildLaunchProfile('pedaling-emg-viewer');
+    const viewer = profile.plugins.find((plugin) => plugin.id === 'hdf5-viewer-adapter');
+    const pedalingProcessor = profile.plugins.find((plugin) => plugin.id === 'pedaling-emg-processor');
+
+    expect(profile.timelineReset).toBeUndefined();
+    expect(viewer?.config).toMatchObject({
+      adapterId: 'pedaling-emg-viewer',
+      allowConnectFilePathOverride: true,
+      streamIds: [
+        'trigno.avanti',
+        'trigno.avanti.gyro.x',
+        'trigno.avanti.gyro.y',
+        'trigno.avanti.gyro.z',
+      ],
+      readChunkSamples: 4096,
+    });
+    expect(pedalingProcessor?.config).toMatchObject({
+      emgStreamId: 'trigno.avanti',
+      activityLabelStreamId: 'pedaling.activity.vastus-lateralis',
+      required: true,
+    });
+  });
+
+  it('в veloerg-viewer профиле включает HDF5 viewer с выбором файла и только veloerg streamIds', () => {
+    const profile = buildLaunchProfile('veloerg-viewer');
+    const viewer = profile.plugins.find((plugin) => plugin.id === 'hdf5-viewer-adapter');
+
+    expect(profile.timelineReset).toBeUndefined();
+    expect(viewer?.config).toMatchObject({
+      adapterId: 'veloerg-viewer',
+      allowConnectFilePathOverride: true,
+      streamIds: [
+        'moxy.smo2',
+        'moxy.thb',
+        'zephyr.rr',
+        'zephyr.hr',
+        'zephyr.dfa_a1',
+        'trigno.avanti',
+        'trigno.avanti.gyro.x',
+        'trigno.avanti.gyro.y',
+        'trigno.avanti.gyro.z',
+        'lactate.label',
+        'power.label',
+      ],
+      readChunkSamples: 4096,
     });
     expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
     expect(profile.plugins.some((plugin) => plugin.id === 'hdf5-recorder')).toBe(false);

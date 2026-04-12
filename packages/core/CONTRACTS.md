@@ -193,6 +193,10 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
   - несёт `adapterId`, `state`, `speed`, `batchMs` и `filePath`;
   - для HDF5 replay может дополнительно нести `recordingStartSessionMs` из file metadata;
   - нужен для UI и отладки профиля симуляции.
+- `viewer.state.changed`
+  - несёт `adapterId`, `state` и `filePath`;
+  - может дополнительно нести `recordingStartSessionMs`, `dataStartMs` и `dataEndMs`;
+  - нужен для UI history-viewer режима, где файл не проигрывается по таймеру, а загружается целиком.
 
 Ограничения `v1`:
 
@@ -203,6 +207,8 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
 - `seek` и `loop` не реализованы.
 - HDF5 replay не должен переписывать `signal.batch` timestamps только ради UI;
   - display-origin `00:00` должен строиться отдельно по `recordingStartSessionMs`, а не за счёт мутации данных потока.
+- HDF5 viewer не должен притворяться simulation-источником:
+  - для интерактивного просмотра нужно использовать `viewer.state.changed`, а не перегружать `simulation.state.changed` полями, не связанными с cadence.
 
 ## 5.1 Adapter Scan Events
 
@@ -358,6 +364,9 @@ Generic label-stream'ы управляются shared command `label.mark.reques
   - `interval` — интервальная overlay-серия поверх label-stream.
   - `line.interpolation = step-after` означает ступенчатую серию по точкам setpoint/change-event;
   - для `step-after` renderer может подтягивать последнюю точку до начала окна и протягивать последнее значение до правой границы окна.
+- `UiChartWidget.viewportMode`
+  - `tail` — график показывает обычное скользящее окно последних данных;
+  - `history` — renderer запрашивает весь доступный history snapshot и включает интерактивный pan/zoom.
 
 ## 9. Control Variants
 

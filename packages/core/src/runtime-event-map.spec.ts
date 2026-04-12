@@ -115,6 +115,16 @@ export const sharedRuntimeEventMapSpec: RuntimeEventMapCodegenSpec = {
       payload: { kind: 'named', importPath: './events.ts', typeName: 'SimulationStateChangedPayload' },
     },
     {
+      alias: 'ViewerStateChangedEvent',
+      mode: 'compose',
+      envelope: 'fact',
+      type: EventTypes.viewerStateChanged,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: { kind: 'named', importPath: './events.ts', typeName: 'ViewerStateChangedPayload' },
+    },
+    {
       alias: 'RecordingStartEvent',
       mode: 'compose',
       envelope: 'command',

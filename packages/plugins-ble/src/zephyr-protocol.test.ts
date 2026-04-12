@@ -5,6 +5,7 @@ import {
   createInitialZephyrRrExtractionState,
   extractZephyrRrSamples,
   parseZephyrPacket,
+  resetZephyrRrExtractionState,
 } from './zephyr-protocol.ts';
 
 describe('zephyr-protocol', () => {
@@ -43,5 +44,64 @@ describe('zephyr-protocol', () => {
       { timestampMs: 11_590, intervalMs: 790 },
       { timestampMs: 12_400, intervalMs: 810 },
     ]);
+  });
+
+  it('якорит первый RR-пакет после сброса базы к локальному времени прихода', () => {
+    const extraction = extractZephyrRrSamples(
+      [800, -790, -790, 810],
+      17,
+      resetZephyrRrExtractionState(),
+      2_000,
+      0,
+    );
+
+    expect(extraction.sequenceGap).toBeNull();
+    expect(extraction.samples).toEqual([
+      { timestampMs: 400, intervalMs: 800 },
+      { timestampMs: 1_190, intervalMs: 790 },
+      { timestampMs: 2_000, intervalMs: 810 },
+    ]);
+    expect(extraction.state.accumulatorMs).toBe(2_000);
+    expect(extraction.state.lastPacketSeq).toBe(17);
+  });
+
+  it('отбрасывает RR-точки раньше старта timeline при первом пакете', () => {
+    const extraction = extractZephyrRrSamples(
+      [800, -790, -790, 810],
+      3,
+      resetZephyrRrExtractionState(),
+      1_000,
+      500,
+    );
+
+    expect(extraction.samples).toEqual([
+      { timestampMs: 1_000, intervalMs: 810 },
+    ]);
+    expect(extraction.state.accumulatorMs).toBe(1_000);
+  });
+
+  it('на sequence gap инвалидирует базу и переякоривает текущий пакет', () => {
+    const extraction = extractZephyrRrSamples(
+      [800, -780],
+      9,
+      {
+        accumulatorMs: 12_000,
+        lastPacketSeq: 4,
+        lastSign: false,
+      },
+      15_000,
+      0,
+    );
+
+    expect(extraction.sequenceGap).toEqual({
+      expectedSeqNumber: 5,
+      receivedSeqNumber: 9,
+    });
+    expect(extraction.samples).toEqual([
+      { timestampMs: 14_220, intervalMs: 800 },
+      { timestampMs: 15_000, intervalMs: 780 },
+    ]);
+    expect(extraction.state.accumulatorMs).toBe(15_000);
+    expect(extraction.state.lastPacketSeq).toBe(9);
   });
 });

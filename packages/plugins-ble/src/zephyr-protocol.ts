@@ -183,34 +183,14 @@ export function resetZephyrRrExtractionState(): ZephyrRrExtractionState {
   };
 }
 
-export function extractZephyrRrSamples(
+function extractZephyrIntervals(
   rrValues: readonly number[],
-  seqNumber: number,
-  state: ZephyrRrExtractionState,
-  referenceTimestampMs: number,
-): ZephyrRrExtractionResult {
-  let nextAccumulatorMs = state.accumulatorMs ?? referenceTimestampMs;
-  let nextLastPacketSeq = state.lastPacketSeq;
-  let nextLastSign = state.lastSign;
-  let sequenceGap: ZephyrRrExtractionResult['sequenceGap'] = null;
-
-  if (nextLastPacketSeq === null) {
-    nextLastPacketSeq = 0xff;
-    nextLastSign = null;
-  }
-
-  const expectedSeqNumber = (nextLastPacketSeq + 1) & 0xff;
-  if (seqNumber !== expectedSeqNumber) {
-    sequenceGap = {
-      expectedSeqNumber,
-      receivedSeqNumber: seqNumber,
-    };
-    nextLastSign = null;
-  }
-  nextLastPacketSeq = seqNumber;
-
+  lastSign: boolean | null,
+): { intervalsMs: number[]; lastSign: boolean | null } {
   const pendingValues = [...rrValues];
   const extractedIntervalsMs: number[] = [];
+  let nextLastSign = lastSign;
+
   if (nextLastSign === null && pendingValues.length > 0) {
     const firstInterval = pendingValues.shift()!;
     nextLastSign = firstInterval > 0;
@@ -225,13 +205,88 @@ export function extractZephyrRrSamples(
     }
   }
 
-  const samples: ZephyrExtractedRrSample[] = extractedIntervalsMs.map((intervalMs) => {
+  return {
+    intervalsMs: extractedIntervalsMs,
+    lastSign: nextLastSign,
+  };
+}
+
+function buildZephyrRrSamplesFromAccumulator(
+  intervalsMs: readonly number[],
+  accumulatorMs: number,
+): ZephyrExtractedRrSample[] {
+  let nextAccumulatorMs = accumulatorMs;
+  return intervalsMs.map((intervalMs) => {
     nextAccumulatorMs += intervalMs;
     return {
       timestampMs: nextAccumulatorMs,
       intervalMs,
     };
   });
+}
+
+function buildAnchoredZephyrRrSamples(
+  intervalsMs: readonly number[],
+  referenceTimestampMs: number,
+  timelineStartSessionMs: number,
+): ZephyrExtractedRrSample[] {
+  const samples: ZephyrExtractedRrSample[] = [];
+  let nextTimestampMs = referenceTimestampMs;
+
+  // После сброса базы считаем, что хвост текущего пакета пришёл "сейчас",
+  // а остальные интервалы раскладываем назад и обрезаем по старту timeline.
+  for (let index = intervalsMs.length - 1; index >= 0; index -= 1) {
+    const intervalMs = intervalsMs[index]!;
+    if (nextTimestampMs >= timelineStartSessionMs) {
+      samples.push({
+        timestampMs: nextTimestampMs,
+        intervalMs,
+      });
+    }
+    nextTimestampMs -= intervalMs;
+  }
+
+  return samples.reverse();
+}
+
+export function extractZephyrRrSamples(
+  rrValues: readonly number[],
+  seqNumber: number,
+  state: ZephyrRrExtractionState,
+  referenceTimestampMs: number,
+  timelineStartSessionMs = 0,
+): ZephyrRrExtractionResult {
+  let nextAccumulatorMs = state.accumulatorMs;
+  let nextLastPacketSeq = state.lastPacketSeq;
+  let nextLastSign = state.lastSign;
+  let sequenceGap: ZephyrRrExtractionResult['sequenceGap'] = null;
+  let shouldAnchorToReference = nextAccumulatorMs === null;
+
+  if (nextLastPacketSeq !== null) {
+    const expectedSeqNumber = (nextLastPacketSeq + 1) & 0xff;
+    if (seqNumber !== expectedSeqNumber) {
+      sequenceGap = {
+        expectedSeqNumber,
+        receivedSeqNumber: seqNumber,
+      };
+      nextAccumulatorMs = null;
+      nextLastSign = null;
+      shouldAnchorToReference = true;
+    }
+  }
+  nextLastPacketSeq = seqNumber;
+
+  const extracted = extractZephyrIntervals(rrValues, nextLastSign);
+  const extractedIntervalsMs = extracted.intervalsMs;
+  nextLastSign = extracted.lastSign;
+
+  const samples = shouldAnchorToReference || nextAccumulatorMs === null
+    ? buildAnchoredZephyrRrSamples(extractedIntervalsMs, referenceTimestampMs, timelineStartSessionMs)
+    : buildZephyrRrSamplesFromAccumulator(extractedIntervalsMs, nextAccumulatorMs);
+
+  if (samples.length > 0) {
+    nextAccumulatorMs = samples[samples.length - 1]!.timestampMs;
+  }
 
   return {
     samples,

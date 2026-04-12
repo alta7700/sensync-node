@@ -195,6 +195,17 @@ export interface SimulationStateChangedPayload {
   message?: string;
 }
 
+export interface ViewerStateChangedPayload {
+  adapterId: string;
+  state: 'disconnected' | 'connecting' | 'connected' | 'disconnecting' | 'failed';
+  filePath: string;
+  recordingStartSessionMs?: number;
+  dataStartMs?: number;
+  dataEndMs?: number;
+  requestId?: string;
+  message?: string;
+}
+
 export interface RuntimeStartedPayload {}
 
 export interface ShapeGenerateRequestPayload {

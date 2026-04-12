@@ -5,8 +5,10 @@ export const LaunchProfiles = [
   'fake-hdf5-simulation',
   'veloerg',
   'veloerg-replay',
+  'veloerg-viewer',
   'pedaling-emg-test',
   'pedaling-emg-replay',
+  'pedaling-emg-viewer',
 ] as const;
 export type LaunchProfile = (typeof LaunchProfiles)[number];
 

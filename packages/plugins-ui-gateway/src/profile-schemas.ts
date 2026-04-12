@@ -322,6 +322,80 @@ function makeReplaySimulationControlsWidget(adapterId: string, title: string, mo
   };
 }
 
+function makeViewerControlsWidget(adapterId: string, title: string, modalForm: UiModalForm): UiSchema['widgets'][number] {
+  return {
+    kind: 'controls',
+    id: 'controls-main',
+    title,
+    controls: [
+      {
+        id: `toggle-${adapterId}`,
+        kind: 'button',
+        label: 'Выбрать HDF5 и открыть viewer',
+        commandType: EventTypes.adapterConnectRequest,
+        payload: { adapterId },
+        modalForm,
+        variants: [
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+            label: 'Viewer загружен',
+            disabled: true,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'connecting' },
+            label: 'Загрузка viewer...',
+            disabled: true,
+            isLoading: true,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+            label: 'Закрытие viewer...',
+            disabled: true,
+            isLoading: true,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnected' },
+            label: 'Выбрать HDF5 и открыть viewer',
+            commandType: EventTypes.adapterConnectRequest,
+            payload: { adapterId },
+            modalForm,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'failed' },
+            label: 'Выбрать другой файл',
+            commandType: EventTypes.adapterConnectRequest,
+            payload: { adapterId },
+            modalForm,
+          },
+        ],
+      },
+      {
+        id: `disconnect-${adapterId}`,
+        kind: 'button',
+        label: 'Закрыть viewer',
+        hidden: true,
+        variants: [
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'connected' },
+            label: 'Закрыть viewer',
+            commandType: EventTypes.adapterDisconnectRequest,
+            payload: { adapterId },
+            hidden: false,
+            disabled: false,
+          },
+          {
+            when: { flag: `adapter.${adapterId}.state`, eq: 'disconnecting' },
+            label: 'Закрытие viewer...',
+            hidden: false,
+            disabled: true,
+            isLoading: true,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function makeMoxyScanPayload(adapterId: string): Record<string, unknown> {
   return {
     adapterId,
@@ -1624,7 +1698,7 @@ export function buildVeloergUiSchema(): UiSchema {
         height: 320,
         timeWindowMs: 20_000,
         showLegend: true,
-        yAxis: { min: 40, max: 100, label: '%' },
+        yAxis: { min: 0, max: 100, label: '%' },
         series: [
           {
             type: 'line',
@@ -1925,7 +1999,7 @@ export function buildVeloergReplayUiSchema(): UiSchema {
         height: 320,
         timeWindowMs: 20_000,
         showLegend: true,
-        yAxis: { min: 40, max: 100, label: '%' },
+        yAxis: { min: 0, max: 100, label: '%' },
         series: [
           {
             type: 'line',
@@ -2058,6 +2132,49 @@ export function buildVeloergReplayUiSchema(): UiSchema {
         title: 'Telemetry',
       },
     ],
+  };
+}
+
+export function buildVeloergViewerUiSchema(): UiSchema {
+  const adapterId = 'veloerg-viewer';
+  const replaySchema = buildVeloergReplayUiSchema();
+
+  return {
+    ...replaySchema,
+    pages: replaySchema.pages.map((page) => ({
+      ...page,
+      title: page.title === 'Veloerg replay' ? 'Veloerg viewer' : page.title,
+    })),
+    widgets: replaySchema.widgets.map((widget) => {
+      if (widget.id === 'controls-main') {
+        return makeViewerControlsWidget(
+          adapterId,
+          'HDF5 viewer',
+          makeReplayConnectModalForm(adapterId, `connect-${adapterId}`),
+        );
+      }
+      if (widget.id === 'status-main' && widget.kind === 'status') {
+        return {
+          ...widget,
+          flagKeys: [
+            `adapter.${adapterId}.state`,
+            `adapter.${adapterId}.message`,
+            `viewer.${adapterId}.filePath`,
+            `viewer.${adapterId}.dataStartMs`,
+            `viewer.${adapterId}.dataEndMs`,
+            `viewer.${adapterId}.message`,
+            'power.current',
+          ],
+        };
+      }
+      if (widget.kind === 'chart') {
+        return {
+          ...widget,
+          viewportMode: 'history',
+        };
+      }
+      return widget;
+    }),
   };
 }
 
@@ -2563,5 +2680,47 @@ export function buildPedalingEmgReplayUiSchema(): UiSchema {
         title: 'Telemetry',
       },
     ],
+  };
+}
+
+export function buildPedalingEmgViewerUiSchema(): UiSchema {
+  const adapterId = 'pedaling-emg-viewer';
+  const replaySchema = buildPedalingEmgReplayUiSchema();
+
+  return {
+    ...replaySchema,
+    pages: replaySchema.pages.map((page) => ({
+      ...page,
+      title: page.title === 'Pedaling EMG replay' ? 'Pedaling EMG viewer' : page.title,
+    })),
+    widgets: replaySchema.widgets.map((widget) => {
+      if (widget.id === 'controls-main') {
+        return makeViewerControlsWidget(
+          adapterId,
+          'HDF5 viewer',
+          makeReplayConnectModalForm(adapterId, `connect-${adapterId}`),
+        );
+      }
+      if (widget.id === 'status-main' && widget.kind === 'status') {
+        return {
+          ...widget,
+          flagKeys: [
+            `adapter.${adapterId}.state`,
+            `adapter.${adapterId}.message`,
+            `viewer.${adapterId}.filePath`,
+            `viewer.${adapterId}.dataStartMs`,
+            `viewer.${adapterId}.dataEndMs`,
+            `viewer.${adapterId}.message`,
+          ],
+        };
+      }
+      if (widget.kind === 'chart') {
+        return {
+          ...widget,
+          viewportMode: 'history',
+        };
+      }
+      return widget;
+    }),
   };
 }

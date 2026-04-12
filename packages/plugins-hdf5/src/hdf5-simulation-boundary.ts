@@ -310,7 +310,7 @@ function ensureBufferForCursor(channel: ChannelReaderState): void {
   }
 }
 
-function buildSignalEvent(
+function buildSimulationSignalEvent(
   channel: ChannelReaderState,
   timestamps: Float64Array,
   values: SupportedValueArray,
@@ -395,7 +395,48 @@ export function readSimulationWindowForChannel(
 
   const timestamps = concatTimestamps(timestampParts, totalSamples);
   const values = concatValues(valueParts, totalSamples, channel.sampleFormat);
-  return buildSignalEvent(channel, timestamps, values);
+  return buildSimulationSignalEvent(channel, timestamps, values);
+}
+
+export function readFullSignalForChannel(
+  channel: ChannelReaderState,
+): RuntimeEventInputOf<typeof EventTypes.signalBatch, 1> | null {
+  if (channel.sampleCount === 0) {
+    return null;
+  }
+
+  const timestamps = requireTypedSlice(channel.timestampsDataset, 0, channel.sampleCount);
+  const values = requireTypedSlice(channel.valuesDataset, 0, channel.sampleCount);
+
+  if (!(timestamps instanceof Float64Array)) {
+    throw new Error(`Dataset ${channel.timestampsDataset.path} должен возвращать Float64Array`);
+  }
+  if (!(values instanceof Float32Array || values instanceof Float64Array || values instanceof Int16Array)) {
+    throw new Error(`Dataset ${channel.valuesDataset.path} вернул неподдерживаемый тип values`);
+  }
+  assertValueArrayMatchesSampleFormat(values, channel.sampleFormat, channel.valuesDataset.path);
+  for (let index = 1; index < timestamps.length; index += 1) {
+    if (timestamps[index]! < timestamps[index - 1]!) {
+      throw new Error(`timestamps для ${channel.streamId} не монотонны`);
+    }
+  }
+
+  return defineRuntimeEventInput({
+    type: EventTypes.signalBatch,
+    v: 1,
+    kind: 'data',
+    priority: 'data',
+    payload: {
+      streamId: channel.streamId,
+      sampleFormat: channel.sampleFormat,
+      frameKind: channel.frameKind,
+      t0Ms: timestamps[0] ?? 0,
+      sampleCount: values.length,
+      values,
+      timestampsMs: timestamps,
+      ...(channel.units !== undefined ? { units: channel.units } : {}),
+    },
+  });
 }
 
 export function resetHdf5SimulationSessionCursor(activeSession: SimulationSessionState): void {

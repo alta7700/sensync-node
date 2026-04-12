@@ -10,7 +10,12 @@ import {
 } from '@sensync2/core';
 import { TrignoEventTypes } from '@sensync2/plugins-trigno';
 import plugin from './ui-gateway-plugin.ts';
-import { buildFakeUiSchema, buildVeloergReplayUiSchema, buildVeloergUiSchema } from './profile-schemas.ts';
+import {
+  buildFakeUiSchema,
+  buildVeloergReplayUiSchema,
+  buildVeloergUiSchema,
+  buildVeloergViewerUiSchema,
+} from './profile-schemas.ts';
 
 interface CapturedEvent {
   event: RuntimeEventInput;
@@ -301,6 +306,51 @@ describe('ui-gateway-plugin', () => {
         'simulation.veloerg-replay.filePath': '/tmp/replay.h5',
         'simulation.veloerg-replay.recordingStartSessionMs': 12_345,
         'simulation.veloerg-replay.message': null,
+      },
+      version: expect.any(Number),
+    });
+  });
+
+  it('при connected viewer-состоянии сбрасывает UI буферы и патчит viewer flags', async () => {
+    const { ctx, emitted } = createTestContext(buildVeloergViewerUiSchema());
+    await plugin.onInit(ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.viewerStateChanged,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: {
+        adapterId: 'veloerg-viewer',
+        state: 'connected',
+        filePath: '/tmp/viewer.h5',
+        recordingStartSessionMs: 8_000,
+        dataStartMs: 8_000,
+        dataEndMs: 12_000,
+      },
+    })), ctx as never);
+
+    const messages = emitted
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<RuntimeEventInput, { type: typeof EventTypes.uiControlOut }> => {
+        return event.type === EventTypes.uiControlOut;
+      })
+      .map((event) => event.payload.message);
+
+    expect(messages).toContainEqual({
+      type: 'ui.timeline.reset',
+      timelineId: 'timeline-test',
+      timelineStartSessionMs: 8_000,
+      clearBuffers: true,
+    });
+    expect(messages).toContainEqual({
+      type: 'ui.flags.patch',
+      patch: {
+        'viewer.veloerg-viewer.filePath': '/tmp/viewer.h5',
+        'viewer.veloerg-viewer.recordingStartSessionMs': 8_000,
+        'viewer.veloerg-viewer.dataStartMs': 8_000,
+        'viewer.veloerg-viewer.dataEndMs': 12_000,
+        'viewer.veloerg-viewer.message': null,
       },
       version: expect.any(Number),
     });
@@ -679,6 +729,51 @@ describe('ui-gateway-plugin', () => {
         'simulation.veloerg-replay.filePath',
         'power.current',
       ]),
+    });
+  });
+
+  it('материализует viewer controls и history-графики в veloerg-viewer schema', async () => {
+    const { ctx, emitted } = createTestContext(buildVeloergViewerUiSchema());
+    await plugin.onInit(ctx as never);
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.uiClientConnected,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: { clientId: 'client-1' },
+    })), ctx as never);
+
+    const message = extractControlMessage(emitted);
+    expect(message).not.toBeNull();
+    if (!message || message.type !== 'ui.init') {
+      throw new Error('Ожидалось ui.init сообщение');
+    }
+    const initMessage = message as UiInitMessage;
+
+    const controlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-main' && widget.kind === 'controls';
+    });
+    expect(controlsWidget?.kind).toBe('controls');
+    if (!controlsWidget || controlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-main');
+    }
+    expect(controlsWidget.controls.map((control) => control.id)).toContain('toggle-veloerg-viewer');
+
+    const statusWidget = initMessage.schema.widgets.find((widget) => widget.id === 'status-main');
+    expect(statusWidget).toMatchObject({
+      kind: 'status',
+      flagKeys: expect.arrayContaining([
+        'viewer.veloerg-viewer.filePath',
+        'viewer.veloerg-viewer.dataStartMs',
+        'viewer.veloerg-viewer.dataEndMs',
+        'power.current',
+      ]),
+    });
+
+    const emgChart = initMessage.schema.widgets.find((widget) => widget.id === 'chart-trigno-emg');
+    expect(emgChart).toMatchObject({
+      kind: 'chart',
+      viewportMode: 'history',
     });
   });
 

@@ -19,6 +19,24 @@ function createRing(capacity: number): StreamRing {
   };
 }
 
+function growRing(ring: StreamRing, nextCapacity: number): StreamRing {
+  const grown = createRing(nextCapacity);
+  if (ring.size === 0) {
+    return grown;
+  }
+
+  // Перекладываем данные в хронологическом порядке, чтобы сохранить полный history-снимок.
+  const startIndex = (ring.writeIndex - ring.size + ring.capacity) % ring.capacity;
+  for (let i = 0; i < ring.size; i += 1) {
+    const sourceIndex = (startIndex + i) % ring.capacity;
+    grown.time[i] = ring.time[sourceIndex]!;
+    grown.value[i] = ring.value[sourceIndex]!;
+  }
+  grown.size = ring.size;
+  grown.writeIndex = ring.size % grown.capacity;
+  return grown;
+}
+
 function latestTimeOfRing(ring: StreamRing): number | null {
   if (ring.size === 0) return null;
   const latestIdx = (ring.writeIndex - 1 + ring.capacity) % ring.capacity;
@@ -41,7 +59,11 @@ export class TypedArrayRingBufferStore implements StreamBufferStore {
 
   appendFrame(stream: UiStreamDeclaration, frame: DecodedUiSignalFrame): void {
     this.ensureStream(stream);
-    const ring = this.rings.get(stream.streamId)!;
+    let ring = this.rings.get(stream.streamId)!;
+    if (frame.sampleCount > ring.capacity) {
+      ring = growRing(ring, frame.sampleCount);
+      this.rings.set(stream.streamId, ring);
+    }
     const timestampsMs = frame.timestampsMs;
 
     for (let i = 0; i < frame.sampleCount; i += 1) {

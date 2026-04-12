@@ -33,14 +33,18 @@ npm run dev
 - `npm run dev:fake-hdf5-simulation` — переходный профиль: fake-UI поверх `hdf5-simulation` источника.
 - `npm run dev:pedaling-emg-test` — live-профиль для отдельного теста `Trigno EMG + Gyro` с записью raw-каналов в HDF5.
 - `npm run dev:pedaling-emg-replay` — replay-профиль для HDF5-файла с raw `Trigno EMG + Gyro`; файл выбирается через UI при `connect`.
+- `npm run dev:pedaling-emg-viewer` — viewer-профиль для интерактивного просмотра HDF5-файла с raw `Trigno EMG + Gyro`; файл выбирается через UI, данные загружаются целиком для панорамирования/зума графиков.
 - `npm run dev:veloerg` — composite dev-профиль `veloerg` для ANT+/Moxy и BLE/Zephyr.
 - `npm run dev:veloerg-replay` — replay-профиль для HDF5-файла из `veloerg`; файл выбирается через UI при `connect`.
+- `npm run dev:veloerg-viewer` — viewer-профиль для интерактивного просмотра HDF5-файла из `veloerg`; файл выбирается через UI, графики открываются в history-режиме.
 - `npm run dev:runtime` — runtime отдельно, по умолчанию в профиле `fake`.
 - `npm run dev:runtime:fake-hdf5-simulation` — standalone runtime для fake simulation из HDF5.
 - `npm run dev:runtime:pedaling-emg-test` — standalone runtime для отдельного live `EMG + Gyro` теста.
 - `npm run dev:runtime:pedaling-emg-replay` — standalone runtime для replay raw `EMG + Gyro`.
+- `npm run dev:runtime:pedaling-emg-viewer` — standalone runtime для интерактивного просмотра raw `EMG + Gyro`.
 - `npm run dev:runtime:veloerg` — standalone runtime для composite `veloerg` профиля.
 - `npm run dev:runtime:veloerg-replay` — standalone runtime для replay `veloerg` записи.
+- `npm run dev:runtime:veloerg-viewer` — standalone runtime для интерактивного просмотра `veloerg` записи.
 - `npm run build` — сборка всех workspace-пакетов.
 - `npm run lint` — единый ESLint-прогон по monorepo.
 - `npm run lint:fix` — автоисправления ESLint там, где они безопасны.
@@ -54,7 +58,7 @@ npm run dev
 
 ## Launch profiles
 
-Сейчас есть шесть штатных профиля запуска:
+Сейчас есть восемь штатных профиля запуска:
 
 - `fake`
   - synthetic fake adapter с автостартом `fake-signal` после общего runtime-барьера `runtime.started`;
@@ -79,6 +83,10 @@ npm run dev
   - `hdf5-simulation-adapter` читает HDF5 файл, выбранный через UI при `connect`;
   - replay ограничен stream'ами `moxy.*`, `zephyr.*`, raw `trigno.*` и sparse `lactate/power`, чтобы повторять контракт записи `veloerg`;
   - `ui-gateway` поднимает отдельную replay-схему без live connect/recording controls.
+- `veloerg-viewer`
+  - `hdf5-viewer-adapter` читает HDF5 файл, выбранный через UI при `connect`;
+  - viewer загружает историю целиком, а не воспроизводит её по таймеру;
+  - `ui-gateway` поднимает схему, где те же графики работают в интерактивном history-режиме.
 - `pedaling-emg-test`
   - отдельный live-профиль только для `Trigno`;
   - поднимает raw `EMG + Gyroscope`, `pedaling-emg-processor`, recorder и UI;
@@ -87,6 +95,10 @@ npm run dev
   - replay-профиль для тех же raw `Trigno`-каналов из HDF5;
   - файл выбирается через UI при `adapter.connect.request`, а не через env;
   - поднимает `hdf5-simulation-adapter`, `pedaling-emg-processor` и отдельную replay-схему UI.
+- `pedaling-emg-viewer`
+  - viewer-профиль для тех же raw `Trigno`-каналов из HDF5;
+  - файл выбирается через UI при `adapter.connect.request`, а не через env;
+  - поднимает `hdf5-viewer-adapter`, `pedaling-emg-processor` и отдельную viewer-схему UI.
 
 Профиль выбирается через `SENSYNC2_PROFILE`, а npm-скрипты просто подставляют это значение явно.
 
@@ -103,6 +115,8 @@ SENSYNC2_HDF5_SIMULATION_FILE=/absolute/path/to/file.h5 npm run dev:fake-hdf5-si
 Для `pedaling-emg-replay` отдельный env не нужен: после запуска профиля файл выбирается в UI через кнопку подключения replay.
 
 Для `veloerg-replay` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку подключения replay.
+
+Для `pedaling-emg-viewer` и `veloerg-viewer` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку открытия viewer.
 
 Для `veloerg` можно отдельно включить fake transport и проверить UX ветку "stick не найден":
 

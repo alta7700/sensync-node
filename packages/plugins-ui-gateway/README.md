@@ -20,6 +20,7 @@ UI gateway plugin.
 - Для fake interval control `interval.active` больше не приходит отдельным runtime fact: `ui-gateway` materialize'ит его по declarative `schema.derivedFlags`, а не по жёсткому special-case в коде.
 - Во время timeline reset `ui-gateway` выпускает `ui.timeline.reset`, пересобирает derived flags в initial defaults и не рвёт schema/stream registry.
 - Для HDF5 replay `ui-gateway` также умеет локально сдвигать UI timeline origin по `simulation.state.changed.recordingStartSessionMs`, не переписывая stream timestamps.
+- Для HDF5 viewer `ui-gateway` тоже умеет локально сбрасывать UI timeline/buffers по `viewer.state.changed`, чтобы новый файл целиком заменял предыдущую историю.
 - Concrete `UiSchema` теперь строится вне плагина в runtime launch profile и передаётся в `ui-gateway` уже готовой.
 - В `veloerg` схема теперь composite:
   - отдельный control-блок Trigno с modal form `host + sensorSlot`;
@@ -29,6 +30,7 @@ UI gateway plugin.
   - sparse-графики `Lactate` и ступенчатый `Power`;
   - рядом остаются Moxy (`SmO2`, `tHb`) и Zephyr (`RR`).
 - В `veloerg-replay` схема использует те же графики `veloerg`, но вместо live transport/recording controls даёт один replay-control блок для выбора HDF5, pause/resume и смены скорости.
+- В `veloerg-viewer` и `pedaling-emg-viewer` схема использует те же графики соответствующих replay/live профилей, но переводит их в history-режим для интерактивного pan/zoom без simulation cadence.
 - `ui.telemetry` теперь несёт не только runtime queue snapshot, но и latest plugin metrics, например качество ANT+ канала и BLE/Zephyr transport.
 
 ## Взаимодействие

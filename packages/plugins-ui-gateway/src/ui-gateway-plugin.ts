@@ -11,6 +11,7 @@ import {
   type RuntimeTelemetrySnapshotPayload,
   type SignalBatchEvent,
   type SimulationStateChangedPayload,
+  type ViewerStateChangedPayload,
   type UiBinaryOutPayload,
   type UiControlMessage,
   type UiDerivedFlagRule,
@@ -42,6 +43,7 @@ const streamsById = new Map<string, UiStreamDeclaration>();
 const formOptionsBySourceId = new Map<string, UiFormOption[]>();
 const derivedFlagRulesByStreamId = new Map<string, CompiledDerivedFlagRule[]>();
 const simulationStatesByAdapterId = new Map<string, SimulationStateChangedPayload['state']>();
+const viewerStatesByAdapterId = new Map<string, ViewerStateChangedPayload['state']>();
 
 interface CompiledDerivedDiscreteFlagRule {
   kind: 'latest-discrete-signal-value-map';
@@ -92,6 +94,20 @@ function isReplayConnectTransition(
 ): boolean {
   if (nextState !== 'connected') return false;
   return previousState !== 'connected' && previousState !== 'paused';
+}
+
+function isViewerConnectTransition(
+  previousState: ViewerStateChangedPayload['state'] | undefined,
+  nextState: ViewerStateChangedPayload['state'],
+): boolean {
+  return nextState === 'connected' && previousState !== 'connected';
+}
+
+function isViewerDisconnectTransition(
+  previousState: ViewerStateChangedPayload['state'] | undefined,
+  nextState: ViewerStateChangedPayload['state'],
+): boolean {
+  return previousState === 'connected' && (nextState === 'disconnected' || nextState === 'failed');
 }
 
 function latestNumericValue(event: SignalBatchEvent): number | null {
@@ -266,6 +282,7 @@ export default definePlugin({
       { type: EventTypes.recordingStateChanged, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.recordingError, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.simulationStateChanged, v: 1, kind: 'fact', priority: 'system' },
+      { type: EventTypes.viewerStateChanged, v: 1, kind: 'fact', priority: 'system' },
       { type: TrignoEventTypes.statusReported, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.runtimeTelemetrySnapshot, v: 1, kind: 'fact', priority: 'system' },
       { type: EventTypes.uiClientConnected, v: 1, kind: 'fact', priority: 'system' },
@@ -292,6 +309,7 @@ export default definePlugin({
     currentTimelineId = ctx.currentTimelineId();
     timelineStartSessionMs = ctx.timelineStartSessionMs();
     simulationStatesByAdapterId.clear();
+    viewerStatesByAdapterId.clear();
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.uiClientConnected) {
@@ -437,6 +455,39 @@ export default definePlugin({
       return;
     }
 
+    if (event.type === EventTypes.viewerStateChanged) {
+      const payload: ViewerStateChangedPayload = event.payload;
+      const previousState = viewerStatesByAdapterId.get(payload.adapterId);
+      viewerStatesByAdapterId.set(payload.adapterId, payload.state);
+
+      if (isViewerConnectTransition(previousState, payload.state)) {
+        timelineStartSessionMs = payload.recordingStartSessionMs ?? timelineStartSessionMs;
+        await ctx.emit(emitControl({
+          type: 'ui.timeline.reset',
+          timelineId: currentTimelineId,
+          timelineStartSessionMs,
+          clearBuffers: true,
+        }));
+      } else if (isViewerDisconnectTransition(previousState, payload.state)) {
+        await ctx.emit(emitControl({
+          type: 'ui.timeline.reset',
+          timelineId: currentTimelineId,
+          timelineStartSessionMs,
+          clearBuffers: true,
+        }));
+      }
+
+      const { patch, version } = patchFlags({
+        [`viewer.${payload.adapterId}.filePath`]: payload.filePath,
+        [`viewer.${payload.adapterId}.recordingStartSessionMs`]: payload.recordingStartSessionMs ?? null,
+        [`viewer.${payload.adapterId}.dataStartMs`]: payload.dataStartMs ?? null,
+        [`viewer.${payload.adapterId}.dataEndMs`]: payload.dataEndMs ?? null,
+        [`viewer.${payload.adapterId}.message`]: payload.message ?? null,
+      });
+      await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
+      return;
+    }
+
     if (event.type === TrignoEventTypes.statusReported) {
       const payload: TrignoStatusReportedPayload = event.payload;
       const { patch, version } = patchFlags({
@@ -511,5 +562,6 @@ export default definePlugin({
     timelineStartSessionMs = 0;
     derivedFlagRulesByStreamId.clear();
     simulationStatesByAdapterId.clear();
+    viewerStatesByAdapterId.clear();
   },
 });

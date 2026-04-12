@@ -9,14 +9,16 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 ## 1. Launch profiles
 
-Сейчас runtime profiles используют шесть concrete-схем:
+Сейчас runtime profiles используют восемь concrete-схем:
 
 - `fake`
 - `fake-hdf5-simulation`
 - `veloerg`
 - `veloerg-replay`
+- `veloerg-viewer`
 - `pedaling-emg-test`
 - `pedaling-emg-replay`
+- `pedaling-emg-viewer`
 
 `fake` — дефолтный dev-профиль. Сама схема больше не выбирается внутри `ui-gateway`, а передаётся ему из `apps/runtime/src/profiles/README.md`.
 
@@ -413,7 +415,7 @@ Derived flag для interval:
 - `chart-moxy-smo2`
   - окно: `20_000 ms`
   - поток: `moxy.smo2`
-  - ось Y: `[40, 100] %`
+  - ось Y: `[0, 100] %`
 - `chart-moxy-thb`
   - окно: `20_000 ms`
   - поток: `moxy.thb`
@@ -532,9 +534,7 @@ Derived flag для interval:
 
 - `telemetry-main`
 
-## 6. Общие правила flags и stream declarations
-
-## 7. Профиль `pedaling-emg-test`
+## 6. Профиль `pedaling-emg-test`
 
 Назначение:
 
@@ -641,7 +641,7 @@ Derived flag для interval:
 - `chart-pedaling-cycle-period`
   - поток: `pedaling.cycle.period-ms`
 
-## 6. Профиль `pedaling-emg-replay`
+## 7. Профиль `pedaling-emg-replay`
 
 Назначение:
 
@@ -720,7 +720,90 @@ Modal form replay:
 - `chart-pedaling-cycle-period`
   - `pedaling.cycle.period-ms`
 
-## 7. Общие правила flags и stream declarations
+## 8. Профиль `veloerg-viewer`
+
+Назначение:
+
+- viewer-профиль для HDF5-файлов, записанных из `veloerg`;
+- позволяет выбрать файл и сразу загрузить историю целиком для интерактивного pan/zoom графиков.
+
+### Страница
+
+- Одна страница: `main`.
+- Заголовок страницы: `Veloerg viewer`.
+- Раскладка совпадает с `veloerg-replay`.
+
+### Controls
+
+- `toggle-veloerg-viewer`
+  - если `adapter.veloerg-viewer.state = disconnected`
+    - label: `Выбрать HDF5 и открыть viewer`
+    - команда: `adapter.connect.request`
+    - открывает modal form, которая собирает `formData.filePath`
+  - если `adapter.veloerg-viewer.state = connected`
+    - label: `Viewer загружен`
+    - disabled
+- `disconnect-veloerg-viewer`
+  - видима только если `adapter.veloerg-viewer.state ∈ { connected, disconnecting }`
+  - отправляет `adapter.disconnect.request`
+
+### Status
+
+- `adapter.veloerg-viewer.state`
+- `adapter.veloerg-viewer.message`
+- `viewer.veloerg-viewer.filePath`
+- `viewer.veloerg-viewer.dataStartMs`
+- `viewer.veloerg-viewer.dataEndMs`
+- `viewer.veloerg-viewer.message`
+- `power.current`
+
+### Графики
+
+- Набор графиков совпадает с `veloerg-replay`.
+- Все chart-виджеты используют `viewportMode = history`.
+
+## 9. Профиль `pedaling-emg-viewer`
+
+Назначение:
+
+- viewer-профиль для тех же raw `Trigno EMG + Gyroscope` потоков из HDF5;
+- позволяет прогонять `pedaling-emg-processor`, но графики уже работают как интерактивный history-viewer.
+
+### Страница
+
+- Одна страница: `main`.
+- Заголовок страницы: `Pedaling EMG viewer`.
+- Раскладка совпадает с `pedaling-emg-replay`.
+
+### Controls
+
+- `toggle-pedaling-emg-viewer`
+  - если `adapter.pedaling-emg-viewer.state = disconnected`
+    - label: `Выбрать HDF5 и открыть viewer`
+    - команда: `adapter.connect.request`
+    - открывает modal form, которая собирает `formData.filePath`
+  - если `adapter.pedaling-emg-viewer.state = connected`
+    - label: `Viewer загружен`
+    - disabled
+- `disconnect-pedaling-emg-viewer`
+  - видима только если `adapter.pedaling-emg-viewer.state ∈ { connected, disconnecting }`
+  - отправляет `adapter.disconnect.request`
+
+### Status
+
+- `adapter.pedaling-emg-viewer.state`
+- `adapter.pedaling-emg-viewer.message`
+- `viewer.pedaling-emg-viewer.filePath`
+- `viewer.pedaling-emg-viewer.dataStartMs`
+- `viewer.pedaling-emg-viewer.dataEndMs`
+- `viewer.pedaling-emg-viewer.message`
+
+### Графики
+
+- Набор графиков совпадает с `pedaling-emg-replay`.
+- Все chart-виджеты используют `viewportMode = history`.
+
+## 10. Общие правила flags и stream declarations
 
 `ui-gateway` materialize'ит:
 
@@ -729,6 +812,7 @@ Modal form replay:
 - flags patch для interval/activity state;
 - flags patch для recorder state;
 - flags patch для simulation state;
+- flags patch для viewer state;
 - `ui.form.options.patch` для runtime-driven options локальных форм;
 - `ui.error` для recorder error, scan failure и adapter `failed`;
 - `ui.warning` для мягких проблем ingress/runtime-contract слоя и `command.rejected`;

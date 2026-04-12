@@ -112,6 +112,7 @@ export interface UiChartWidget {
   timeWindowMs?: number;
   showLegend?: boolean;
   renderer?: 'canvas' | 'echarts';
+  viewportMode?: 'tail' | 'history';
   yAxis?: UiChartAxisConfig;
 }
 

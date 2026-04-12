@@ -18,6 +18,7 @@ interface TestHarness {
     sessionStartWallMs: () => number;
   };
   advanceSession(ms: number): void;
+  setTimelineStart(ms: number): void;
   tickPoll(): Promise<void>;
   dispatch(event: RuntimeEventInput): Promise<void>;
 }
@@ -204,6 +205,7 @@ describe('zephyr-bioharness-3-adapter', () => {
       nextTimelineId: 'timeline-next',
       timelineStartSessionMs: 1000,
     }, harness.ctx);
+    harness.setTimelineStart(1000);
 
     expect(lastAdapterState(harness.emitted, 'zephyr-bioharness')?.state).toBe('connected');
 
@@ -215,7 +217,9 @@ describe('zephyr-bioharness-3-adapter', () => {
     const rrEvent = harness.emitted.find((event) => event.type === EventTypes.signalBatch);
     expect(rrEvent?.type).toBe(EventTypes.signalBatch);
     if (rrEvent?.type === EventTypes.signalBatch) {
-      expect(Math.min(...Array.from(rrEvent.payload.timestampsMs ?? new Float64Array()))).toBeGreaterThanOrEqual(1000);
+      const timestamps = Array.from(rrEvent.payload.timestampsMs ?? new Float64Array());
+      expect(Math.min(...timestamps)).toBeGreaterThanOrEqual(1000);
+      expect(Math.max(...timestamps)).toBe(1_100);
     }
   });
 });
@@ -223,6 +227,7 @@ describe('zephyr-bioharness-3-adapter', () => {
 function createHarness(config: Record<string, unknown>): TestHarness {
   let seq = 1n;
   let sessionMs = 0;
+  let timelineStartSessionMs = 0;
   const emitted: RuntimeEventInput[] = [];
   const metrics: PluginMetric[] = [];
   const timers = new Map<string, () => RuntimeEventInput>();
@@ -234,7 +239,7 @@ function createHarness(config: Record<string, unknown>): TestHarness {
       sessionStartWallMs: () => 1_700_000_000_000,
     },
     currentTimelineId: () => 'timeline-test',
-    timelineStartSessionMs: () => 0,
+    timelineStartSessionMs: () => timelineStartSessionMs,
     emit: async (event) => {
       emitted.push(event);
     },
@@ -268,6 +273,9 @@ function createHarness(config: Record<string, unknown>): TestHarness {
     clock: ctx.clock,
     advanceSession(ms: number) {
       sessionMs += ms;
+    },
+    setTimelineStart(ms: number) {
+      timelineStartSessionMs = ms;
     },
     async tickPoll() {
       const timerEvent = timers.get('zephyr-bioharness.poll');

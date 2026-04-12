@@ -17,8 +17,9 @@
   - кодирует `signal.batch` в binary UI frames;
   - отправляет `ui.init`, patch-сообщения и telemetry;
   - для replay умеет локально делать `ui.timeline.reset` по `recordingStartSessionMs`, не трогая данные потока.
+  - для viewer умеет локально сбрасывать timeline/buffers при подключении и отключении файла, чтобы history-данные не смешивались между сессиями просмотра.
 - `profile-schemas.ts`:
-  - хранит concrete demo-схемы `fake`, `fake-hdf5-simulation`, `veloerg`, `veloerg-replay` и `pedaling-emg-*`;
+  - хранит concrete demo-схемы `fake`, `fake-hdf5-simulation`, `veloerg`, `veloerg-replay`, `veloerg-viewer` и `pedaling-emg-*`;
   - экспортирует schema builders, которые вызывают runtime profile-модули.
 - Control schema может задавать `commandVersion` / `submitEventVersion`; если они не указаны, renderer использует `v=1`.
 - Control schema теперь также может задавать `payloadBindings`, а modal forms — `submitTarget` и `timelineTimeInput`, чтобы собирать top-level payload без runtime-specific UI-хаков.
@@ -27,6 +28,7 @@
 - Interval toggle в `fake` теперь отправляет generic `label.mark.request`, а не interval-specific команды.
 - Для `veloerg` схема composite: отдельный Trigno control-блок, отдельный блок `lactate/power`, raw-графики `EMG/Gyroscope`, sparse `Lactate`, ступенчатый `Power` и scan/connect/disconnect для Moxy и Zephyr.
 - Для `veloerg-replay` схема повторяет графики `veloerg`, но заменяет live-control блоки одним replay-control виджетом `HDF5 replay`.
+- Для viewer-профилей схема использует те же наборы графиков, но ставит `viewportMode = history`, чтобы renderer включал data-zoom и панорамирование.
 
 ## Взаимодействие
 

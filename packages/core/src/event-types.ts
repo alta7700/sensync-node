@@ -15,6 +15,7 @@ export const EventTypes = {
   simulationResumeRequest: 'simulation.resume.request',
   simulationSpeedSetRequest: 'simulation.speed.set.request',
   simulationStateChanged: 'simulation.state.changed',
+  viewerStateChanged: 'viewer.state.changed',
 
   recordingStart: 'recording.start',
   recordingStop: 'recording.stop',

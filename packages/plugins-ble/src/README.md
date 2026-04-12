@@ -12,7 +12,8 @@
   - реализует scan/connect/disconnect lifecycle;
   - держит opaque `candidateId` cache, state holder, reconnect timer и irregular emit через `plugin-kit`;
   - управляет reconnect и watchdog по тишине notifications;
-  - публикует shared adapter-события, `signal.batch` для `zephyr.rr` и telemetry.
+  - публикует shared adapter-события, `signal.batch` для `zephyr.rr` и telemetry;
+  - после `reset/reconnect/sequence gap` заново якорит RR-базу по локальному времени первого пакета и отбрасывает точки раньше старта timeline.
 - `ble-boundary.ts` изолирует внешний boundary:
   - env overrides;
   - formData -> transport requests;
@@ -21,7 +22,7 @@
   - score/diagnostic mapping advertisement данных в scan candidates;
   - debug helper'ы для подробного логирования BLE discovery и packet preview.
 - `ble-central.ts` держит `real`/`fake` BLE central transport.
-- `zephyr-protocol.ts` фиксирует UUID, команды и парсинг Zephyr-пакетов.
+- `zephyr-protocol.ts` фиксирует UUID, команды, парсинг Zephyr-пакетов и extraction-логику RR timestamps.
 - `event-contracts.ts` описывает plugin-specific тик polling/watchdog.
 
 ## Взаимодействие

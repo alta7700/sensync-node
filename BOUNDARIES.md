@@ -103,7 +103,7 @@
 
 - `PluginDescriptor[]`, которые отдаёт profile-builder.
 
-### 3. HDF5 simulation file ingress
+### 3. HDF5 simulation/viewer file ingress
 
 Поток:
 
@@ -113,6 +113,7 @@
 
 - [packages/plugins-hdf5/src/hdf5-simulation-boundary.ts](packages/plugins-hdf5/src/hdf5-simulation-boundary.ts)
 - [packages/plugins-hdf5/src/hdf5-simulation-adapter.ts](packages/plugins-hdf5/src/hdf5-simulation-adapter.ts)
+- [packages/plugins-hdf5/src/hdf5-viewer-adapter.ts](packages/plugins-hdf5/src/hdf5-viewer-adapter.ts)
 
 Что считается boundary:
 
@@ -130,7 +131,8 @@
 - при delayed file selection boundary сначала нормализует `formData.filePath`, а уже потом открывает файл;
 - проверяет структуру нового HDF5-формата;
 - строит session/channel reader state;
-- читает окна данных и формирует внутренние `signal.batch`.
+- для replay читает окна данных и формирует внутренние `signal.batch`;
+- для viewer читает те же validated datasets целиком и отдает history snapshot без фонового timer-cadence.
 
 Что уже trusted:
 
@@ -194,6 +196,7 @@
 - `formData` переводится в BLE transport request;
 - candidate list от `noble` нормализуется и ранжируется по Zephyr score, но не режется жёстко только по `localName`;
 - raw notifications переводятся в уже проверенные Zephyr packets или diagnostic parse-error.
+- RR timestamps не берутся напрямую из внешнего packet time: после `reset/reconnect/sequence gap` первый пакет якорится к локальному времени runtime, ранние точки режутся по `timelineStartSessionMs`, а дальше адаптер снова живёт по доверенной device-базе.
 
 Что уже trusted:
 

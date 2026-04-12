@@ -27,7 +27,6 @@ import {
 } from './ble-boundary.ts';
 import { createBleTransport, type BleTransport } from './ble-central.ts';
 import {
-  createInitialZephyrRrExtractionState,
   extractZephyrRrSamples,
   parseZephyrPacket,
   resetZephyrRrExtractionState,
@@ -114,7 +113,7 @@ const timelineResetParticipant = createTimelineResetParticipant({
   onCommit: async (input, ctx) => {
     drainTransportBacklog();
     resetPacketStats();
-    resetRrStreamState(input.timelineStartSessionMs);
+    resetRrStreamState();
     lastDisconnectReason = null;
     if (zephyrState.isState('connected', 'connecting')) {
       lastPacketSeenSessionMs = input.timelineStartSessionMs;
@@ -205,10 +204,8 @@ function resetPacketStats(): void {
   lastPacketSizeBytes = null;
 }
 
-function resetRrStreamState(referenceTimestampMs: number | null = null): void {
-  rrExtractionState = referenceTimestampMs === null
-    ? resetZephyrRrExtractionState()
-    : createInitialZephyrRrExtractionState(referenceTimestampMs);
+function resetRrStreamState(): void {
+  rrExtractionState = resetZephyrRrExtractionState();
 }
 
 function shouldPollAfterReset(): boolean {
@@ -368,13 +365,13 @@ async function handleConnect(ctx: PluginContext, payload: AdapterConnectRequestP
   lastConnectRequest = connectRequest;
   resetReconnectState();
   resetPacketStats();
+  resetRrStreamState();
   await setAdapterRuntimeState(ctx, 'connecting', payload.requestId);
 
   try {
     await transport.connect(connectRequest);
     lastPacketSeenSessionMs = ctx.clock.nowSessionMs();
     lastDisconnectReason = null;
-    resetRrStreamState(lastPacketSeenSessionMs);
     startPolling(ctx);
     logDebug('connect:success', { requestId: payload.requestId });
     await setAdapterRuntimeState(ctx, 'connected', payload.requestId);
@@ -432,6 +429,7 @@ async function scheduleReconnect(ctx: PluginContext, reason: string): Promise<vo
   reconnectReason = reason;
   reconnectPolicy.schedule(ctx.clock.nowSessionMs());
   await transport.disconnect().catch(() => undefined);
+  resetRrStreamState();
   logDebug('reconnect:armed', {
     reconnectAttempt: reconnectPolicy.getAttempt(),
     reconnectReason,
@@ -458,7 +456,7 @@ async function tryPendingReconnect(ctx: PluginContext): Promise<void> {
     await transport.connect(lastConnectRequest);
     lastPacketSeenSessionMs = ctx.clock.nowSessionMs();
     lastDisconnectReason = null;
-    resetRrStreamState(lastPacketSeenSessionMs);
+    resetRrStreamState();
     resetReconnectState();
     logDebug('reconnect:success', { reconnectAttempt });
     await setAdapterRuntimeState(ctx, 'connected', undefined, 'Автопереподключение Zephyr выполнено');
@@ -484,7 +482,13 @@ async function emitRrSignalBatch(
   rrValues: readonly number[],
   seqNumber: number,
 ): Promise<void> {
-  const extraction = extractZephyrRrSamples(rrValues, seqNumber, rrExtractionState, ctx.clock.nowSessionMs());
+  const extraction = extractZephyrRrSamples(
+    rrValues,
+    seqNumber,
+    rrExtractionState,
+    ctx.clock.nowSessionMs(),
+    ctx.timelineStartSessionMs(),
+  );
   rrExtractionState = extraction.state;
   if (extraction.sequenceGap) {
     warnDebug('packet:rr-sequence-gap', extraction.sequenceGap);

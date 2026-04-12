@@ -1,7 +1,7 @@
 // Этот файл сгенерирован `npm run generate:runtime-event-map`.
 // Не редактируй его вручную: править нужно *.spec.ts и генератор.
 
-import type { AdapterConnectRequestPayload, AdapterDisconnectRequestPayload, AdapterScanCandidatesPayload, AdapterScanRequestPayload, AdapterScanStateChangedPayload, AdapterStateChangedPayload, CommandEvent, CommandRejectedPayload, FactEvent, LabelMarkRequestPayload, RecordingErrorPayload, RecordingPausePayload, RecordingResumePayload, RecordingStartPayload, RecordingStateChangedPayload, RecordingStopPayload, RuntimeStartedPayload, ShapeGeneratedPayload, ShapeGenerateRequestPayload, SignalBatchEvent, SimulationPauseRequestPayload, SimulationResumeRequestPayload, SimulationSpeedSetRequestPayload, SimulationStateChangedPayload, TimelineResetRequestPayload } from './events.ts';
+import type { AdapterConnectRequestPayload, AdapterDisconnectRequestPayload, AdapterScanCandidatesPayload, AdapterScanRequestPayload, AdapterScanStateChangedPayload, AdapterStateChangedPayload, CommandEvent, CommandRejectedPayload, FactEvent, LabelMarkRequestPayload, RecordingErrorPayload, RecordingPausePayload, RecordingResumePayload, RecordingStartPayload, RecordingStateChangedPayload, RecordingStopPayload, RuntimeStartedPayload, ShapeGeneratedPayload, ShapeGenerateRequestPayload, SignalBatchEvent, SimulationPauseRequestPayload, SimulationResumeRequestPayload, SimulationSpeedSetRequestPayload, SimulationStateChangedPayload, TimelineResetRequestPayload, ViewerStateChangedPayload } from './events.ts';
 import type { RuntimeTelemetrySnapshotPayload, UiBinaryOutPayload, UiClientConnectedPayload, UiClientDisconnectedPayload, UiControlOutPayload } from './ui.ts';
 
 export type SignalBatchRuntimeEvent = SignalBatchEvent;
@@ -61,6 +61,12 @@ export type SimulationSpeedSetRequestEvent = CommandEvent<SimulationSpeedSetRequ
 };
 
 export type SimulationStateChangedEvent = FactEvent<SimulationStateChangedPayload, 'simulation.state.changed'> & {
+  v: 1;
+  kind: 'fact';
+  priority: 'system';
+};
+
+export type ViewerStateChangedEvent = FactEvent<ViewerStateChangedPayload, 'viewer.state.changed'> & {
   v: 1;
   kind: 'fact';
   priority: 'system';
@@ -187,6 +193,7 @@ declare module './events.ts' {
     'simulation.resume.request@1': SimulationResumeRequestEvent;
     'simulation.speed.set.request@1': SimulationSpeedSetRequestEvent;
     'simulation.state.changed@1': SimulationStateChangedEvent;
+    'viewer.state.changed@1': ViewerStateChangedEvent;
     'recording.start@1': RecordingStartEvent;
     'recording.stop@1': RecordingStopEvent;
     'recording.pause@1': RecordingPauseEvent;
