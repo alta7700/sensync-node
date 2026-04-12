@@ -15,6 +15,7 @@ Runtime слой для renderer/UI.
 - `sendCommand(...)` теперь отправляет не только `eventType`, но и `eventVersion`, а сборка `UiCommandMessage` централизована через `createUiCommandMessage(...)`.
 - `ui.warning` materialize'ится отдельно от `ui.error`, но попадает в тот же список уведомлений.
 - `ui.timeline.reset` очищает только timeline-local буферы, но не теряет schema и stream registry.
+- Для диагностики stop-flow runtime пишет в stdout короткий лог на `ui.flags.patch` с recording-флагами и на `ui.timeline.reset`.
 - `getVisibleWindow(...)` возвращает X уже относительно `clock.timelineStartSessionMs`, а не относительно глобального старта runtime-сессии.
 - `getVisibleWindow(...)` теперь может по запросу включать последнюю точку до начала окна, чтобы ступенчатые setpoint-графики не рвались на левом краю.
 - Если UI загружает history-viewer поток одним большим batch, store автоматически расширяет кольцевой буфер под размер этого snapshot, чтобы не терять историю.

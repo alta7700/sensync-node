@@ -12,6 +12,7 @@ UI gateway plugin.
 - Плагин подписывается на `signal.batch`, adapter state, recorder state, simulation state, telemetry и другие факты.
 - Он собирает `UiSchema`, flags snapshot/patches, dynamic form options и выдаёт binary batches с numeric stream IDs.
 - Materialized декларации потоков и live-обновления опираются на канонический `streamId`; для scan-форм select-поля по-прежнему мерджат opaque payload выбранного кандидата.
+- При изменении состояния записи `ui-gateway` пишет короткий диагностический лог в stdout, чтобы можно было сопоставить `recording.*` события и `ui.flags.patch`.
 - В fake-профиле manual connect для `fake-signal-adapter` больше не показывается: источник автостартует сам, а UI управляет только `shapes`, interval и recording.
 - При подключении UI-клиента отправляет `ui.init` и текущий снимок состояния.
 - `ui.init.clock` теперь несёт `timelineId` и `timelineStartSessionMs`.

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   encodeUiSignalBatchFrameFromEvent,
   EventTypes,
@@ -138,5 +138,71 @@ describe('ClientRuntime timeline reset', () => {
     window = runtime.getVisibleWindow('fake.a2', 1_000);
     expect(Array.from(window.x)).toEqual([50, 60]);
     expect(Array.from(window.y)).toEqual([4, 5]);
+  });
+
+  it('пишет диагностический лог при применении recording flag patch и timeline reset', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      transport = new TestTransport();
+      runtime = new ClientRuntime(transport);
+      await runtime.connect();
+
+      transport.emitControl({
+        type: 'ui.init',
+        sessionId: 'session-test',
+        schema: { version: 1, pages: [], widgets: [] },
+        streams: [],
+        flags: {},
+        clock: {
+          timeDomain: 'session',
+          sessionStartWallMs: 123,
+          timelineId: 'timeline-a',
+          timelineStartSessionMs: 0,
+        },
+      });
+
+      transport.emitControl({
+        type: 'ui.flags.patch',
+        patch: {
+          'recording.hdf5-recorder.state': 'stopping',
+          'recording.hdf5-recorder.filePath': '/tmp/veloerg.h5',
+          'recording.hdf5-recorder.message': 'Закрытие файла...',
+        },
+        version: 12,
+      });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        '[ClientRuntime] ui.flags.patch (recording)',
+        expect.objectContaining({
+          version: 12,
+          patch: expect.objectContaining({
+            'recording.hdf5-recorder.state': 'stopping',
+          }),
+          recording: expect.objectContaining({
+            'recording.hdf5-recorder.state': 'stopping',
+            'recording.hdf5-recorder.filePath': '/tmp/veloerg.h5',
+            'recording.hdf5-recorder.message': 'Закрытие файла...',
+          }),
+        }),
+      );
+
+      transport.emitControl({
+        type: 'ui.timeline.reset',
+        timelineId: 'timeline-b',
+        timelineStartSessionMs: 500,
+        clearBuffers: true,
+      });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        '[ClientRuntime] ui.timeline.reset',
+        expect.objectContaining({
+          timelineId: 'timeline-b',
+          timelineStartSessionMs: 500,
+          clearBuffers: true,
+        }),
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });

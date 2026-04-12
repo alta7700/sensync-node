@@ -42,6 +42,7 @@ export class PluginHost {
   private controlQueue: QueuedItem[] = [];
   private dataQueue: QueuedItem[] = [];
   private deferredMainMessages: MainToPluginWorkerMessage[] = [];
+  private deferredResetRequests: Extract<PluginToMainWorkerMessage, { kind: 'plugin.timeline-reset.request' }>[] = [];
   private inFlightSeq: bigint | null = null;
   private quiescing = false;
   private drainedResolvers = new Set<() => void>();
@@ -335,6 +336,10 @@ export class PluginHost {
     }
 
     if (message.kind === 'plugin.timeline-reset.request') {
+      if (this.inFlightSeq !== null) {
+        this.deferredResetRequests.push(message);
+        return;
+      }
       await this.callbacks.onTimelineResetRequest(this.descriptor.id, message.requestId, message.reason);
       return;
     }
@@ -363,6 +368,7 @@ export class PluginHost {
       this.telemetry.handled += 1;
       this.handlerMsTotal += message.handledMs;
       this.flushDeferredMainMessages();
+      await this.flushDeferredResetRequests();
       this.pump();
       return;
     }
@@ -410,6 +416,19 @@ export class PluginHost {
     this.deferredMainMessages = [];
     for (const message of pending) {
       this.post(message);
+    }
+  }
+
+  private async flushDeferredResetRequests(): Promise<void> {
+    while (this.deferredResetRequests.length > 0) {
+      if (this.inFlightSeq !== null) {
+        return;
+      }
+      const next = this.deferredResetRequests.shift();
+      if (!next) {
+        continue;
+      }
+      await this.callbacks.onTimelineResetRequest(this.descriptor.id, next.requestId, next.reason);
     }
   }
 }

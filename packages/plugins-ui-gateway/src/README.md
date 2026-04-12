@@ -16,6 +16,7 @@
   - переводит shared `command.rejected` в `ui.warning`;
   - кодирует `signal.batch` в binary UI frames;
   - отправляет `ui.init`, patch-сообщения и telemetry;
+  - при `recording.state.changed` пишет короткий диагностический лог в stdout, чтобы можно было сопоставить stop-flow и применённый `ui.flags.patch`;
   - для replay умеет локально делать `ui.timeline.reset` по `recordingStartSessionMs`, не трогая данные потока.
   - для viewer умеет локально сбрасывать timeline/buffers при подключении и отключении файла, чтобы history-данные не смешивались между сессиями просмотра.
 - `profile-schemas.ts`:

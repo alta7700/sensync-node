@@ -4,9 +4,12 @@ import {
   type UiCommandEventType,
   type UiCommandEventVersion,
   type UiControlMessage,
+  type UiFlagPatch,
+  type UiFlagSnapshot,
   type UiFormOption,
   type UiSessionClockInfo,
   type UiStreamDeclaration,
+  type UiFlagValue,
 } from '@sensync2/core';
 import { TypedArrayRingBufferStore } from './ring-buffer-store.ts';
 import type {
@@ -20,6 +23,16 @@ import type {
 
 type UpdateListener = () => void;
 type StreamListener = (streamId: string) => void;
+
+function hasRecordingFlags(patch: UiFlagPatch): boolean {
+  return Object.keys(patch).some((key) => key.startsWith('recording.'));
+}
+
+function extractRecordingFlags(flags: UiFlagSnapshot): Record<string, UiFlagValue> {
+  return Object.fromEntries(
+    Object.entries(flags).filter(([key]) => key.startsWith('recording.')),
+  );
+}
 
 export class ClientRuntime {
   private transport: ClientTransport;
@@ -261,6 +274,11 @@ export class ClientRuntime {
       if (message.clearBuffers) {
         this.bufferStore.clear();
       }
+      console.log('[ClientRuntime] ui.timeline.reset', {
+        timelineId: message.timelineId,
+        timelineStartSessionMs: message.timelineStartSessionMs,
+        clearBuffers: message.clearBuffers,
+      });
       this.notifyUpdate();
       return;
     }
@@ -273,6 +291,13 @@ export class ClientRuntime {
 
     if (message.type === 'ui.flags.patch') {
       this.flags = { ...this.flags, ...message.patch };
+      if (hasRecordingFlags(message.patch)) {
+        console.log('[ClientRuntime] ui.flags.patch (recording)', {
+          version: message.version,
+          patch: message.patch,
+          recording: extractRecordingFlags(this.flags),
+        });
+      }
       this.notifyUpdate();
       return;
     }

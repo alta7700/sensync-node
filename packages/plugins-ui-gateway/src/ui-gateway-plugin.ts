@@ -88,6 +88,25 @@ function patchFlags(patch: UiFlagPatch): { patch: UiFlagPatch; version: number }
   return { patch, version: flagVersion };
 }
 
+function logRecordingStateChange(
+  payload: RecordingStateChangedPayload,
+  patch: UiFlagPatch,
+  version: number,
+): void {
+  // Логируем только короткий диагностический срез, чтобы потом можно было сопоставить stop-flow и UI patch.
+  console.log('[ui-gateway] recording.state.changed', {
+    writer: payload.writer,
+    state: payload.state,
+    filePath: payload.filePath ?? null,
+    message: payload.message ?? null,
+    requestId: payload.requestId ?? null,
+    timelineId: currentTimelineId,
+    timelineStartSessionMs,
+    version,
+    patchKeys: Object.keys(patch),
+  });
+}
+
 function isReplayConnectTransition(
   previousState: SimulationStateChangedPayload['state'] | undefined,
   nextState: SimulationStateChangedPayload['state'],
@@ -409,6 +428,7 @@ export default definePlugin({
         [`recording.${payload.writer}.filePath`]: payload.filePath ?? null,
         [`recording.${payload.writer}.message`]: payload.message ?? null,
       });
+      logRecordingStateChange(payload, patch, version);
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
       return;
     }

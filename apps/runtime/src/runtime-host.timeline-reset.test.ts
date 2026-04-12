@@ -305,6 +305,50 @@ describe('RuntimeHost timeline reset', () => {
       return entry.message.type === 'ui.warning' && entry.message.code === 'reset_request_result_succeeded';
     })).toBe(false);
   });
+
+  it('не теряет control-событие, которое плагин эмитит прямо перед запросом reset', async () => {
+    const controls: UiControlOutPayload[] = [];
+
+    runtime = new RuntimeHost({
+      plugins: [
+        {
+          id: 'runtime-reset-idle-race-plugin',
+          modulePath: new URL('./runtime-reset-idle-race-plugin.test-fixture.ts', import.meta.url).href,
+        },
+      ],
+      timelineReset: {
+        enabled: true,
+        requesters: ['runtime-reset-idle-race-plugin'],
+        participants: [],
+        prepareTimeoutMs: 1_000,
+        commitTimeoutMs: 1_000,
+        recorderPolicy: 'reject-if-recording',
+      },
+      uiSinks: {
+        onControl(payload) {
+          controls.push(payload);
+        },
+      },
+    });
+
+    await runtime.start();
+    await runtime.attachUiClient('idle-race-ui');
+
+    await waitFor(() => {
+      return controls.some((entry) => {
+        return entry.message.type === 'ui.warning' && entry.message.code === 'idle_probe';
+      });
+    });
+    const probeIndex = controls.findIndex((entry) => {
+      return entry.message.type === 'ui.warning' && entry.message.code === 'idle_probe';
+    });
+    const resetIndex = controls.findIndex((entry) => {
+      return entry.message.type === 'ui.warning' && entry.message.code === 'idle_race_request_result_succeeded';
+    });
+
+    expect(probeIndex).toBeGreaterThanOrEqual(0);
+    expect(resetIndex).toBeGreaterThan(probeIndex);
+  });
 });
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {

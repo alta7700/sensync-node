@@ -15,7 +15,15 @@ contextBridge.exposeInMainWorld('sensyncBridge', {
     return ipcRenderer.invoke('sensync:ui-command', command);
   },
   onControl(handler) {
-    const wrapped = (_event, message) => handler(message);
+    const wrapped = (_event, message) => {
+      if (message && typeof message === 'object' && message.type === 'ui.flags.patch') {
+        const patch = message.patch || {};
+        if (patch && typeof patch === 'object' && Object.keys(patch).some((key) => key.startsWith('recording.'))) {
+          console.log('[desktop-preload] ui.flags.patch (recording)', message);
+        }
+      }
+      handler(message);
+    };
     ipcRenderer.on('sensync:ui-control', wrapped);
     return () => ipcRenderer.removeListener('sensync:ui-control', wrapped);
   },

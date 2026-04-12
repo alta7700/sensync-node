@@ -14,7 +14,26 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isRecordingFlagsPatch(message: unknown): message is { type: 'ui.flags.patch'; patch: Record<string, unknown>; version: number } {
+  return Boolean(
+    message
+    && typeof message === 'object'
+    && (message as { type?: unknown }).type === 'ui.flags.patch'
+    && typeof (message as { version?: unknown }).version === 'number'
+    && typeof (message as { patch?: unknown }).patch === 'object'
+    && (message as { patch?: Record<string, unknown> }).patch !== null
+    && Object.keys((message as { patch: Record<string, unknown> }).patch).some((key) => key.startsWith('recording.')),
+  );
+}
+
 function broadcastControl(message: unknown, clientId?: string): void {
+  if (isRecordingFlagsPatch(message)) {
+    console.log('[desktop] broadcast ui.flags.patch (recording)', {
+      clientId: clientId ?? null,
+      version: message.version,
+      patch: message.patch,
+    });
+  }
   if (clientId) {
     const wc = clientWindows.get(clientId);
     if (wc && !wc.isDestroyed()) {

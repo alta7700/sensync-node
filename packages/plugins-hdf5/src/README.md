@@ -9,6 +9,7 @@
 ## Как работает
 
 - `hdf5-recorder-plugin.ts` держит state machine записи, буферы и file handle.
+- `hdf5-recorder-plugin.ts` рядом с каждой записью пишет sidecar `*.diagnostic.jsonl`: туда попадают start/stop/reset события и краткие summary по flush потоков.
 - `hdf5-recorder-plugin.ts` также держит deferred-start/post-stop reset flow:
   - pending `recording.start` хранится до `onTimelineResetRequestResult(status=succeeded)`;
   - локальный `onTimelineResetCommit` не открывает файл сам по себе;

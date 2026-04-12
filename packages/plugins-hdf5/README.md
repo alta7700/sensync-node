@@ -5,12 +5,14 @@
 ## Для чего
 
 - Даёт отдельный recorder-плагин для записи выбранных `signal.batch` потоков в `HDF5`.
+- Recorder рядом с каждой записью пишет sidecar diagnostic log `*.diagnostic.jsonl` с lifecycle-событиями, reset-flow и краткими summary по flush каждого потока.
 - Даёт отдельный simulation-плагин, который читает тот же новый on-disk формат напрямую, без промежуточного replay bundle.
 - Даёт отдельный viewer-плагин, который читает тот же формат целиком для интерактивного просмотра графиков без фонового replay-cadence.
 
 ## Как работает
 
 - `hdf5-recorder-plugin.ts` пишет runtime-потоки в `/channels/<streamId>/timestamps` и `/channels/<streamId>/values`.
+- `hdf5-recorder-plugin.ts` параллельно пишет `*.diagnostic.jsonl` рядом с HDF5-файлом, чтобы потом можно было восстановить цепочку `start -> reset -> flush -> stop`.
 - Recorder теперь умеет deferred-start через `timeline reset`: при `resetTimelineOnStart=true` файл открывается только после глобального `request-result(status=succeeded)` от runtime, а не в локальном `onTimelineResetCommit()`.
 - Recorder materialize'ит manifest из plugin config в `onInit()`: через config можно включить `required` и profile-driven readiness checks.
 - `startConditions` в `v1` поддерживают только `fact-field`, чтобы preflight записи оставался runtime-driven и не тащил signal-specific framework в recorder.

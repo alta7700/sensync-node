@@ -17,6 +17,7 @@
 - `preload.cjs`:
   - публикует транспортные методы и минимальный file/directory picker для `modalForm`;
   - не даёт renderer прямого доступа к Node API.
+- Для диагностики stop-flow `main.ts` и `preload.cjs` могут печатать короткие логи на `ui.flags.patch` с `recording.*`, чтобы можно было разделить runtime, desktop bridge и renderer.
 
 ## Взаимодействие
 

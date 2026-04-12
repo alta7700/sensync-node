@@ -17,6 +17,7 @@ React renderer для `sensync2`.
 - Явная раскладка страницы теперь приходит из `UiPage.layout` (`row/column/widget`), а `widgetRows` используется только как упрощённый fallback.
 - Renderer также конвертирует timeline-relative UI-ввод вроде `2:45` в абсолютный `session time` до отправки shared-команд в runtime.
 - Для `UiChartWidget.viewportMode = history` renderer запрашивает полный history snapshot и включает интерактивный zoom/pan в ECharts.
+- Для диагностики стопа записи renderer пишет короткий snapshot по `recording.*` флагам и состоянию recording-кнопок, чтобы можно было увидеть, дошёл ли `idle` до конкретного control'а.
 
 ## Взаимодействие
 

@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import h5wasm from 'h5wasm/node';
 import {
   type CommandRejectedPayload,
@@ -79,6 +79,7 @@ interface ChannelRuntimeState {
 interface RecordingSessionState {
   file: H5File;
   filePath: string;
+  diagnosticLogPath: string;
   channelsRoot: H5Group;
   recordingStartSessionMs: number;
   recordingStartWallMs: number;
@@ -114,11 +115,37 @@ interface NormalizedRecorderConfig {
 interface PendingStartRequest {
   payload: RecordingStartPayload;
   resetRequestId: string;
+  plan: RecordingSessionPlan;
 }
 
 interface PendingPostStopReset {
   resetRequestId: string;
   requestId: string | undefined;
+}
+
+interface RecordingSessionPlan {
+  metadata: Record<string, RecordingMetadataScalar>;
+  channels: Map<string, ChannelRuntimeState>;
+  filenameTemplate: string;
+  outputDir: string;
+  recordingStartSessionMs: number;
+  recordingStartWallMs: number;
+  filePath: string;
+  diagnosticLogPath: string;
+}
+
+interface RecorderDiagnosticLogEntry {
+  tsSessionMs: number;
+  tsWallIso: string;
+  level: 'info' | 'warn' | 'error';
+  event: string;
+  writer: string;
+  timelineId: string;
+  timelineStartSessionMs: number;
+  requestId?: string;
+  filePath?: string;
+  message?: string;
+  data?: Record<string, unknown>;
 }
 
 const DefaultConfig: Hdf5RecorderPluginConfig = {
@@ -168,6 +195,9 @@ let recorderState: RecorderState = 'idle';
 let session: RecordingSessionState | null = null;
 let pendingStartRequest: PendingStartRequest | null = null;
 let pendingPostStopReset: PendingPostStopReset | null = null;
+let pendingDiagnosticLogPath: string | null = null;
+let pendingDiagnosticEntries: RecorderDiagnosticLogEntry[] = [];
+let diagnosticLogMaterialized = false;
 const latestFactsByCheckIndex = new Map<number, RuntimeEvent>();
 
 function makeStateEvent(
@@ -318,6 +348,13 @@ function createFilePath(
   return path.join(outputDir, withExtension);
 }
 
+function createDiagnosticLogPath(recordingFilePath: string): string {
+  if (recordingFilePath.endsWith('.h5')) {
+    return recordingFilePath.replace(/\.h5$/i, '.diagnostic.jsonl');
+  }
+  return `${recordingFilePath}.diagnostic.jsonl`;
+}
+
 function isRecord(input: unknown): input is Record<string, unknown> {
   return typeof input === 'object' && input !== null && !Array.isArray(input);
 }
@@ -447,6 +484,108 @@ function validateScalarMetadata(metadata: Record<string, unknown> | undefined): 
   return out;
 }
 
+function buildRecordingSessionPlan(
+  ctx: PluginContext,
+  payload: RecordingStartPayload,
+): RecordingSessionPlan {
+  const metadata = validateScalarMetadata(payload.metadata);
+  const channels = validateChannels(payload.channels);
+  const filenameTemplate = payload.filenameTemplate || pluginConfig.defaultFilenameTemplate || DefaultConfig.defaultFilenameTemplate!;
+  const outputDir = path.resolve(pluginConfig.outputDir);
+  const recordingStartSessionMs = ctx.clock.nowSessionMs();
+  const recordingStartWallMs = ctx.clock.sessionStartWallMs() + recordingStartSessionMs;
+  const filePath = createFilePath(
+    outputDir,
+    filenameTemplate,
+    payload.writer,
+    metadata,
+    recordingStartWallMs,
+  );
+
+  return {
+    metadata,
+    channels,
+    filenameTemplate,
+    outputDir,
+    recordingStartSessionMs,
+    recordingStartWallMs,
+    filePath,
+    diagnosticLogPath: createDiagnosticLogPath(filePath),
+  };
+}
+
+function makeDiagnosticEntry(
+  ctx: PluginContext,
+  event: string,
+  level: RecorderDiagnosticLogEntry['level'] = 'info',
+  message?: string,
+  data?: Record<string, unknown>,
+  requestId?: string,
+  filePath?: string,
+): RecorderDiagnosticLogEntry {
+  const tsSessionMs = ctx.clock.nowSessionMs();
+  const tsWallMs = ctx.clock.sessionStartWallMs() + tsSessionMs;
+  return {
+    tsSessionMs,
+    tsWallIso: new Date(tsWallMs).toISOString(),
+    level,
+    event,
+    writer: pluginConfig.writerKey,
+    timelineId: ctx.currentTimelineId(),
+    timelineStartSessionMs: ctx.timelineStartSessionMs(),
+    ...(requestId !== undefined ? { requestId } : {}),
+    ...(filePath !== undefined ? { filePath } : {}),
+    ...(message !== undefined ? { message } : {}),
+    ...(data !== undefined ? { data } : {}),
+  };
+}
+
+function appendDiagnosticEntry(entry: RecorderDiagnosticLogEntry): void {
+  const logPath = session?.diagnosticLogPath ?? pendingDiagnosticLogPath;
+  if (!logPath) {
+    return;
+  }
+
+  if (session?.diagnosticLogPath || diagnosticLogMaterialized) {
+    appendFileSync(logPath, `${JSON.stringify(entry)}\n`, 'utf8');
+    return;
+  }
+  pendingDiagnosticEntries.push(entry);
+}
+
+function logDiagnosticEvent(
+  ctx: PluginContext,
+  event: string,
+  level: RecorderDiagnosticLogEntry['level'] = 'info',
+  message?: string,
+  data?: Record<string, unknown>,
+  requestId?: string,
+  filePath?: string,
+): void {
+  try {
+    appendDiagnosticEntry(makeDiagnosticEntry(ctx, event, level, message, data, requestId, filePath));
+  } catch {
+    // Диагностический лог не должен ломать запись.
+  }
+}
+
+function flushPendingDiagnosticEntries(): void {
+  const logPath = session?.diagnosticLogPath ?? pendingDiagnosticLogPath;
+  if (!logPath || pendingDiagnosticEntries.length === 0) {
+    return;
+  }
+
+  try {
+    diagnosticLogMaterialized = true;
+    for (const entry of pendingDiagnosticEntries) {
+      appendFileSync(logPath, `${JSON.stringify(entry)}\n`, 'utf8');
+    }
+    pendingDiagnosticEntries = [];
+  } catch {
+    // Если дописать sidecar не удалось, сам recorder должен продолжать работу.
+  }
+}
+
 function validateChannels(channels: RecordingChannelConfig[]): Map<string, ChannelRuntimeState> {
   if (channels.length === 0) {
     throw new Error('channels не может быть пустым');
@@ -566,6 +705,19 @@ async function emitCommandRejected(
     priority: 'system',
     payload,
   }));
+  logDiagnosticEvent(
+    ctx,
+    'recording.command_rejected',
+    'warn',
+    message,
+    {
+      commandType,
+      code,
+      ...(details ? { details } : {}),
+    },
+    requestId,
+    session?.filePath,
+  );
 }
 
 function materializeTimestamps(payload: SignalBatchEvent['payload']): Float64Array {
@@ -700,7 +852,12 @@ function ensureChannelArtifacts(
   channel.group = group;
 }
 
-function flushChannel(activeSession: RecordingSessionState, channel: ChannelRuntimeState): void {
+function flushChannel(
+  ctx: PluginContext,
+  activeSession: RecordingSessionState,
+  channel: ChannelRuntimeState,
+  reason: 'threshold' | 'pause' | 'stop' | 'shutdown',
+): void {
   if (channel.bufferedSamples === 0) return;
   if (channel.sampleFormat === null) {
     throw new Error(`Нельзя flush потока ${channel.config.streamId} без sampleFormat`);
@@ -715,6 +872,8 @@ function flushChannel(activeSession: RecordingSessionState, channel: ChannelRunt
   const values = concatValueArrays(channel.valueChunks, channel.bufferedSamples, channel.sampleFormat);
   const from = channel.writtenSamples;
   const to = from + channel.bufferedSamples;
+  const firstTs = channel.firstBufferedTsMs;
+  const lastTs = channel.lastBufferedTsMs;
 
   channel.timestampsDataset.resize([to]);
   channel.timestampsDataset.write_slice([[from, to]], timestamps);
@@ -728,13 +887,32 @@ function flushChannel(activeSession: RecordingSessionState, channel: ChannelRunt
   channel.firstBufferedTsMs = null;
   channel.lastBufferedTsMs = null;
   channel.writtenSamples = to;
+
+  logDiagnosticEvent(ctx, 'recording.channel.flush', 'info', undefined, {
+    reason,
+    streamId: channel.config.streamId,
+    writtenSamplesBefore: from,
+    writtenSamplesAfter: to,
+    flushedSamples: to - from,
+    firstBufferedTsMs: firstTs,
+    lastBufferedTsMs: lastTs,
+    spanMs: firstTs !== null && lastTs !== null ? lastTs - firstTs : null,
+    sampleFormat: channel.sampleFormat,
+    frameKind: channel.frameKind,
+    sampleRateHz: channel.sampleRateHz,
+    units: channel.units,
+  }, undefined, activeSession.filePath);
 }
 
-function flushAllChannels(activeSession: RecordingSessionState): void {
+function flushAllChannels(
+  ctx: PluginContext,
+  activeSession: RecordingSessionState,
+  reason: 'threshold' | 'pause' | 'stop' | 'shutdown',
+): void {
   let flushedAny = false;
   for (const channel of activeSession.channels.values()) {
     if (channel.bufferedSamples === 0) continue;
-    flushChannel(activeSession, channel);
+    flushChannel(ctx, activeSession, channel, reason);
     flushedAny = true;
   }
   if (flushedAny) {
@@ -765,6 +943,10 @@ async function setRecorderState(
 ): Promise<void> {
   recorderState = nextState;
   await ctx.emit(makeStateEvent(pluginConfig.writerKey, nextState, session?.filePath, message, requestId));
+  logDiagnosticEvent(ctx, 'recording.state_changed', 'info', message, {
+    state: nextState,
+    filePath: session?.filePath,
+  }, requestId, session?.filePath);
 }
 
 async function failRecording(
@@ -774,60 +956,59 @@ async function failRecording(
   requestId?: string,
 ): Promise<void> {
   const filePath = session?.filePath;
+  logDiagnosticEvent(ctx, 'recording.failed', 'error', message, { code }, requestId, filePath);
+  flushPendingDiagnosticEntries();
   closeSession();
   recorderState = 'failed';
   await ctx.emit(makeErrorEvent(pluginConfig.writerKey, code, message, filePath, requestId));
   await ctx.emit(makeStateEvent(pluginConfig.writerKey, 'failed', filePath, message, requestId));
 }
 
-async function openRecordingSession(ctx: PluginContext, payload: RecordingStartPayload): Promise<void> {
+async function openRecordingSession(
+  ctx: PluginContext,
+  payload: RecordingStartPayload,
+  plan: RecordingSessionPlan,
+): Promise<void> {
   try {
-    const metadata = validateScalarMetadata(payload.metadata);
-    const channels = validateChannels(payload.channels);
-    const filenameTemplate = payload.filenameTemplate || pluginConfig.defaultFilenameTemplate || DefaultConfig.defaultFilenameTemplate!;
-    const outputDir = path.resolve(pluginConfig.outputDir);
-    const recordingStartSessionMs = ctx.clock.nowSessionMs();
-    const recordingStartWallMs = ctx.clock.sessionStartWallMs() + recordingStartSessionMs;
-    mkdirSync(outputDir, { recursive: true });
+    mkdirSync(plan.outputDir, { recursive: true });
 
     await setRecorderState(ctx, 'starting', undefined, payload.requestId);
 
-    const filePath = createFilePath(
-      outputDir,
-      filenameTemplate,
-      payload.writer,
-      metadata,
-      recordingStartWallMs,
-    );
-
-    const file = new h5wasm.File(filePath, 'w', { track_order: pluginConfig.trackOrder ?? true });
+    const file = new h5wasm.File(plan.filePath, 'w', { track_order: pluginConfig.trackOrder ?? true });
     const channelsRoot = file.create_group('channels', pluginConfig.trackOrder ?? true);
 
     createScalarAttribute(file, 'writer', payload.writer);
     createScalarAttribute(file, 'sessionStartWallMs', ctx.clock.sessionStartWallMs());
-    createScalarAttribute(file, 'recordingStartWallMs', recordingStartWallMs);
-    createScalarAttribute(file, 'recordingStartSessionMs', recordingStartSessionMs);
-    createScalarAttribute(file, 'createdAt', new Date(recordingStartWallMs).toISOString());
-    createScalarAttribute(file, 'filenameTemplate', filenameTemplate);
+    createScalarAttribute(file, 'recordingStartWallMs', plan.recordingStartWallMs);
+    createScalarAttribute(file, 'recordingStartSessionMs', plan.recordingStartSessionMs);
+    createScalarAttribute(file, 'createdAt', new Date(plan.recordingStartWallMs).toISOString());
+    createScalarAttribute(file, 'filenameTemplate', plan.filenameTemplate);
     createScalarAttribute(file, 'recorderPluginId', 'hdf5-recorder');
-    for (const [key, value] of Object.entries(metadata)) {
+    for (const [key, value] of Object.entries(plan.metadata)) {
       createScalarAttribute(file, key, value);
     }
 
     session = {
       file,
-      filePath,
+      filePath: plan.filePath,
+      diagnosticLogPath: plan.diagnosticLogPath,
       channelsRoot,
-      recordingStartSessionMs,
-      recordingStartWallMs,
-      filenameTemplate,
-      metadata,
-      channels,
+      recordingStartSessionMs: plan.recordingStartSessionMs,
+      recordingStartWallMs: plan.recordingStartWallMs,
+      filenameTemplate: plan.filenameTemplate,
+      metadata: plan.metadata,
+      channels: plan.channels,
     };
     if (payload.requestId !== undefined) {
       session.requestId = payload.requestId;
     }
 
+    diagnosticLogMaterialized = true;
+    flushPendingDiagnosticEntries();
+    logDiagnosticEvent(ctx, 'recording.session_opened', 'info', undefined, {
+      filePath: session.filePath,
+      channelCount: session.channels.size,
+    }, payload.requestId, session.filePath);
     await setRecorderState(ctx, 'recording', undefined, payload.requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -880,8 +1061,28 @@ async function startRecording(ctx: PluginContext, payload: RecordingStartPayload
     return;
   }
 
+  let plan: RecordingSessionPlan;
+  try {
+    plan = buildRecordingSessionPlan(ctx, payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await failRecording(ctx, 'start_failed', message, payload.requestId);
+    return;
+  }
+
+  pendingDiagnosticLogPath = plan.diagnosticLogPath;
+  logDiagnosticEvent(ctx, 'recording.start.request', 'info', undefined, {
+    writer: payload.writer,
+    resetTimelineOnStart: pluginConfig.resetTimelineOnStart,
+  }, payload.requestId, plan.filePath);
+  logDiagnosticEvent(ctx, 'recording.start.plan', 'info', undefined, {
+    filePath: plan.filePath,
+    diagnosticLogPath: plan.diagnosticLogPath,
+    channelCount: plan.channels.size,
+  }, payload.requestId, plan.filePath);
+
   if (!pluginConfig.resetTimelineOnStart) {
-    await openRecordingSession(ctx, payload);
+    await openRecordingSession(ctx, payload, plan);
     return;
   }
 
@@ -895,10 +1096,11 @@ async function startRecording(ctx: PluginContext, payload: RecordingStartPayload
       payload.requestId,
       { writer: payload.writer },
     );
+    flushPendingDiagnosticEntries();
     return;
   }
 
-  pendingStartRequest = { payload, resetRequestId };
+  pendingStartRequest = { payload, resetRequestId, plan };
   await setRecorderState(ctx, 'starting', undefined, payload.requestId);
 }
 
@@ -909,7 +1111,8 @@ async function pauseRecording(ctx: PluginContext, payload: RecordingPausePayload
   }
 
   try {
-    flushAllChannels(session);
+    logDiagnosticEvent(ctx, 'recording.pause.request', 'info', undefined, { writer: pluginConfig.writerKey }, payload.requestId, session.filePath);
+    flushAllChannels(ctx, session, 'pause');
     await setRecorderState(ctx, 'paused', undefined, payload.requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -923,6 +1126,7 @@ async function resumeRecording(ctx: PluginContext, payload: RecordingResumePaylo
     return;
   }
 
+  logDiagnosticEvent(ctx, 'recording.resume.request', 'info', undefined, { writer: pluginConfig.writerKey }, payload.requestId, session.filePath);
   await setRecorderState(ctx, 'recording', undefined, payload.requestId);
 }
 
@@ -933,9 +1137,21 @@ async function stopRecording(ctx: PluginContext, payload: RecordingStopPayload):
   }
 
   try {
+    const filePath = session.filePath;
+    logDiagnosticEvent(ctx, 'recording.stop.request', 'info', undefined, {
+      writer: pluginConfig.writerKey,
+      resetTimelineOnStop: pluginConfig.resetTimelineOnStop,
+    }, payload.requestId, filePath);
     await setRecorderState(ctx, 'stopping', undefined, payload.requestId);
-    flushAllChannels(session);
+    logDiagnosticEvent(ctx, 'recording.stop.flush_begin', 'info', undefined, {
+      bufferedChannelCount: [...session.channels.values()].filter((channel) => channel.bufferedSamples > 0).length,
+    }, payload.requestId, filePath);
+    flushAllChannels(ctx, session, 'stop');
+    logDiagnosticEvent(ctx, 'recording.stop.flush_complete', 'info', undefined, undefined, payload.requestId, filePath);
     closeSession();
+    logDiagnosticEvent(ctx, 'recording.stop.file_closed', 'info', undefined, {
+      filePath,
+    }, payload.requestId, filePath);
     await setRecorderState(ctx, 'idle', undefined, payload.requestId);
     if (pluginConfig.resetTimelineOnStop) {
       const resetRequestId = ctx.requestTimelineReset(`recording.stop:${pluginConfig.writerKey}`);
@@ -984,7 +1200,7 @@ async function handleSignalBatch(ctx: PluginContext, event: SignalBatchEvent): P
   try {
     appendChunk(channel, event.payload);
     if (shouldFlushChannel(channel)) {
-      flushChannel(session, channel);
+      flushChannel(ctx, session, channel, 'threshold');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1003,6 +1219,9 @@ export default definePlugin({
     recorderState = 'idle';
     pendingStartRequest = null;
     pendingPostStopReset = null;
+    pendingDiagnosticLogPath = null;
+    pendingDiagnosticEntries = [];
+    diagnosticLogMaterialized = false;
     latestFactsByCheckIndex.clear();
     await ctx.emit(makeStateEvent(pluginConfig.writerKey, 'idle'));
   },
@@ -1041,20 +1260,44 @@ export default definePlugin({
       await handleSignalBatch(ctx, event);
     }
   },
-  async onTimelineResetPrepare() {},
-  async onTimelineResetAbort(input, ctx) {
-    void input;
-    void ctx;
+  async onTimelineResetPrepare(input, ctx) {
+    logDiagnosticEvent(ctx, 'timeline.reset.prepare', 'info', undefined, {
+      resetId: input.resetId,
+      currentTimelineId: input.currentTimelineId,
+      nextTimelineId: input.nextTimelineId,
+      requestedAtSessionMs: input.requestedAtSessionMs,
+    }, undefined, session?.filePath ?? pendingDiagnosticLogPath ?? undefined);
   },
-  async onTimelineResetCommit(_input, ctx) {
-    void ctx;
+  async onTimelineResetAbort(input, ctx) {
+    logDiagnosticEvent(ctx, 'timeline.reset.abort', 'warn', undefined, {
+      resetId: input.resetId,
+      currentTimelineId: input.currentTimelineId,
+    }, undefined, session?.filePath ?? pendingDiagnosticLogPath ?? undefined);
+  },
+  async onTimelineResetCommit(input, ctx) {
+    logDiagnosticEvent(ctx, 'timeline.reset.commit', 'info', undefined, {
+      resetId: input.resetId,
+      nextTimelineId: input.nextTimelineId,
+      timelineStartSessionMs: input.timelineStartSessionMs,
+    }, undefined, session?.filePath ?? pendingDiagnosticLogPath ?? undefined);
   },
   async onTimelineResetRequestResult(input, ctx) {
+    logDiagnosticEvent(ctx, 'timeline.reset.request_result', input.status === 'failed' ? 'error' : 'info', input.message, {
+      requestId: input.requestId,
+      status: input.status,
+      code: input.code,
+      ...(input.resetId !== undefined ? { resetId: input.resetId } : {}),
+      ...(input.nextTimelineId !== undefined ? { nextTimelineId: input.nextTimelineId } : {}),
+      ...(input.timelineStartSessionMs !== undefined ? { timelineStartSessionMs: input.timelineStartSessionMs } : {}),
+    }, input.requestId, session?.filePath ?? pendingDiagnosticLogPath ?? undefined);
     if (pendingStartRequest && pendingStartRequest.resetRequestId === input.requestId) {
       const pendingPayload = pendingStartRequest.payload;
+      const pendingPlan = pendingStartRequest.plan;
+      pendingDiagnosticLogPath = pendingPlan.diagnosticLogPath;
       pendingStartRequest = null;
       if (input.status === 'succeeded') {
-        await openRecordingSession(ctx, pendingPayload);
+        pendingDiagnosticLogPath = pendingPlan.diagnosticLogPath;
+        await openRecordingSession(ctx, pendingPayload, pendingPlan);
         return;
       }
 
@@ -1068,6 +1311,7 @@ export default definePlugin({
         { writer: pendingPayload.writer },
       );
       await ctx.emit(makeStateEvent(pluginConfig.writerKey, 'idle', undefined, undefined, pendingPayload.requestId));
+      flushPendingDiagnosticEntries();
       return;
     }
 
@@ -1088,12 +1332,21 @@ export default definePlugin({
     }
   },
   async onShutdown(ctx) {
-    pendingStartRequest = null;
-    pendingPostStopReset = null;
-    latestFactsByCheckIndex.clear();
-    if (!session) return;
+    if (!session) {
+      pendingStartRequest = null;
+      pendingPostStopReset = null;
+      pendingDiagnosticLogPath = null;
+      pendingDiagnosticEntries = [];
+      diagnosticLogMaterialized = false;
+      latestFactsByCheckIndex.clear();
+      return;
+    }
     try {
-      flushAllChannels(session);
+      logDiagnosticEvent(ctx, 'recording.shutdown', 'info', undefined, {
+        filePath: session.filePath,
+        state: recorderState,
+      }, undefined, session.filePath);
+      flushAllChannels(ctx, session, 'shutdown');
       closeSession();
       recorderState = 'idle';
       await ctx.emit(makeStateEvent(pluginConfig.writerKey, 'idle'));
@@ -1103,5 +1356,11 @@ export default definePlugin({
       await ctx.emit(makeErrorEvent(pluginConfig.writerKey, 'shutdown_failed', message));
       recorderState = 'failed';
     }
+    pendingStartRequest = null;
+    pendingPostStopReset = null;
+    pendingDiagnosticLogPath = null;
+    pendingDiagnosticEntries = [];
+    diagnosticLogMaterialized = false;
+    latestFactsByCheckIndex.clear();
   },
 });

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   attachRuntimeEventEnvelope,
   defineRuntimeEventInput,
@@ -201,6 +201,47 @@ describe('ui-gateway-plugin', () => {
       .at(-1);
 
     expect(lastPatch?.patch['power.current']).toBe(210);
+  });
+
+  it('пишет диагностический лог при смене recording state', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const { ctx } = createTestContext(buildVeloergUiSchema());
+      await plugin.onInit(ctx as never);
+
+      await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+        type: EventTypes.recordingStateChanged,
+        v: 1,
+        kind: 'fact',
+        priority: 'system',
+        payload: {
+          writer: 'hdf5-recorder',
+          state: 'stopping',
+          filePath: '/tmp/veloerg.h5',
+          message: 'Закрытие файла...',
+        },
+      })), ctx as never);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        '[ui-gateway] recording.state.changed',
+        expect.objectContaining({
+          writer: 'hdf5-recorder',
+          state: 'stopping',
+          filePath: '/tmp/veloerg.h5',
+          message: 'Закрытие файла...',
+          timelineId: 'timeline-test',
+          timelineStartSessionMs: 0,
+          version: expect.any(Number),
+          patchKeys: expect.arrayContaining([
+            'recording.hdf5-recorder.state',
+            'recording.hdf5-recorder.filePath',
+            'recording.hdf5-recorder.message',
+          ]),
+        }),
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it('на timeline reset commit выпускает ui.timeline.reset и сбрасывает derived flags', async () => {

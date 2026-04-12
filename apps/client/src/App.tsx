@@ -145,10 +145,67 @@ function resolveControlAction(control: UiControlAction, flags: UiFlagsMap): Reso
   return resolver(flags);
 }
 
+function isRecordingControl(control: UiControlAction): boolean {
+  return control.id.includes('record');
+}
+
+function buildRecordingControlSnapshot(
+  widget: UiControlsWidget,
+  flags: UiFlagsMap,
+): Array<{
+  id: string;
+  label: string;
+  disabled: boolean;
+  isLoading: boolean;
+  hidden: boolean;
+}> {
+  return widget.controls
+    .filter((control) => isRecordingControl(control))
+    .map((control) => {
+      const resolved = resolveControlAction(control, flags);
+      return {
+        id: control.id,
+        label: resolved.label,
+        disabled: resolved.disabled,
+        isLoading: resolved.isLoading,
+        hidden: resolved.hidden,
+      };
+    });
+}
+
 function ControlsWidget(
   { widget, flags, onOpenModal }:
   { widget: UiControlsWidget; flags: Record<string, unknown>; onOpenModal: (form: UiModalForm) => void },
 ) {
+  const recordingSnapshot = useMemo(() => buildRecordingControlSnapshot(widget, flags), [widget, flags]);
+  const recordingFlags = useMemo(() => ({
+    state: flags['recording.local.state'] ?? null,
+    filePath: flags['recording.local.filePath'] ?? null,
+    message: flags['recording.local.message'] ?? null,
+  }), [flags]);
+  const lastRecordingLogRef = useRef<string>('');
+
+  useEffect(() => {
+    if (recordingSnapshot.length === 0) return;
+
+    const signature = JSON.stringify({
+      widgetId: widget.id,
+      flags: recordingFlags,
+      snapshot: recordingSnapshot,
+    });
+    if (signature === lastRecordingLogRef.current) return;
+    lastRecordingLogRef.current = signature;
+
+    // Диагностика нужна только для переходов записи, чтобы увидеть:
+    // дошёл ли `recording.local.state = idle` и какой variant выбрала кнопка.
+    console.log('[ClientApp] recording control snapshot', {
+      widgetId: widget.id,
+      title: widget.title,
+      flags: recordingFlags,
+      snapshot: recordingSnapshot,
+    });
+  }, [recordingFlags, recordingSnapshot, widget.id, widget.title]);
+
   return (
     <section style={panelStyle}>
       <h3 style={titleStyle}>{widget.title}</h3>

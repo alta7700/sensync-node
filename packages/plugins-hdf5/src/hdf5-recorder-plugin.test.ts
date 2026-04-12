@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -198,6 +198,105 @@ describe('hdf5-recorder-plugin', () => {
       state: 'recording',
       requestId: 'start-1',
     });
+  });
+
+  it('пишет sidecar diagnostic log с start/stop/reset и summary flush по потокам', async () => {
+    const harness = createHarness({
+      resetTimelineOnStart: true,
+      resetTimelineOnStop: true,
+    });
+    activeHarness = harness;
+
+    await hdf5RecorderPlugin.onInit(harness.ctx);
+    await harness.dispatch(recordingStartEvent('start-1'));
+
+    const startResetId = harness.resetRequestIds.at(-1) ?? 'reset-request-1';
+    await hdf5RecorderPlugin.onTimelineResetPrepare?.({
+      resetId: startResetId,
+      currentTimelineId: 'timeline-test',
+      nextTimelineId: 'timeline-next',
+      requestedAtSessionMs: 500,
+    }, harness.ctx);
+    await hdf5RecorderPlugin.onTimelineResetCommit?.({
+      resetId: startResetId,
+      nextTimelineId: 'timeline-next',
+      timelineStartSessionMs: 500,
+    }, harness.ctx);
+    await harness.resolveReset({
+      requestId: startResetId,
+      status: 'succeeded',
+      code: 'timeline_reset_succeeded',
+      message: 'Timeline reset завершён',
+      resetId: startResetId,
+      nextTimelineId: 'timeline-next',
+      timelineStartSessionMs: 500,
+    });
+
+    await harness.dispatch(defineRuntimeEventInput({
+      type: EventTypes.signalBatch,
+      v: 1,
+      kind: 'data',
+      priority: 'data',
+      payload: {
+        streamId: 'zephyr.rr',
+        sampleFormat: 'f32',
+        frameKind: 'irregular-signal-batch',
+        t0Ms: 500,
+        sampleCount: 2,
+        values: new Float32Array([0.8, 0.82]),
+        timestampsMs: new Float64Array([500, 900]),
+        units: 's',
+      },
+    }));
+
+    await harness.dispatch(defineRuntimeEventInput({
+      type: EventTypes.recordingStop,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        writer: 'local',
+        requestId: 'stop-1',
+      },
+    }));
+
+    const stopResetId = harness.resetRequestIds.at(-1) ?? 'reset-request-2';
+    await hdf5RecorderPlugin.onTimelineResetPrepare?.({
+      resetId: stopResetId,
+      currentTimelineId: 'timeline-next',
+      nextTimelineId: 'timeline-next-2',
+      requestedAtSessionMs: 1000,
+    }, harness.ctx);
+    await hdf5RecorderPlugin.onTimelineResetCommit?.({
+      resetId: stopResetId,
+      nextTimelineId: 'timeline-next-2',
+      timelineStartSessionMs: 1000,
+    }, harness.ctx);
+    await harness.resolveReset({
+      requestId: stopResetId,
+      status: 'succeeded',
+      code: 'timeline_reset_succeeded',
+      message: 'Timeline reset завершён',
+      resetId: stopResetId,
+      nextTimelineId: 'timeline-next-2',
+      timelineStartSessionMs: 1000,
+    });
+
+    const diagnosticLogName = readdirSync(harness.tempDir).find((name) => name.endsWith('.diagnostic.jsonl'));
+    expect(diagnosticLogName).toBeDefined();
+    const diagnosticLogPath = path.join(harness.tempDir, diagnosticLogName ?? '');
+    const entries = readFileSync(diagnosticLogPath, 'utf8')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(entries.some((entry) => entry.event === 'recording.start.request')).toBe(true);
+    expect(entries.some((entry) => entry.event === 'recording.session_opened')).toBe(true);
+    expect(entries.some((entry) => entry.event === 'timeline.reset.request_result' && (entry.data as Record<string, unknown> | undefined)?.status === 'succeeded')).toBe(true);
+    expect(entries.some((entry) => entry.event === 'recording.stop.request')).toBe(true);
+    expect(entries.some((entry) => entry.event === 'recording.stop.file_closed')).toBe(true);
+    expect(entries.some((entry) => entry.event === 'recording.channel.flush' && (entry['data'] as Record<string, unknown> | undefined)?.streamId === 'zephyr.rr')).toBe(true);
   });
 
   it('после abort start-reset очищает pending flow и позволяет повторить start', async () => {
