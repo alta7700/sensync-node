@@ -277,7 +277,6 @@ Derived flag для interval:
     - ниже `row`: `controls-main | controls-zephyr`
     - ниже `row`: `controls-lactate | controls-power`
     - ниже `controls-recording` на всю ширину
-    - ниже `controls-debug` на всю ширину
 - под controls размещается отдельная summary-строка:
   - `summary-main`
   - показывает текущее время теста, HR, lactate, последний lactate, мощность, SmO2 и tHb
@@ -300,7 +299,6 @@ Derived flag для interval:
 - `controls-power`
 - `controls-recording`
 - `summary-main`
-- `controls-debug`
 
 Кнопки:
 
@@ -353,9 +351,6 @@ Derived flag для interval:
 - `summary-main`
   - находится между control-блоками и графиками
   - показывает текущие значения текущего времени теста, HR, lactate, последнего lactate, мощности, SmO2 и tHb
-- `controls-debug`
-  - временный блок для ручной проверки `timeline.reset`
-  - содержит кнопку `Сбросить timeline`
 - `toggle-recording`
   - вынесена в отдельный виджет `controls-recording`
   - если `adapter.ant-plus.state = connected`, `adapter.zephyr-bioharness.state = connected`, `adapter.trigno.state = connected`

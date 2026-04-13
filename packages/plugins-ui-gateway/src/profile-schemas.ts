@@ -1055,7 +1055,6 @@ export function buildVeloergUiSchema(): UiSchema {
           'controls-lactate',
           'controls-power',
           'controls-recording',
-          'controls-debug',
           'summary-main',
           'chart-trigno-emg',
           'chart-trigno-gyro',
@@ -1099,12 +1098,9 @@ export function buildVeloergUiSchema(): UiSchema {
                       kind: 'column',
                       gap: 12,
                       children: [
-                        { kind: 'widget', widgetId: 'controls-lactate', minWidth: 320 },
-                        { kind: 'widget', widgetId: 'controls-power', minWidth: 320 },
+                        { kind: 'widget', widgetId: 'controls-recording' },
                       ],
                     },
-                    { kind: 'widget', widgetId: 'controls-recording' },
-                    { kind: 'widget', widgetId: 'controls-debug' },
                   ],
                 },
               ],
@@ -1114,6 +1110,14 @@ export function buildVeloergUiSchema(): UiSchema {
               gap: 12,
               children: [
                 { kind: 'widget', widgetId: 'summary-main' },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'controls-lactate', minWidth: 320 },
+                { kind: 'widget', widgetId: 'controls-power', minWidth: 320 },
               ],
             },
             {
@@ -1504,22 +1508,6 @@ export function buildVeloergUiSchema(): UiSchema {
         id: 'controls-power',
         title: 'Мощность',
         controls: [],
-      },
-      {
-        kind: 'controls',
-        id: 'controls-debug',
-        title: 'Debug',
-        controls: [
-          {
-            id: 'reset-timeline-debug',
-            kind: 'button',
-            label: 'Сбросить timeline',
-            commandType: EventTypes.timelineResetRequest,
-            payload: {
-              reason: 'manual_debug_reset',
-            },
-          },
-        ],
       },
       {
         kind: 'controls',

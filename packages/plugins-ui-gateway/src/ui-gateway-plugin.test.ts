@@ -481,12 +481,9 @@ describe('ui-gateway-plugin', () => {
                   kind: 'column',
                   gap: 12,
                   children: [
-                    { kind: 'widget', widgetId: 'controls-lactate', minWidth: 320 },
-                    { kind: 'widget', widgetId: 'controls-power', minWidth: 320 },
+                    { kind: 'widget', widgetId: 'controls-recording' },
                   ],
                 },
-                { kind: 'widget', widgetId: 'controls-recording' },
-                { kind: 'widget', widgetId: 'controls-debug' },
               ],
             },
           ],
@@ -496,6 +493,14 @@ describe('ui-gateway-plugin', () => {
           gap: 12,
           children: [
             { kind: 'widget', widgetId: 'summary-main' },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'controls-lactate', minWidth: 320 },
+            { kind: 'widget', widgetId: 'controls-power', minWidth: 320 },
           ],
         },
         {
@@ -621,21 +626,6 @@ describe('ui-gateway-plugin', () => {
       throw new Error('Не найден controls-power');
     }
     expect(powerControlsWidget.controls).toEqual([]);
-
-    const debugControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
-      return widget.id === 'controls-debug' && widget.kind === 'controls';
-    });
-    expect(debugControlsWidget?.kind).toBe('controls');
-    if (!debugControlsWidget || debugControlsWidget.kind !== 'controls') {
-      throw new Error('Не найден controls-debug');
-    }
-    expect(debugControlsWidget.controls.map((control) => control.id)).toEqual([
-      'reset-timeline-debug',
-    ]);
-    expect(debugControlsWidget.controls[0]).toMatchObject({
-      commandType: EventTypes.timelineResetRequest,
-      payload: { reason: 'manual_debug_reset' },
-    });
 
     const summaryWidget = initMessage.schema.widgets.find((widget) => widget.id === 'summary-main');
     expect(summaryWidget).toMatchObject({

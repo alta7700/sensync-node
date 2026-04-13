@@ -170,7 +170,7 @@ describe('launch profiles registry', () => {
 
     expect(profile.timelineReset).toMatchObject({
       enabled: true,
-      requesters: ['hdf5-recorder', 'external-ui'],
+      requesters: ['hdf5-recorder'],
       participants: [
         'ui-gateway',
         'ant-plus-adapter',

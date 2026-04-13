@@ -422,28 +422,6 @@ function VeloergPowerControl({
   );
 }
 
-interface VeloergDebugResetControlProps {
-  widget: UiControlsWidget;
-  busy: boolean;
-  onReset: () => void;
-}
-
-function VeloergDebugResetControl({ widget, busy, onReset }: VeloergDebugResetControlProps) {
-  return (
-    <section style={panelStyle}>
-      <h3 style={titleStyle}>{widget.title}</h3>
-      <button type="button" onClick={onReset} style={modalSecondaryButtonStyle} disabled={busy}>
-        {busy ? 'Сбрасываем timeline...' : 'Сбросить timeline'}
-      </button>
-      {busy ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
-          Ждём commit нового timeline перед отправкой лактата и мощности.
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 interface VeloergSummaryRowProps {
   widget: UiStatusWidget;
   uiNowMs: number;
@@ -559,7 +537,6 @@ interface VeloergUiState {
   powerManualValueText: string;
   powerError: string | null;
   powerDisableConfirmOpen: boolean;
-  manualTimelineResetPending: boolean;
   lastLactateLineText: string;
   currentHrText: string;
   currentSmo2Text: string;
@@ -573,7 +550,6 @@ interface VeloergUiState {
   onRequestDisableAutopilot: () => void;
   onConfirmDisableAutopilot: () => void;
   onCancelDisableAutopilot: () => void;
-  onRequestManualTimelineReset: () => void;
 }
 
 function StatusWidget({ widget, flags }: { widget: UiStatusWidget; flags: Record<string, unknown> }) {
@@ -1734,7 +1710,6 @@ function renderWidget(
         timeText={veloergUi.lactateTimeText}
         valueText={veloergUi.lactateValueText}
         error={veloergUi.lactateError}
-        disabled={veloergUi.manualTimelineResetPending}
         onTimeChange={veloergUi.onLactateTimeChange}
         onValueChange={veloergUi.onLactateValueChange}
         onSubmit={veloergUi.onSubmitLactate}
@@ -1753,21 +1728,10 @@ function renderWidget(
         currentPowerValue={veloergUi.currentPowerValue}
         manualValueText={veloergUi.powerManualValueText}
         error={veloergUi.powerError}
-        disabled={veloergUi.manualTimelineResetPending}
         onManualValueChange={veloergUi.onPowerManualValueChange}
         onApplyManualValue={veloergUi.onApplyManualValue}
         onPlus30={veloergUi.onPlus30}
         onRequestDisableAutopilot={veloergUi.onRequestDisableAutopilot}
-      />
-    );
-  }
-  if (widget.id === 'controls-debug' && widget.kind === 'controls' && veloergUi) {
-    return (
-      <VeloergDebugResetControl
-        key={widget.id}
-        widget={widget}
-        busy={veloergUi.manualTimelineResetPending}
-        onReset={veloergUi.onRequestManualTimelineReset}
       />
     );
   }
@@ -1904,8 +1868,6 @@ export function App() {
   const [powerError, setPowerError] = useState<string | null>(null);
   const [powerDisableConfirmOpen, setPowerDisableConfirmOpen] = useState(false);
   const [powerDisplayOverride, setPowerDisplayOverride] = useState<number | null>(30);
-  const [manualTimelineResetPending, setManualTimelineResetPending] = useState(false);
-  const [manualTimelineResetKey, setManualTimelineResetKey] = useState<string | null>(null);
   const powerAutopilotTimerRef = useRef<number | null>(null);
   const page = useMemo(() => snapshot.schema?.pages[0], [snapshot.schema]);
   const widgetsById = useMemo(() => {
@@ -1949,8 +1911,6 @@ export function App() {
     setPowerDisableConfirmOpen(false);
     setPowerDisplayOverride(30);
     setPowerNextAutoRaiseAtMs(Date.now() + 60_000);
-    setManualTimelineResetPending(false);
-    setManualTimelineResetKey(null);
 
     void runtimeSingleton.sendCommand(EventTypes.labelMarkRequest, 1, {
       labelId: 'power',
@@ -2046,17 +2006,6 @@ export function App() {
     }
   }, [currentPowerValue, powerDisplayOverride]);
 
-  useEffect(() => {
-    if (!manualTimelineResetPending || !snapshot.clock) {
-      return;
-    }
-    const currentKey = `${snapshot.clock.timelineId}:${snapshot.clock.timelineStartSessionMs}`;
-    if (manualTimelineResetKey !== null && manualTimelineResetKey !== currentKey) {
-      setManualTimelineResetPending(false);
-      setManualTimelineResetKey(null);
-    }
-  }, [manualTimelineResetPending, manualTimelineResetKey, snapshot.clock]);
-
   function resetLactateDraft(nextRelativeMs: number): void {
     setLactateTimeText(formatTimelineRelativeTime(nextRelativeMs));
     setLactateValueText('0,0');
@@ -2067,11 +2016,6 @@ export function App() {
       setLactateError('Текущий timeline недоступен');
       return;
     }
-    if (manualTimelineResetPending) {
-      setLactateError('Сначала дождитесь завершения reset timeline');
-      return;
-    }
-
     const parsedTime = parseTimelineRelativeTime(lactateTimeText);
     if (!parsedTime.ok) {
       setLactateError(parsedTime.error);
@@ -2104,9 +2048,6 @@ export function App() {
   async function submitPowerMark(value: number, atRelativeMs?: number): Promise<void> {
     if (!snapshot.clock) {
       throw new Error('Текущий timeline недоступен');
-    }
-    if (manualTimelineResetPending) {
-      throw new Error('Сначала дождитесь завершения reset timeline');
     }
     await runtimeSingleton.sendCommand(EventTypes.labelMarkRequest, 1, {
       labelId: 'power',
@@ -2156,10 +2097,6 @@ export function App() {
   }
 
   function requestDisableAutopilot(): void {
-    if (manualTimelineResetPending) {
-      setPowerError('Сначала дождитесь завершения reset timeline');
-      return;
-    }
     setPowerDisableConfirmOpen(true);
   }
 
@@ -2211,24 +2148,7 @@ export function App() {
     onRequestDisableAutopilot: requestDisableAutopilot,
     onConfirmDisableAutopilot: confirmDisableAutopilot,
     onCancelDisableAutopilot: cancelDisableAutopilot,
-    manualTimelineResetPending,
-    onRequestManualTimelineReset: requestManualTimelineReset,
   } : undefined;
-
-  function requestManualTimelineReset(): void {
-    if (!snapshot.clock) {
-      return;
-    }
-    setManualTimelineResetPending(true);
-    setManualTimelineResetKey(`${snapshot.clock.timelineId}:${snapshot.clock.timelineStartSessionMs}`);
-    void runtimeSingleton.sendCommand(EventTypes.timelineResetRequest, 1, {
-      reason: 'manual_debug_reset',
-    }).catch((error: unknown) => {
-      setManualTimelineResetPending(false);
-      setManualTimelineResetKey(null);
-      setLactateError(error instanceof Error ? error.message : 'Не удалось сбросить timeline');
-    });
-  }
 
   function openModal(form: UiModalForm): void {
     setModal({

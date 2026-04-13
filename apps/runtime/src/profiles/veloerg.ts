@@ -14,8 +14,7 @@ export const veloergProfile: LaunchProfileDefinition = {
       title: 'Veloerg live',
       timelineReset: {
         enabled: true,
-        // Временное разрешение UI reset для ручной проверки без активной записи.
-        requesters: ['hdf5-recorder', 'external-ui'],
+        requesters: ['hdf5-recorder'],
         participants: [
           'ui-gateway',
           'ant-plus-adapter',
