@@ -47,4 +47,51 @@ describe('TypedArrayRingBufferStore', () => {
     expect(Array.from(window.x)).toEqual([10_000, 30_000]);
     expect(Array.from(window.y)).toEqual([150, 180]);
   });
+
+  it('возвращает несколько последних значений потока в обратном хронологическом порядке', () => {
+    const store = new TypedArrayRingBufferStore(16);
+    const stream: UiStreamDeclaration = {
+      streamId: 'lactate.label',
+      numericId: 2,
+      label: 'Lactate',
+      sampleFormat: 'f32',
+      frameKind: 'label-batch',
+      units: 'mmol/L',
+    };
+
+    store.ensureStream(stream);
+    store.appendFrame(stream, {
+      version: 1,
+      frameType: 1,
+      streamNumericId: 2,
+      seq: 1n,
+      sampleFormat: 'f32',
+      t0Ms: 10_000,
+      dtMs: 0,
+      sampleCount: 1,
+      values: new Float32Array([1.2]),
+      timestampsMs: new Float64Array([10_000]),
+    });
+    store.appendFrame(stream, {
+      version: 1,
+      frameType: 1,
+      streamNumericId: 2,
+      seq: 2n,
+      sampleFormat: 'f32',
+      t0Ms: 20_000,
+      dtMs: 0,
+      sampleCount: 1,
+      values: new Float32Array([1.5]),
+      timestampsMs: new Float64Array([20_000]),
+    });
+
+    expect(store.getLatestValues('lactate.label', 2)[0]).toBeCloseTo(1.5, 5);
+    expect(store.getLatestValues('lactate.label', 2)[1]).toBeCloseTo(1.2, 5);
+    expect(store.getLatestValues('lactate.label', 1)).toEqual([1.5]);
+    const entries = store.getLatestEntries('lactate.label', 2);
+    expect(entries[0]).toMatchObject({ timeMs: 20_000 });
+    expect(entries[0]!.value).toBeCloseTo(1.5, 5);
+    expect(entries[1]).toMatchObject({ timeMs: 10_000 });
+    expect(entries[1]!.value).toBeCloseTo(1.2, 5);
+  });
 });

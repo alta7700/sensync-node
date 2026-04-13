@@ -16,6 +16,7 @@ import type {
   ClientRuntimeNotification,
   ClientRuntimeStateSnapshot,
   ClientTransport,
+  StreamSample,
   StreamBufferStore,
   StreamWindowOptions,
   StreamWindowData,
@@ -226,6 +227,10 @@ export class ClientRuntime {
     return snapshot;
   }
 
+  getLatestSessionMs(): number {
+    return this.latestSessionMs;
+  }
+
   getVisibleWindow(streamId: string, rangeMs: number, options?: StreamWindowOptions): StreamWindowData {
     const window = this.bufferStore.getVisibleWindow(streamId, rangeMs, this.latestSessionMs, options);
     if (!this.clock || window.length === 0) {
@@ -241,6 +246,18 @@ export class ClientRuntime {
       y: window.y,
       length: window.length,
     };
+  }
+
+  getLatestValue(streamId: string): number | null {
+    return this.bufferStore.getLatestValue(streamId);
+  }
+
+  getLatestValues(streamId: string, count: number): number[] {
+    return this.bufferStore.getLatestValues(streamId, count);
+  }
+
+  getLatestEntries(streamId: string, count: number): StreamSample[] {
+    return this.bufferStore.getLatestEntries(streamId, count);
   }
 
   private handleControl(message: UiControlMessage): void {

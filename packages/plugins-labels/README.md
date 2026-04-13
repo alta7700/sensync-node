@@ -12,6 +12,7 @@ Generic label-плагины поверх `@sensync2/plugin-kit`.
 - Плагин принимает shared-команду `label.mark.request`.
 - Команда адресует внутренний `labelId`, а пакет сам мапит его в конкретный `streamId` через конфиг.
 - На каждый mark plugin публикует single-sample `label-batch` и следит за монотонностью времени отдельно для каждого `labelId`.
+- После `timeline.reset` на commit пакет сбрасывает локальную монотонность, чтобы новый timeline можно было начинать с той же стартовой отметки.
 - Если команда отвергнута мягко (неизвестный `labelId`, stale timestamp, неверный `sampleFormat`), пакет публикует shared fact `command.rejected`, а не ограничивается внутренней telemetry.
 
 ## Взаимодействие

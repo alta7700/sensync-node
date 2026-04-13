@@ -3,6 +3,9 @@ import type { UiModalForm } from '@sensync2/core';
 import {
   buildModalInitialValues,
   buildModalSubmitPayload,
+  formatCommaDecimal,
+  formatTimelineRelativeTime,
+  parseCommaDecimal,
   parseTimelineRelativeTime,
   resolveControlPayload,
 } from './ui-schema-runtime.ts';
@@ -84,6 +87,19 @@ describe('ui-schema-runtime', () => {
     expect(buildModalInitialValues(form)).toEqual({
       atTimeMs: '0:00',
     });
+  });
+
+  it('форматирует и парсит decimal с запятой', () => {
+    expect(formatCommaDecimal(12.3)).toBe('12,3');
+    expect(parseCommaDecimal('12,3')).toEqual({
+      ok: true,
+      value: 12.3,
+    });
+  });
+
+  it('форматирует timeline-relative время в mm:ss', () => {
+    expect(formatTimelineRelativeTime(165_000)).toBe('2:45');
+    expect(formatTimelineRelativeTime(345_000)).toBe('5:45');
   });
 
   it('собирает динамический payload для power от последнего значения во flag', () => {

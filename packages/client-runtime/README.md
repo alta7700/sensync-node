@@ -18,6 +18,7 @@ Runtime слой для renderer/UI.
 - Для диагностики stop-flow runtime пишет в stdout короткий лог на `ui.flags.patch` с recording-флагами и на `ui.timeline.reset`.
 - `getVisibleWindow(...)` возвращает X уже относительно `clock.timelineStartSessionMs`, а не относительно глобального старта runtime-сессии.
 - `getVisibleWindow(...)` теперь может по запросу включать последнюю точку до начала окна, чтобы ступенчатые setpoint-графики не рвались на левом краю.
+- `getLatestValue(...)`, `getLatestValues(...)` и `getLatestEntries(...)` используются для summary-строк, которым нужны последние значения и timestamps потока, а не локальный React state.
 - Если UI загружает history-viewer поток одним большим batch, store автоматически расширяет кольцевой буфер под размер этого snapshot, чтобы не терять историю.
 
 ## Взаимодействие

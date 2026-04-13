@@ -477,10 +477,25 @@ describe('ui-gateway-plugin', () => {
                     { kind: 'widget', widgetId: 'controls-zephyr', minWidth: 250 },
                   ],
                 },
-                { kind: 'widget', widgetId: 'controls-lactate-power' },
+                {
+                  kind: 'column',
+                  gap: 12,
+                  children: [
+                    { kind: 'widget', widgetId: 'controls-lactate', minWidth: 320 },
+                    { kind: 'widget', widgetId: 'controls-power', minWidth: 320 },
+                  ],
+                },
                 { kind: 'widget', widgetId: 'controls-recording' },
+                { kind: 'widget', widgetId: 'controls-debug' },
               ],
             },
+          ],
+        },
+        {
+          kind: 'row',
+          gap: 12,
+          children: [
+            { kind: 'widget', widgetId: 'summary-main' },
           ],
         },
         {
@@ -589,54 +604,48 @@ describe('ui-gateway-plugin', () => {
       'disconnect-moxy',
     ]);
 
-    const lactatePowerControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
-      return widget.id === 'controls-lactate-power' && widget.kind === 'controls';
+    const lactateControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-lactate' && widget.kind === 'controls';
     });
-    expect(lactatePowerControlsWidget?.kind).toBe('controls');
-    if (!lactatePowerControlsWidget || lactatePowerControlsWidget.kind !== 'controls') {
-      throw new Error('Не найден controls-lactate-power');
+    expect(lactateControlsWidget?.kind).toBe('controls');
+    if (!lactateControlsWidget || lactateControlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-lactate');
     }
+    expect(lactateControlsWidget.controls).toEqual([]);
 
-    expect(lactatePowerControlsWidget.controls.map((control) => control.id)).toEqual([
-      'mark-lactate',
-      'power-plus-30',
-      'set-power',
-    ]);
-
-    expect(lactatePowerControlsWidget.controls.find((control) => control.id === 'mark-lactate')).toMatchObject({
-      modalForm: {
-        submitEventType: EventTypes.labelMarkRequest,
-        submitPayload: { labelId: 'lactate' },
-        fields: [
-          {
-            kind: 'row',
-            children: [
-              {
-                kind: 'timelineTimeInput',
-                fieldId: 'atTimeMs',
-                submitTarget: 'payload',
-              },
-              {
-                kind: 'decimalInput',
-                fieldId: 'value',
-                submitTarget: 'payload',
-              },
-            ],
-          },
-        ],
-      },
+    const powerControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-power' && widget.kind === 'controls';
     });
-    expect(lactatePowerControlsWidget.controls.find((control) => control.id === 'power-plus-30')).toMatchObject({
-      commandType: EventTypes.labelMarkRequest,
-      payload: { labelId: 'power' },
-      payloadBindings: [
-        {
-          kind: 'number-from-flag',
-          payloadKey: 'value',
-          flagKey: 'power.current',
-          add: 30,
-        },
-      ],
+    expect(powerControlsWidget?.kind).toBe('controls');
+    if (!powerControlsWidget || powerControlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-power');
+    }
+    expect(powerControlsWidget.controls).toEqual([]);
+
+    const debugControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-debug' && widget.kind === 'controls';
+    });
+    expect(debugControlsWidget?.kind).toBe('controls');
+    if (!debugControlsWidget || debugControlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-debug');
+    }
+    expect(debugControlsWidget.controls.map((control) => control.id)).toEqual([
+      'reset-timeline-debug',
+    ]);
+    expect(debugControlsWidget.controls[0]).toMatchObject({
+      commandType: EventTypes.timelineResetRequest,
+      payload: { reason: 'manual_debug_reset' },
+    });
+
+    const summaryWidget = initMessage.schema.widgets.find((widget) => widget.id === 'summary-main');
+    expect(summaryWidget).toMatchObject({
+      kind: 'status',
+      flagKeys: expect.arrayContaining([
+        'power.current',
+        'moxy.smo2',
+        'moxy.thb',
+        'zephyr.hr',
+      ]),
     });
 
     const recordingControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {

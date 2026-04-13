@@ -501,66 +501,6 @@ function makeTrignoConnectModalForm(adapterId: string): UiModalForm {
   };
 }
 
-function makeLactateMarkModalForm(): UiModalForm {
-  return {
-    id: 'mark-lactate',
-    title: 'Добавить lactate',
-    submitLabel: 'Добавить',
-    submitEventType: EventTypes.labelMarkRequest,
-    submitPayload: {
-      labelId: 'lactate',
-    },
-    fields: [
-      {
-        kind: 'row',
-        children: [
-          {
-            kind: 'timelineTimeInput',
-            fieldId: 'atTimeMs',
-            label: 'Время',
-            required: true,
-            submitTarget: 'payload',
-            defaultValue: '0:00',
-            placeholder: '2:45',
-          },
-          {
-            kind: 'decimalInput',
-            fieldId: 'value',
-            label: 'Лактат',
-            required: true,
-            submitTarget: 'payload',
-            min: 0,
-            step: 0.1,
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function makePowerSetModalForm(): UiModalForm {
-  return {
-    id: 'set-power',
-    title: 'Установить мощность',
-    submitLabel: 'Установить',
-    submitEventType: EventTypes.labelMarkRequest,
-    submitPayload: {
-      labelId: 'power',
-    },
-    fields: [
-      {
-        kind: 'numberInput',
-        fieldId: 'value',
-        label: 'Мощность',
-        required: true,
-        submitTarget: 'payload',
-        min: 0,
-        step: 1,
-      },
-    ],
-  };
-}
-
 function makeReplayConnectModalForm(adapterId: string, formId: string): UiModalForm {
   return {
     id: formId,
@@ -1112,8 +1052,11 @@ export function buildVeloergUiSchema(): UiSchema {
           'controls-trigno',
           'controls-main',
           'controls-zephyr',
-          'controls-lactate-power',
+          'controls-lactate',
+          'controls-power',
           'controls-recording',
+          'controls-debug',
+          'summary-main',
           'chart-trigno-emg',
           'chart-trigno-gyro',
           'chart-moxy-smo2',
@@ -1152,10 +1095,25 @@ export function buildVeloergUiSchema(): UiSchema {
                         { kind: 'widget', widgetId: 'controls-zephyr', minWidth: 250 },
                       ],
                     },
-                    { kind: 'widget', widgetId: 'controls-lactate-power' },
+                    {
+                      kind: 'column',
+                      gap: 12,
+                      children: [
+                        { kind: 'widget', widgetId: 'controls-lactate', minWidth: 320 },
+                        { kind: 'widget', widgetId: 'controls-power', minWidth: 320 },
+                      ],
+                    },
                     { kind: 'widget', widgetId: 'controls-recording' },
+                    { kind: 'widget', widgetId: 'controls-debug' },
                   ],
                 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'summary-main' },
               ],
             },
             {
@@ -1537,40 +1495,29 @@ export function buildVeloergUiSchema(): UiSchema {
       },
       {
         kind: 'controls',
-        id: 'controls-lactate-power',
-        title: 'Лактат / Мощность',
+        id: 'controls-lactate',
+        title: 'Лактат',
+        controls: [],
+      },
+      {
+        kind: 'controls',
+        id: 'controls-power',
+        title: 'Мощность',
+        controls: [],
+      },
+      {
+        kind: 'controls',
+        id: 'controls-debug',
+        title: 'Debug',
         controls: [
           {
-            id: 'mark-lactate',
+            id: 'reset-timeline-debug',
             kind: 'button',
-            label: 'Добавить lactate',
-            modalForm: makeLactateMarkModalForm(),
-          },
-          {
-            id: 'power-plus-30',
-            kind: 'button',
-            label: '+30 W',
-            commandType: EventTypes.labelMarkRequest,
+            label: 'Сбросить timeline',
+            commandType: EventTypes.timelineResetRequest,
             payload: {
-              labelId: 'power',
+              reason: 'manual_debug_reset',
             },
-            payloadBindings: [
-              {
-                kind: 'number-from-flag',
-                payloadKey: 'value',
-                flagKey: 'power.current',
-                fallbackValue: 0,
-                add: 30,
-                min: 0,
-                round: 'integer',
-              },
-            ],
-          },
-          {
-            id: 'set-power',
-            kind: 'button',
-            label: 'Задать мощность',
-            modalForm: makePowerSetModalForm(),
           },
         ],
       },
@@ -1645,6 +1592,17 @@ export function buildVeloergUiSchema(): UiSchema {
               },
             ],
           },
+        ],
+      },
+      {
+        kind: 'status',
+        id: 'summary-main',
+        title: 'Сводка',
+        flagKeys: [
+          'power.current',
+          'moxy.smo2',
+          'moxy.thb',
+          'zephyr.hr',
         ],
       },
       {

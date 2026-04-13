@@ -275,8 +275,12 @@ Derived flag для interval:
   - справа находится `column` с grid controls:
     - `controls-trigno` на всю ширину
     - ниже `row`: `controls-main | controls-zephyr`
-    - ниже `controls-lactate-power` на всю ширину
+    - ниже `row`: `controls-lactate | controls-power`
     - ниже `controls-recording` на всю ширину
+    - ниже `controls-debug` на всю ширину
+- под controls размещается отдельная summary-строка:
+  - `summary-main`
+  - показывает текущее время теста, HR, lactate, последний lactate, мощность, SmO2 и tHb
 - ниже идут отдельные `row`:
   - `chart-trigno-emg | chart-trigno-gyro`
   - `chart-moxy-smo2 | chart-moxy-thb`
@@ -292,8 +296,11 @@ Derived flag для interval:
 - `controls-trigno`
 - `controls-main`
 - `controls-zephyr`
-- `controls-lactate-power`
+- `controls-lactate`
+- `controls-power`
 - `controls-recording`
+- `summary-main`
+- `controls-debug`
 
 Кнопки:
 
@@ -331,29 +338,24 @@ Derived flag для interval:
   - видима только если `adapter.ant-plus.state ∈ { connected, failed, disconnecting }`
   - в `connected` отправляет `adapter.disconnect.request`
   - в `failed` тоже отправляет `adapter.disconnect.request`, чтобы сбросить состояние
-- `mark-lactate`
-  - находится в виджете `controls-lactate-power`
-  - открывает modal form `mark-lactate`
-  - submit формы отправляет `label.mark.request`
+- `controls-lactate`
+  - рендерит постоянные inline-поля `time` и `value`
+  - при submit отправляет `label.mark.request`
   - payload содержит:
     - `labelId = lactate`
-    - `atTimeMs`, собранный из `timelineTimeInput` как абсолютный `session time`
+    - `atTimeMs`, собранный из inline `timelineTimeInput` как абсолютный `session time`
     - `value`
-- `power-plus-30`
-  - находится в виджете `controls-lactate-power`
-  - отправляет `label.mark.request`
-  - payload содержит `labelId = power`
-  - `value` собирается на клиенте из derived UI-flag `power.current` через `payloadBindings`:
-    - fallback `0`
-    - затем `+30`
-    - итог округляется до integer
-- `set-power`
-  - находится в виджете `controls-lactate-power`
-  - открывает modal form `set-power`
-  - submit формы отправляет `label.mark.request`
-  - payload содержит:
-    - `labelId = power`
-    - `value`
+  - после submit UI сдвигает время на 3 минуты и сбрасывает value в `0,0`
+- `controls-power`
+  - в автопилоте показывает текущую мощность, время до следующего шага и кнопку отключения автопилота
+  - автопилот стартует с `30 W`, поднимается до `60 W` в `1:00`, затем увеличивается на `+30` каждые `3` минуты
+  - после отключения автопилота блок переключается в ручной режим с текущим значением, полем ввода, кнопкой `OK` и кнопкой `+30`
+- `summary-main`
+  - находится между control-блоками и графиками
+  - показывает текущие значения текущего времени теста, HR, lactate, последнего lactate, мощности, SmO2 и tHb
+- `controls-debug`
+  - временный блок для ручной проверки `timeline.reset`
+  - содержит кнопку `Сбросить timeline`
 - `toggle-recording`
   - вынесена в отдельный виджет `controls-recording`
   - если `adapter.ant-plus.state = connected`, `adapter.zephyr-bioharness.state = connected`, `adapter.trigno.state = connected`

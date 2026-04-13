@@ -7,10 +7,10 @@ import { LineChart, ScatterChart } from 'echarts/charts';
 import { CanvasRenderer } from 'echarts/renderers';
 import { ClientRuntime, type ClientRuntimeNotification, type StreamWindowData } from '@sensync2/client-runtime';
 import type {
+  UiControlAction,
   UiLayoutNode,
   UiChartSeries,
   UiChartWidget,
-  UiControlAction,
   UiCommandEventType,
   UiCommandEventVersion,
   UiControlWhen,
@@ -21,10 +21,15 @@ import type {
   UiTelemetryWidget,
   UiWidget,
 } from '@sensync2/core';
+import { EventTypes } from '@sensync2/core';
 import { ElectronBridgeTransport } from './electronTransport.ts';
 import {
+  formatCommaDecimal,
+  formatTimelineRelativeTime,
   buildModalInitialValues,
   buildModalSubmitPayload,
+  parseCommaDecimal,
+  parseTimelineRelativeTime,
   resolveControlPayload,
 } from './ui-schema-runtime.ts';
 
@@ -247,6 +252,328 @@ function ControlsWidget(
       </div>
     </section>
   );
+}
+
+interface VeloergLactateControlProps {
+  widget: UiControlsWidget;
+  timeText: string;
+  valueText: string;
+  error: string | null;
+  disabled: boolean;
+  onTimeChange: (value: string) => void;
+  onValueChange: (value: string) => void;
+  onSubmit: () => void;
+}
+
+function VeloergLactateControl({
+  widget,
+  timeText,
+  valueText,
+  error,
+  disabled,
+  onTimeChange,
+  onValueChange,
+  onSubmit,
+}: VeloergLactateControlProps) {
+  return (
+    <section style={panelStyle}>
+      <h3 style={titleStyle}>{widget.title}</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(180px, 1fr) auto', gap: 12, alignItems: 'end' }}>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Время</span>
+          <input
+            type="text"
+            value={timeText}
+            onChange={(event) => onTimeChange(event.target.value)}
+            placeholder="2:45"
+            style={modalInputStyle}
+          />
+        </label>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Лактат</span>
+          <input
+            type="text"
+            value={valueText}
+            onChange={(event) => onValueChange(event.target.value)}
+            placeholder="0,0"
+            inputMode="decimal"
+            style={modalInputStyle}
+          />
+        </label>
+        <button type="button" onClick={onSubmit} style={modalPrimaryButtonStyle} disabled={disabled}>
+          Отправить
+        </button>
+      </div>
+      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+        После отправки время сдвигается на 3 минуты, а значение сбрасывается в 0,0.
+      </div>
+      {disabled ? (
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+          Ждём завершения `timeline.reset`.
+        </div>
+      ) : null}
+      {error ? (
+        <div style={{ marginTop: 8, color: 'var(--bad)', fontSize: 13 }}>{error}</div>
+      ) : null}
+    </section>
+  );
+}
+
+interface VeloergPowerControlProps {
+  widget: UiControlsWidget;
+  mode: 'autopilot' | 'manual';
+  autopilotLocked: boolean;
+  nextAutoRaiseAtMs: number | null;
+  uiNowMs: number;
+  currentPowerValue: number | null;
+  manualValueText: string;
+  error: string | null;
+  disabled: boolean;
+  onManualValueChange: (value: string) => void;
+  onApplyManualValue: () => void;
+  onPlus30: () => void;
+  onRequestDisableAutopilot: () => void;
+}
+
+function VeloergPowerControl({
+  widget,
+  mode,
+  autopilotLocked,
+  nextAutoRaiseAtMs,
+  uiNowMs,
+  currentPowerValue,
+  manualValueText,
+  error,
+  disabled,
+  onManualValueChange,
+  onApplyManualValue,
+  onPlus30,
+  onRequestDisableAutopilot,
+}: VeloergPowerControlProps) {
+  const remainingMs = mode === 'autopilot' && nextAutoRaiseAtMs !== null
+    ? Math.max(0, nextAutoRaiseAtMs - uiNowMs)
+    : null;
+  const currentText = currentPowerValue === null ? '—' : `${Math.round(currentPowerValue)} W`;
+
+  return (
+    <section style={panelStyle}>
+      <h3 style={titleStyle}>{widget.title}</h3>
+      {mode === 'autopilot' ? (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'baseline' }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>Текущая мощность</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{currentText}</div>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'baseline' }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>До следующего поднятия</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>
+              {remainingMs !== null ? formatTimelineRelativeTime(remainingMs) : '—'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={onRequestDisableAutopilot} style={modalSecondaryButtonStyle} disabled={disabled}>
+              Отключить автопилот
+            </button>
+          </div>
+          {autopilotLocked ? (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Автопилот можно снова включить только после reset timeline.</div>
+          ) : null}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'baseline' }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>Текущая мощность</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{currentText}</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) auto auto', gap: 12, alignItems: 'end' }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontSize: 13, color: 'var(--muted)' }}>Новое значение</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={manualValueText}
+                onChange={(event) => onManualValueChange(event.target.value)}
+                style={modalInputStyle}
+                disabled={disabled}
+              />
+            </label>
+            <button type="button" onClick={onApplyManualValue} style={modalPrimaryButtonStyle} disabled={disabled}>
+              OK
+            </button>
+            <button type="button" onClick={onPlus30} style={modalSecondaryButtonStyle} disabled={disabled}>
+              +30
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Автопилот отключён до следующего reset timeline.
+          </div>
+          {disabled ? (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              Ждём завершения `timeline.reset`.
+            </div>
+          ) : null}
+          {error ? (
+            <div style={{ color: 'var(--bad)', fontSize: 13 }}>{error}</div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+interface VeloergDebugResetControlProps {
+  widget: UiControlsWidget;
+  busy: boolean;
+  onReset: () => void;
+}
+
+function VeloergDebugResetControl({ widget, busy, onReset }: VeloergDebugResetControlProps) {
+  return (
+    <section style={panelStyle}>
+      <h3 style={titleStyle}>{widget.title}</h3>
+      <button type="button" onClick={onReset} style={modalSecondaryButtonStyle} disabled={busy}>
+        {busy ? 'Сбрасываем timeline...' : 'Сбросить timeline'}
+      </button>
+      {busy ? (
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+          Ждём commit нового timeline перед отправкой лактата и мощности.
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+interface VeloergSummaryRowProps {
+  widget: UiStatusWidget;
+  uiNowMs: number;
+  timelineAnchorWallMs: number;
+  lastLactateLineText: string;
+  currentPowerText: string;
+  currentHrText: string;
+  currentSmo2Text: string;
+  currentThbText: string;
+}
+
+function VeloergSummaryRow({
+  widget,
+  uiNowMs,
+  timelineAnchorWallMs,
+  lastLactateLineText,
+  currentPowerText,
+  currentHrText,
+  currentSmo2Text,
+  currentThbText,
+}: VeloergSummaryRowProps) {
+  const currentTimeText = formatTimelineRelativeTime(Math.max(0, uiNowMs - timelineAnchorWallMs));
+  const items = [
+    { label: 'Текущее время теста', value: currentTimeText },
+    { label: 'Текущий hr', value: currentHrText },
+    { label: 'Последний лактат', value: lastLactateLineText },
+    { label: 'Текущая мощность', value: currentPowerText },
+    { label: 'Текущий smo2', value: currentSmo2Text },
+    { label: 'Текущий thb', value: currentThbText },
+  ];
+
+  return (
+    <section style={panelStyle}>
+      <h3 style={titleStyle}>{widget.title}</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 12 }}>
+        {items.map((item) => (
+          <div key={item.label} style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>{item.label}</div>
+            <div style={{ fontSize: 30, lineHeight: 1.05, fontWeight: 700, letterSpacing: -0.3, whiteSpace: 'nowrap' }}>
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface VeloergConfirmDialogProps {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function VeloergConfirmDialog({
+  title,
+  description,
+  confirmLabel,
+  cancelLabel,
+  onConfirm,
+  onCancel,
+}: VeloergConfirmDialogProps) {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(2, 6, 12, 0.72)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
+        zIndex: 1200,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(520px, 100%)',
+          background: 'linear-gradient(180deg, rgba(22,27,34,0.98) 0%, rgba(13,17,23,0.98) 100%)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          boxShadow: '0 24px 48px rgba(0,0,0,0.28)',
+          padding: 16,
+          display: 'grid',
+          gap: 16,
+        }}
+      >
+        <div>
+          <h3 style={{ margin: 0, fontSize: 18 }}>{title}</h3>
+          <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 13 }}>{description}</div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'end', gap: 8 }}>
+          <button type="button" onClick={onCancel} style={modalSecondaryButtonStyle}>{cancelLabel}</button>
+          <button type="button" onClick={onConfirm} style={modalPrimaryButtonStyle}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface VeloergUiState {
+  uiNowMs: number;
+  timelineAnchorWallMs: number;
+  lactateTimeText: string;
+  lactateValueText: string;
+  lactateError: string | null;
+  powerMode: 'autopilot' | 'manual';
+  powerAutopilotLocked: boolean;
+  powerNextAutoRaiseAtMs: number | null;
+  currentPowerValue: number | null;
+  powerManualValueText: string;
+  powerError: string | null;
+  powerDisableConfirmOpen: boolean;
+  manualTimelineResetPending: boolean;
+  lastLactateLineText: string;
+  currentHrText: string;
+  currentSmo2Text: string;
+  currentThbText: string;
+  onLactateTimeChange: (value: string) => void;
+  onLactateValueChange: (value: string) => void;
+  onSubmitLactate: () => void;
+  onPowerManualValueChange: (value: string) => void;
+  onApplyManualValue: () => void;
+  onPlus30: () => void;
+  onRequestDisableAutopilot: () => void;
+  onConfirmDisableAutopilot: () => void;
+  onCancelDisableAutopilot: () => void;
+  onRequestManualTimelineReset: () => void;
 }
 
 function StatusWidget({ widget, flags }: { widget: UiStatusWidget; flags: Record<string, unknown> }) {
@@ -1382,7 +1709,69 @@ function renderWidget(
   flags: Record<string, unknown>,
   telemetry: ReturnType<typeof runtimeSingleton.getSnapshot>['telemetry'],
   onOpenModal: (form: UiModalForm) => void,
+  veloergUi?: VeloergUiState,
 ) {
+  if (widget.id === 'summary-main' && widget.kind === 'status' && veloergUi) {
+    return (
+      <VeloergSummaryRow
+        key={widget.id}
+        widget={widget}
+        uiNowMs={veloergUi.uiNowMs}
+        timelineAnchorWallMs={veloergUi.timelineAnchorWallMs}
+        lastLactateLineText={veloergUi.lastLactateLineText}
+        currentPowerText={veloergUi.currentPowerValue === null ? '—' : `${Math.round(veloergUi.currentPowerValue)} W`}
+        currentHrText={veloergUi.currentHrText}
+        currentSmo2Text={veloergUi.currentSmo2Text}
+        currentThbText={veloergUi.currentThbText}
+      />
+    );
+  }
+  if (widget.id === 'controls-lactate' && widget.kind === 'controls' && veloergUi) {
+    return (
+      <VeloergLactateControl
+        key={widget.id}
+        widget={widget}
+        timeText={veloergUi.lactateTimeText}
+        valueText={veloergUi.lactateValueText}
+        error={veloergUi.lactateError}
+        disabled={veloergUi.manualTimelineResetPending}
+        onTimeChange={veloergUi.onLactateTimeChange}
+        onValueChange={veloergUi.onLactateValueChange}
+        onSubmit={veloergUi.onSubmitLactate}
+      />
+    );
+  }
+  if (widget.id === 'controls-power' && widget.kind === 'controls' && veloergUi) {
+    return (
+      <VeloergPowerControl
+        key={widget.id}
+        widget={widget}
+        mode={veloergUi.powerMode}
+        autopilotLocked={veloergUi.powerAutopilotLocked}
+        nextAutoRaiseAtMs={veloergUi.powerNextAutoRaiseAtMs}
+        uiNowMs={veloergUi.uiNowMs}
+        currentPowerValue={veloergUi.currentPowerValue}
+        manualValueText={veloergUi.powerManualValueText}
+        error={veloergUi.powerError}
+        disabled={veloergUi.manualTimelineResetPending}
+        onManualValueChange={veloergUi.onPowerManualValueChange}
+        onApplyManualValue={veloergUi.onApplyManualValue}
+        onPlus30={veloergUi.onPlus30}
+        onRequestDisableAutopilot={veloergUi.onRequestDisableAutopilot}
+      />
+    );
+  }
+  if (widget.id === 'controls-debug' && widget.kind === 'controls' && veloergUi) {
+    return (
+      <VeloergDebugResetControl
+        key={widget.id}
+        widget={widget}
+        busy={veloergUi.manualTimelineResetPending}
+        onReset={veloergUi.onRequestManualTimelineReset}
+      />
+    );
+  }
+
   if (widget.kind === 'controls') {
     return <ControlsWidget key={widget.id} widget={widget} flags={flags} onOpenModal={onOpenModal} />;
   }
@@ -1423,6 +1812,7 @@ function renderLayoutNode(
   flags: Record<string, unknown>,
   telemetry: ReturnType<typeof runtimeSingleton.getSnapshot>['telemetry'],
   onOpenModal: (form: UiModalForm) => void,
+  veloergUi: VeloergUiState | undefined,
   key: string,
 ): React.ReactNode {
   if (node.kind === 'widget') {
@@ -1430,13 +1820,13 @@ function renderLayoutNode(
     if (!widget) return null;
     return (
       <div key={key} style={layoutNodeStyle(node)}>
-        {renderWidget(widget, flags, telemetry, onOpenModal)}
+        {renderWidget(widget, flags, telemetry, onOpenModal, veloergUi)}
       </div>
     );
   }
 
   const children = node.children
-    .map((child, index) => renderLayoutNode(child, widgetsById, flags, telemetry, onOpenModal, `${key}-${index}`))
+    .map((child, index) => renderLayoutNode(child, widgetsById, flags, telemetry, onOpenModal, veloergUi, `${key}-${index}`))
     .filter((child) => child !== null);
 
   return (
@@ -1491,9 +1881,32 @@ const modalPrimaryButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
 };
 
+const MAX_LACTATE_VALUE = 100;
+const MAX_POWER_VALUE = 1000;
+
+function formatValueLimitError(label: string, limit: number): string {
+  return `${label} должен быть < ${limit}`;
+}
+
 export function App() {
   const { snapshot } = useRuntimeSnapshot();
   const [modal, setModal] = useState<ModalState | null>(null);
+  const [uiNowMs, setUiNowMs] = useState(() => Date.now());
+  const [timelineAnchorWallMs, setTimelineAnchorWallMs] = useState(() => Date.now());
+  const [lactateTimeText, setLactateTimeText] = useState('2:45');
+  const [lactateValueText, setLactateValueText] = useState('0,0');
+  const [lactateError, setLactateError] = useState<string | null>(null);
+  const [powerMode, setPowerMode] = useState<'autopilot' | 'manual'>('autopilot');
+  const [powerAutopilotLocked, setPowerAutopilotLocked] = useState(false);
+  const [powerAutopilotStepCount, setPowerAutopilotStepCount] = useState(0);
+  const [powerNextAutoRaiseAtMs, setPowerNextAutoRaiseAtMs] = useState<number | null>(null);
+  const [powerManualValueText, setPowerManualValueText] = useState('30');
+  const [powerError, setPowerError] = useState<string | null>(null);
+  const [powerDisableConfirmOpen, setPowerDisableConfirmOpen] = useState(false);
+  const [powerDisplayOverride, setPowerDisplayOverride] = useState<number | null>(30);
+  const [manualTimelineResetPending, setManualTimelineResetPending] = useState(false);
+  const [manualTimelineResetKey, setManualTimelineResetKey] = useState<string | null>(null);
+  const powerAutopilotTimerRef = useRef<number | null>(null);
   const page = useMemo(() => snapshot.schema?.pages[0], [snapshot.schema]);
   const widgetsById = useMemo(() => {
     if (!snapshot.schema || !page) return new Map<string, UiWidget>();
@@ -1508,6 +1921,314 @@ export function App() {
       .map((row) => row.map((id) => widgetsById.get(id)).filter(Boolean) as UiWidget[])
       .filter((row) => row.length > 0);
   }, [page, widgetsById]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setUiNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timelineKey = snapshot.clock
+      ? `${snapshot.clock.timelineId}:${snapshot.clock.timelineStartSessionMs}`
+      : null;
+    if (!timelineKey) {
+      return;
+    }
+
+    setTimelineAnchorWallMs(Date.now());
+    setLactateTimeText('2:45');
+    setLactateValueText('0,0');
+    setLactateError(null);
+    setPowerMode('autopilot');
+    setPowerAutopilotLocked(false);
+    setPowerAutopilotStepCount(0);
+    setPowerManualValueText('30');
+    setPowerError(null);
+    setPowerDisableConfirmOpen(false);
+    setPowerDisplayOverride(30);
+    setPowerNextAutoRaiseAtMs(Date.now() + 60_000);
+    setManualTimelineResetPending(false);
+    setManualTimelineResetKey(null);
+
+    void runtimeSingleton.sendCommand(EventTypes.labelMarkRequest, 1, {
+      labelId: 'power',
+      value: 30,
+      atTimeMs: snapshot.clock.timelineStartSessionMs,
+    }).catch((error: unknown) => {
+      setPowerError(error instanceof Error ? error.message : 'Не удалось запустить автопилот мощности');
+    });
+  }, [snapshot.clock?.timelineId, snapshot.clock?.timelineStartSessionMs]);
+
+  useEffect(() => () => {
+    if (powerAutopilotTimerRef.current !== null) {
+      window.clearTimeout(powerAutopilotTimerRef.current);
+      powerAutopilotTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (powerAutopilotTimerRef.current !== null) {
+      window.clearTimeout(powerAutopilotTimerRef.current);
+      powerAutopilotTimerRef.current = null;
+    }
+
+    if (!snapshot.clock || powerMode !== 'autopilot' || powerAutopilotLocked || powerNextAutoRaiseAtMs === null) {
+      return;
+    }
+
+    const delayMs = Math.max(0, powerNextAutoRaiseAtMs - Date.now());
+    powerAutopilotTimerRef.current = window.setTimeout(() => {
+      if (!snapshot.clock || powerMode !== 'autopilot' || powerAutopilotLocked) {
+        return;
+      }
+
+      const nextValue = 60 + (powerAutopilotStepCount * 30);
+      if (nextValue >= MAX_POWER_VALUE) {
+        setPowerError(formatValueLimitError('Мощность', MAX_POWER_VALUE));
+        setPowerMode('manual');
+        setPowerAutopilotLocked(true);
+        setPowerNextAutoRaiseAtMs(null);
+        if (powerAutopilotTimerRef.current !== null) {
+          window.clearTimeout(powerAutopilotTimerRef.current);
+          powerAutopilotTimerRef.current = null;
+        }
+        return;
+      }
+      const nextRelativeMs = Math.max(0, Date.now() - timelineAnchorWallMs);
+      void runtimeSingleton.sendCommand(EventTypes.labelMarkRequest, 1, {
+        labelId: 'power',
+        value: nextValue,
+        atTimeMs: snapshot.clock.timelineStartSessionMs + nextRelativeMs,
+      }).catch((error: unknown) => {
+        setPowerError(error instanceof Error ? error.message : 'Не удалось отправить автопилот мощности');
+      });
+      setPowerDisplayOverride(nextValue);
+      setPowerAutopilotStepCount((current) => current + 1);
+      setPowerNextAutoRaiseAtMs(Date.now() + 180_000);
+    }, delayMs);
+
+    return () => {
+      if (powerAutopilotTimerRef.current !== null) {
+        window.clearTimeout(powerAutopilotTimerRef.current);
+        powerAutopilotTimerRef.current = null;
+      }
+    };
+  }, [
+    powerAutopilotLocked,
+    powerAutopilotStepCount,
+    powerMode,
+    powerNextAutoRaiseAtMs,
+    snapshot.clock?.timelineId,
+    snapshot.clock?.timelineStartSessionMs,
+    timelineAnchorWallMs,
+  ]);
+
+  const currentPowerValue = typeof snapshot.flags['power.current'] === 'number'
+    ? snapshot.flags['power.current'] as number
+    : null;
+  const visiblePowerValue = powerDisplayOverride ?? currentPowerValue ?? 30;
+  const currentHrValue = runtimeSingleton.getLatestValue('zephyr.hr');
+  const currentSmo2Value = runtimeSingleton.getLatestValue('moxy.smo2');
+  const currentThbValue = runtimeSingleton.getLatestValue('moxy.thb');
+  const lastLactateEntry = runtimeSingleton.getLatestEntries('lactate.label', 1)[0] ?? null;
+  const lastLactateLineText = lastLactateEntry === null || !snapshot.clock
+    ? '—'
+    : `${formatTimelineRelativeTime(Math.max(0, lastLactateEntry.timeMs - snapshot.clock.timelineStartSessionMs))} - ${formatCommaDecimal(lastLactateEntry.value, 1)}`;
+  const currentHrText = currentHrValue === null ? '—' : String(Math.round(currentHrValue));
+  const currentSmo2Text = currentSmo2Value === null ? '—' : formatCommaDecimal(currentSmo2Value, 1);
+  const currentThbText = currentThbValue === null ? '—' : formatCommaDecimal(currentThbValue, 1);
+
+  useEffect(() => {
+    if (powerDisplayOverride !== null && currentPowerValue !== null && currentPowerValue === powerDisplayOverride) {
+      setPowerDisplayOverride(null);
+    }
+  }, [currentPowerValue, powerDisplayOverride]);
+
+  useEffect(() => {
+    if (!manualTimelineResetPending || !snapshot.clock) {
+      return;
+    }
+    const currentKey = `${snapshot.clock.timelineId}:${snapshot.clock.timelineStartSessionMs}`;
+    if (manualTimelineResetKey !== null && manualTimelineResetKey !== currentKey) {
+      setManualTimelineResetPending(false);
+      setManualTimelineResetKey(null);
+    }
+  }, [manualTimelineResetPending, manualTimelineResetKey, snapshot.clock]);
+
+  function resetLactateDraft(nextRelativeMs: number): void {
+    setLactateTimeText(formatTimelineRelativeTime(nextRelativeMs));
+    setLactateValueText('0,0');
+  }
+
+  async function submitLactateMark(): Promise<void> {
+    if (!snapshot.clock) {
+      setLactateError('Текущий timeline недоступен');
+      return;
+    }
+    if (manualTimelineResetPending) {
+      setLactateError('Сначала дождитесь завершения reset timeline');
+      return;
+    }
+
+    const parsedTime = parseTimelineRelativeTime(lactateTimeText);
+    if (!parsedTime.ok) {
+      setLactateError(parsedTime.error);
+      return;
+    }
+    const parsedValue = parseCommaDecimal(lactateValueText);
+    if (!parsedValue.ok) {
+      setLactateError(parsedValue.error);
+      return;
+    }
+    if (parsedValue.value >= MAX_LACTATE_VALUE) {
+      setLactateError(formatValueLimitError('Лактат', MAX_LACTATE_VALUE));
+      return;
+    }
+
+    setLactateError(null);
+    try {
+      await runtimeSingleton.sendCommand(EventTypes.labelMarkRequest, 1, {
+        labelId: 'lactate',
+        value: parsedValue.value,
+        atTimeMs: snapshot.clock.timelineStartSessionMs + parsedTime.relativeMs,
+      });
+    } catch (error) {
+      setLactateError(error instanceof Error ? error.message : 'Не удалось отправить lactate');
+      return;
+    }
+    resetLactateDraft(parsedTime.relativeMs + 180_000);
+  }
+
+  async function submitPowerMark(value: number, atRelativeMs?: number): Promise<void> {
+    if (!snapshot.clock) {
+      throw new Error('Текущий timeline недоступен');
+    }
+    if (manualTimelineResetPending) {
+      throw new Error('Сначала дождитесь завершения reset timeline');
+    }
+    await runtimeSingleton.sendCommand(EventTypes.labelMarkRequest, 1, {
+      labelId: 'power',
+      value,
+      atTimeMs: snapshot.clock.timelineStartSessionMs + (atRelativeMs ?? Math.max(0, Date.now() - timelineAnchorWallMs)),
+    });
+  }
+
+  async function applyManualPowerValue(): Promise<void> {
+    const parsed = Number(powerManualValueText.replace(',', '.'));
+    if (!Number.isFinite(parsed)) {
+      setPowerError('Мощность должна быть числом');
+      return;
+    }
+    const normalized = Math.max(0, Math.round(parsed));
+    if (normalized >= MAX_POWER_VALUE) {
+      setPowerError(formatValueLimitError('Мощность', MAX_POWER_VALUE));
+      return;
+    }
+    setPowerError(null);
+    try {
+      await submitPowerMark(normalized);
+    } catch (error) {
+      setPowerError(error instanceof Error ? error.message : 'Не удалось отправить мощность');
+      return;
+    }
+    setPowerDisplayOverride(normalized);
+    setPowerManualValueText(String(normalized));
+  }
+
+  async function applyPowerPlus30(): Promise<void> {
+    const current = visiblePowerValue;
+    const nextValue = Math.max(0, Math.round(current + 30));
+    if (nextValue >= MAX_POWER_VALUE) {
+      setPowerError(formatValueLimitError('Мощность', MAX_POWER_VALUE));
+      return;
+    }
+    setPowerError(null);
+    try {
+      await submitPowerMark(nextValue);
+    } catch (error) {
+      setPowerError(error instanceof Error ? error.message : 'Не удалось отправить мощность');
+      return;
+    }
+    setPowerDisplayOverride(nextValue);
+    setPowerManualValueText(String(nextValue));
+  }
+
+  function requestDisableAutopilot(): void {
+    if (manualTimelineResetPending) {
+      setPowerError('Сначала дождитесь завершения reset timeline');
+      return;
+    }
+    setPowerDisableConfirmOpen(true);
+  }
+
+  function confirmDisableAutopilot(): void {
+    setPowerDisableConfirmOpen(false);
+    setPowerMode('manual');
+    setPowerAutopilotLocked(true);
+    setPowerNextAutoRaiseAtMs(null);
+    if (powerAutopilotTimerRef.current !== null) {
+      window.clearTimeout(powerAutopilotTimerRef.current);
+      powerAutopilotTimerRef.current = null;
+    }
+    setPowerManualValueText(String(Math.round(visiblePowerValue)));
+  }
+
+  function cancelDisableAutopilot(): void {
+    setPowerDisableConfirmOpen(false);
+  }
+
+  const veloergUi: VeloergUiState | undefined = snapshot.clock ? {
+    uiNowMs,
+    timelineAnchorWallMs,
+    lactateTimeText,
+    lactateValueText,
+    lactateError,
+    powerMode,
+    powerAutopilotLocked,
+    powerNextAutoRaiseAtMs,
+    currentPowerValue: visiblePowerValue,
+    powerManualValueText,
+    powerError,
+    powerDisableConfirmOpen,
+    lastLactateLineText,
+    currentHrText,
+    currentSmo2Text,
+    currentThbText,
+    onLactateTimeChange: setLactateTimeText,
+    onLactateValueChange: setLactateValueText,
+    onSubmitLactate: () => {
+      void submitLactateMark();
+    },
+    onPowerManualValueChange: setPowerManualValueText,
+    onApplyManualValue: () => {
+      void applyManualPowerValue();
+    },
+    onPlus30: () => {
+      void applyPowerPlus30();
+    },
+    onRequestDisableAutopilot: requestDisableAutopilot,
+    onConfirmDisableAutopilot: confirmDisableAutopilot,
+    onCancelDisableAutopilot: cancelDisableAutopilot,
+    manualTimelineResetPending,
+    onRequestManualTimelineReset: requestManualTimelineReset,
+  } : undefined;
+
+  function requestManualTimelineReset(): void {
+    if (!snapshot.clock) {
+      return;
+    }
+    setManualTimelineResetPending(true);
+    setManualTimelineResetKey(`${snapshot.clock.timelineId}:${snapshot.clock.timelineStartSessionMs}`);
+    void runtimeSingleton.sendCommand(EventTypes.timelineResetRequest, 1, {
+      reason: 'manual_debug_reset',
+    }).catch((error: unknown) => {
+      setManualTimelineResetPending(false);
+      setManualTimelineResetKey(null);
+      setLactateError(error instanceof Error ? error.message : 'Не удалось сбросить timeline');
+    });
+  }
 
   function openModal(form: UiModalForm): void {
     setModal({
@@ -1551,6 +2272,16 @@ export function App() {
           onSetError={setModalError}
         />
       ) : null}
+      {powerDisableConfirmOpen ? (
+        <VeloergConfirmDialog
+          title="Отключить автопилот?"
+          description="После отключения останется только ручной режим до следующего reset timeline."
+          confirmLabel="Отключить"
+          cancelLabel="Отмена"
+          onConfirm={confirmDisableAutopilot}
+          onCancel={cancelDisableAutopilot}
+        />
+      ) : null}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Sensync2</h1>
@@ -1568,7 +2299,7 @@ export function App() {
           </div>
         </section>
       ) : page?.layout ? (
-        renderLayoutNode(page.layout, widgetsById, snapshot.flags, snapshot.telemetry, openModal, `layout-${page.id}`)
+        renderLayoutNode(page.layout, widgetsById, snapshot.flags, snapshot.telemetry, openModal, veloergUi, `layout-${page.id}`)
       ) : (
         widgetRows.map((row, idx) => (
           <div
@@ -1579,7 +2310,7 @@ export function App() {
               gridTemplateColumns: row.length > 1 ? `repeat(${row.length}, minmax(0, 1fr))` : 'minmax(0, 1fr)',
             }}
           >
-            {row.map((widget) => renderWidget(widget, snapshot.flags, snapshot.telemetry, openModal))}
+            {row.map((widget) => renderWidget(widget, snapshot.flags, snapshot.telemetry, openModal, veloergUi))}
           </div>
         ))
       )}

@@ -23,6 +23,11 @@ export interface StreamWindowData {
   length: number;
 }
 
+export interface StreamSample {
+  timeMs: number;
+  value: number;
+}
+
 export interface StreamWindowOptions {
   includeLastSampleBeforeStart?: boolean;
 }
@@ -53,5 +58,8 @@ export interface StreamBufferStore {
   appendFrame(stream: UiStreamDeclaration, frame: DecodedUiSignalFrame): void;
   getVisibleWindow(streamId: string, rangeMs: number, endMs?: number, options?: StreamWindowOptions): StreamWindowData;
   getLatestTime(streamId: string): number | null;
+  getLatestValue(streamId: string): number | null;
+  getLatestValues(streamId: string, count: number): number[];
+  getLatestEntries(streamId: string, count: number): StreamSample[];
   clear(): void;
 }

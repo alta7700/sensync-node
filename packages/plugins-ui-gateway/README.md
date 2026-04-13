@@ -26,7 +26,9 @@ UI gateway plugin.
 - В `veloerg` схема теперь composite:
   - отдельный control-блок Trigno с modal form `host + sensorSlot`;
   - явный layout с левой колонкой control-виджетов и отдельной правой панелью статуса;
-  - отдельный control-блок для `lactate` и `power`;
+  - отдельные control-блоки для `lactate` и `power`;
+  - summary-строка между controls и графиками с текущим временем теста и живыми метриками;
+  - временный debug-блок с кнопкой `timeline.reset` для ручной проверки reset-flow;
   - raw-графики `EMG` и `Gyroscope` без pedaling-derived overlays;
   - sparse-графики `Lactate` и ступенчатый `Power`;
   - рядом остаются Moxy (`SmO2`, `tHb`) и Zephyr (`RR`).

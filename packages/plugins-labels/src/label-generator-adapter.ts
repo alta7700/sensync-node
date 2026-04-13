@@ -236,6 +236,11 @@ export default definePlugin({
       { timestampsMs: new Float64Array([markTimeMs]) },
     );
   },
+  async onTimelineResetCommit(_input, _ctx) {
+    // После нового timeline сбрасываем монотонность меток, иначе повторный mark
+    // на времени старта теста будет ошибочно считаться stale.
+    lastTimestampByLabelId.clear();
+  },
   async onShutdown() {
     config = DefaultLabelGeneratorAdapterConfig;
     labelEmitter = null;

@@ -1,5 +1,5 @@
 import type { DecodedUiSignalFrame, UiStreamDeclaration } from '@sensync2/core';
-import type { StreamBufferStore, StreamWindowData, StreamWindowOptions } from './types.ts';
+import type { StreamBufferStore, StreamSample, StreamWindowData, StreamWindowOptions } from './types.ts';
 
 interface StreamRing {
   capacity: number;
@@ -41,6 +41,39 @@ function latestTimeOfRing(ring: StreamRing): number | null {
   if (ring.size === 0) return null;
   const latestIdx = (ring.writeIndex - 1 + ring.capacity) % ring.capacity;
   return ring.time[latestIdx] ?? null;
+}
+
+function latestValueOfRing(ring: StreamRing): number | null {
+  if (ring.size === 0) return null;
+  const latestIdx = (ring.writeIndex - 1 + ring.capacity) % ring.capacity;
+  return ring.value[latestIdx] ?? null;
+}
+
+function latestValuesOfRing(ring: StreamRing, count: number): number[] {
+  if (ring.size === 0 || count <= 0) return [];
+
+  const limit = Math.min(count, ring.size);
+  const values = new Array<number>(limit);
+  for (let index = 0; index < limit; index += 1) {
+    const ringIndex = (ring.writeIndex - 1 - index + ring.capacity) % ring.capacity;
+    values[index] = ring.value[ringIndex] ?? 0;
+  }
+  return values;
+}
+
+function latestEntriesOfRing(ring: StreamRing, count: number): StreamSample[] {
+  if (ring.size === 0 || count <= 0) return [];
+
+  const limit = Math.min(count, ring.size);
+  const samples = new Array<StreamSample>(limit);
+  for (let index = 0; index < limit; index += 1) {
+    const ringIndex = (ring.writeIndex - 1 - index + ring.capacity) % ring.capacity;
+    samples[index] = {
+      timeMs: ring.time[ringIndex] ?? 0,
+      value: ring.value[ringIndex] ?? 0,
+    };
+  }
+  return samples;
 }
 
 export class TypedArrayRingBufferStore implements StreamBufferStore {
@@ -134,6 +167,24 @@ export class TypedArrayRingBufferStore implements StreamBufferStore {
     const ring = this.rings.get(streamId);
     if (!ring) return null;
     return latestTimeOfRing(ring);
+  }
+
+  getLatestValue(streamId: string): number | null {
+    const ring = this.rings.get(streamId);
+    if (!ring) return null;
+    return latestValueOfRing(ring);
+  }
+
+  getLatestValues(streamId: string, count: number): number[] {
+    const ring = this.rings.get(streamId);
+    if (!ring) return [];
+    return latestValuesOfRing(ring, count);
+  }
+
+  getLatestEntries(streamId: string, count: number): StreamSample[] {
+    const ring = this.rings.get(streamId);
+    if (!ring) return [];
+    return latestEntriesOfRing(ring, count);
   }
 
   clear(): void {

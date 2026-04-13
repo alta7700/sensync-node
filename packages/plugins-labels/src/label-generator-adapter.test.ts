@@ -246,4 +246,39 @@ describe('label-generator-adapter', () => {
       tags: { reason: 'invalid_value_for_sample_format', labelId: 'interval' },
     });
   });
+
+  it('сбрасывает монотонность labelId после commit нового timeline', async () => {
+    const harness = createHarness({
+      labels: {
+        lactate: { streamId: 'lactate.label', sampleFormat: 'f32' },
+      },
+    });
+
+    await labelGeneratorAdapter.onInit(harness.ctx);
+
+    await harness.dispatch(defineRuntimeEventInput({
+      type: EventTypes.labelMarkRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: { labelId: 'lactate', value: 1.1, atTimeMs: 165_000 },
+    }));
+
+    await labelGeneratorAdapter.onTimelineResetCommit?.({
+      resetId: 'reset-1',
+      nextTimelineId: 'timeline-next',
+      timelineStartSessionMs: 500_000,
+    }, harness.ctx);
+
+    await harness.dispatch(defineRuntimeEventInput({
+      type: EventTypes.labelMarkRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: { labelId: 'lactate', value: 1.2, atTimeMs: 165_000 },
+    }));
+
+    expect(harness.emitted.filter((event) => event.type === EventTypes.signalBatch)).toHaveLength(2);
+    expect(harness.emitted.find((event) => event.type === EventTypes.commandRejected)).toBeUndefined();
+  });
 });

@@ -87,6 +87,50 @@ export function parseTimelineRelativeTime(value: string): { ok: true; relativeMs
   };
 }
 
+export function formatTimelineRelativeTime(relativeMs: number): string {
+  const totalSeconds = Math.max(0, Math.round(relativeMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours)}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  return `${String(minutes)}:${String(seconds).padStart(2, '0')}`;
+}
+
+export function parseCommaDecimal(value: string): { ok: true; value: number } | { ok: false; error: string } {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return {
+      ok: false,
+      error: 'Число не может быть пустым',
+    };
+  }
+
+  const normalized = trimmed.replace(',', '.');
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    return {
+      ok: false,
+      error: 'Значение должно быть числом',
+    };
+  }
+
+  return {
+    ok: true,
+    value: parsed,
+  };
+}
+
+export function formatCommaDecimal(value: number, digits = 1): string {
+  if (!Number.isFinite(value)) {
+    return '0,0';
+  }
+  return value.toFixed(digits).replace('.', ',');
+}
+
 export function buildModalSubmitPayload(
   form: UiModalForm,
   values: Record<string, string>,
