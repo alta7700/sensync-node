@@ -19,6 +19,7 @@ export interface Hdf5SimulationAdapterConfig {
   filePath?: string;
   allowConnectFilePathOverride?: boolean;
   streamIds?: string[];
+  requireAllStreamIds?: boolean;
   batchMs?: number;
   speed?: number;
   readChunkSamples?: number;
@@ -59,6 +60,7 @@ export const DefaultHdf5SimulationConfig: Required<Hdf5SimulationAdapterConfig> 
   filePath: '',
   allowConnectFilePathOverride: false,
   streamIds: [],
+  requireAllStreamIds: false,
   batchMs: 50,
   speed: 1,
   readChunkSamples: 4096,
@@ -460,6 +462,7 @@ export function loadHdf5SimulationSession(
   filePath: string,
   selectedStreamIds: readonly string[],
   readChunkSamples: number,
+  requireAllStreamIds = DefaultHdf5SimulationConfig.requireAllStreamIds,
 ): SimulationSessionState {
   if (!existsSync(filePath)) {
     throw new Error(`HDF5 файл не найден: ${filePath}`);
@@ -552,6 +555,10 @@ export function loadHdf5SimulationSession(
         throw new Error(`В файле ${filePath} не найден ни один из выбранных потоков: ${selectedStreamIds.join(', ')}`);
       }
       throw new Error(`В файле ${filePath} не найдено ни одного непустого потока`);
+    }
+
+    if (selectedSet && requireAllStreamIds && missingStreamIds.length > 0) {
+      throw new Error(`В файле ${filePath} отсутствуют обязательные потоки: ${missingStreamIds.join(', ')}`);
     }
 
     const recordedStartMs = readOptionalFileNumberAttribute(file, 'recordingStartSessionMs');

@@ -10,17 +10,19 @@
 
 - `trigno-boundary.ts`:
   - нормализует config и `formData`;
+  - поддерживает `sensorSlot` для legacy single-sensor режима и `vlSensorSlot/rfSensorSlot` для paired режима;
   - описывает plugin-specific UI-команды;
   - фиксирует ожидаемый live snapshot для допуска `START`, включая `backwardsCompatibility` и `upsampling`.
 - `trigno-transport.ts`:
   - поднимает command/data sockets;
   - умеет читать banner и ASCII-ответы с terminator `\\r\\n\\r\\n`;
   - собирает неполные TCP reads и режет raw потоки по fixed-size step layout;
+  - в paired mode режет один и тот же пакет по `startIndex` двух датчиков и разносит данные по ключам `vl` и `rf`;
   - применяет `BACKWARDS COMPATIBILITY` и `UPSAMPLE` из adapter config вместо хардкода.
 - `trigno-adapter.ts`:
   - реализует lifecycle `connect / start / stop / disconnect`;
   - держит state holder, reconnect timer и uniform emit через `plugin-kit`;
-  - публикует `signal.batch`;
+  - публикует `signal.batch` либо в legacy `trigno.avanti*`, либо в paired `trigno.vl.avanti*` / `trigno.rf.avanti*`;
   - держит watchdog и auto-reconnect только для активного сбора;
   - переводит несовпавший start snapshot в состояние `paused`, а не молча в `connected`.
 - `event-contracts.ts` описывает shared-команды `start/stop/refresh`, факт `trigno.status.reported` и внутренний тик `trigno.poll`.

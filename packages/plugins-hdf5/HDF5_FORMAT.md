@@ -74,6 +74,7 @@ Recorder сейчас пишет как минимум:
 
 - файл открыт в readonly режиме;
 - если в config передан `streamIds`, adapter проигрывает только их и игнорирует остальные группы файла;
+- если в config одновременно включён `requireAllStreamIds`, отсутствие хотя бы одного потока из `streamIds` считается ошибкой boundary, а не допустимым частичным replay;
 - чтение идёт только вперёд;
 - курсоры по потокам сдвигаются по окнам `batchMs`;
 - в один цикл симуляции каждый поток может отдать максимум один `signal.batch`;
@@ -82,3 +83,4 @@ Recorder сейчас пишет как минимум:
 - `signal.batch` timestamps из datasets не должны переписываться только ради replay UI.
 - Если в корневых attrs есть `recordingStartSessionMs`, replay-adapter должен пробросить его наружу как metadata для display-origin timeline в UI.
 - Если `recordingStartSessionMs` отсутствует или оказывается позже первого sample, replay должен fallback'нуться к `dataStartMs` файла.
+- Для `veloerg-replay` и `veloerg-viewer` это означает намеренный breaking change: старые single-sensor файлы с `trigno.avanti*` не удовлетворяют новому набору `trigno.vl.avanti*` / `trigno.rf.avanti*` и должны отклоняться на boundary.

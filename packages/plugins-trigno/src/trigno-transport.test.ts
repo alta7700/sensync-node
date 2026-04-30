@@ -15,6 +15,7 @@ interface MockTrignoServer {
   auxPort: number;
   close(): Promise<void>;
   sendData(): void;
+  sendPairedData(): void;
 }
 
 function buildEmgPacket(startIndex: number, samples: readonly number[]): Buffer {
@@ -22,6 +23,22 @@ function buildEmgPacket(startIndex: number, samples: readonly number[]): Buffer 
   for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex += 1) {
     packet.writeFloatLE(samples[sampleIndex] ?? 0, (sampleIndex * 16 * 4) + ((startIndex - 1) * 4));
   }
+  return packet;
+}
+
+function buildPairedEmgPacket(
+  first: { startIndex: number; samples: readonly number[] },
+  second: { startIndex: number; samples: readonly number[] },
+): Buffer {
+  const stepCount = Math.max(first.samples.length, second.samples.length);
+  const packet = Buffer.alloc(stepCount * 16 * 4);
+  const write = (startIndex: number, samples: readonly number[]) => {
+    for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex += 1) {
+      packet.writeFloatLE(samples[sampleIndex] ?? 0, (sampleIndex * 16 * 4) + ((startIndex - 1) * 4));
+    }
+  };
+  write(first.startIndex, first.samples);
+  write(second.startIndex, second.samples);
   return packet;
 }
 
@@ -36,6 +53,25 @@ function buildAuxPacket(
     packet.writeFloatLE(samples[sampleIndex]?.y ?? 0, base + 4);
     packet.writeFloatLE(samples[sampleIndex]?.z ?? 0, base + 8);
   }
+  return packet;
+}
+
+function buildPairedAuxPacket(
+  first: { startIndex: number; samples: ReadonlyArray<{ x: number; y: number; z: number }> },
+  second: { startIndex: number; samples: ReadonlyArray<{ x: number; y: number; z: number }> },
+): Buffer {
+  const stepCount = Math.max(first.samples.length, second.samples.length);
+  const packet = Buffer.alloc(stepCount * 16 * 9 * 4);
+  const write = (startIndex: number, samples: ReadonlyArray<{ x: number; y: number; z: number }>) => {
+    for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex += 1) {
+      const base = (sampleIndex * 16 * 9 * 4) + ((startIndex - 1) * 9 * 4);
+      packet.writeFloatLE(samples[sampleIndex]?.x ?? 0, base);
+      packet.writeFloatLE(samples[sampleIndex]?.y ?? 0, base + 4);
+      packet.writeFloatLE(samples[sampleIndex]?.z ?? 0, base + 8);
+    }
+  };
+  write(first.startIndex, first.samples);
+  write(second.startIndex, second.samples);
   return packet;
 }
 
@@ -77,35 +113,35 @@ async function createMockTrignoServer(): Promise<MockTrignoServer> {
     ['TRIGGER START OFF', 'OK'],
     ['TRIGGER STOP OFF', 'OK'],
     ['ENDIAN LITTLE', 'OK'],
-    ['SENSOR 1 SETMODE 7', 'SENSOR 1 SET TO MODE 7'],
-    ['SENSOR 1 PAIRED?', 'YES'],
-    ['SENSOR 1 MODE?', '7'],
-    ['SENSOR 1 STARTINDEX?', '2'],
-    ['SENSOR 1 CHANNELCOUNT?', '4'],
-    ['SENSOR 1 EMGCHANNELCOUNT?', '1'],
-    ['SENSOR 1 AUXCHANNELCOUNT?', '3'],
     ['FRAME INTERVAL?', '0.0135'],
     ['MAX SAMPLES EMG?', '26'],
     ['MAX SAMPLES AUX?', '2'],
-    ['SENSOR 1 SERIAL?', 'SP-W02C-1759'],
-    ['SENSOR 1 FIRMWARE?', '3.6.0'],
-    ['SENSOR 1 CHANNEL 1 RATE?', '1925.92592592593'],
-    ['SENSOR 1 CHANNEL 1 SAMPLES?', '26'],
-    ['SENSOR 1 CHANNEL 1 UNITS?', 'V'],
-    ['SENSOR 1 CHANNEL 1 GAIN?', '300'],
-    ['SENSOR 1 CHANNEL 2 RATE?', '148.148148148148'],
-    ['SENSOR 1 CHANNEL 2 SAMPLES?', '2'],
-    ['SENSOR 1 CHANNEL 2 UNITS?', '?/s'],
-    ['SENSOR 1 CHANNEL 2 GAIN?', '16.4'],
-    ['SENSOR 1 CHANNEL 3 RATE?', '148.148148148148'],
-    ['SENSOR 1 CHANNEL 3 SAMPLES?', '2'],
-    ['SENSOR 1 CHANNEL 3 UNITS?', '?/s'],
-    ['SENSOR 1 CHANNEL 3 GAIN?', '16.4'],
-    ['SENSOR 1 CHANNEL 4 RATE?', '148.148148148148'],
-    ['SENSOR 1 CHANNEL 4 SAMPLES?', '2'],
-    ['SENSOR 1 CHANNEL 4 UNITS?', '?/s'],
-    ['SENSOR 1 CHANNEL 4 GAIN?', '16.4'],
   ]);
+
+  const registerSensor = (sensorSlot: number, startIndex: number, serial: string) => {
+    commandResponses.set(`SENSOR ${sensorSlot} SETMODE 7`, `SENSOR ${sensorSlot} SET TO MODE 7`);
+    commandResponses.set(`SENSOR ${sensorSlot} PAIRED?`, 'YES');
+    commandResponses.set(`SENSOR ${sensorSlot} MODE?`, '7');
+    commandResponses.set(`SENSOR ${sensorSlot} STARTINDEX?`, String(startIndex));
+    commandResponses.set(`SENSOR ${sensorSlot} CHANNELCOUNT?`, '4');
+    commandResponses.set(`SENSOR ${sensorSlot} EMGCHANNELCOUNT?`, '1');
+    commandResponses.set(`SENSOR ${sensorSlot} AUXCHANNELCOUNT?`, '3');
+    commandResponses.set(`SENSOR ${sensorSlot} SERIAL?`, serial);
+    commandResponses.set(`SENSOR ${sensorSlot} FIRMWARE?`, '3.6.0');
+    commandResponses.set(`SENSOR ${sensorSlot} CHANNEL 1 RATE?`, '1925.92592592593');
+    commandResponses.set(`SENSOR ${sensorSlot} CHANNEL 1 SAMPLES?`, '26');
+    commandResponses.set(`SENSOR ${sensorSlot} CHANNEL 1 UNITS?`, 'V');
+    commandResponses.set(`SENSOR ${sensorSlot} CHANNEL 1 GAIN?`, '300');
+    for (const channelNumber of [2, 3, 4]) {
+      commandResponses.set(`SENSOR ${sensorSlot} CHANNEL ${channelNumber} RATE?`, '148.148148148148');
+      commandResponses.set(`SENSOR ${sensorSlot} CHANNEL ${channelNumber} SAMPLES?`, '2');
+      commandResponses.set(`SENSOR ${sensorSlot} CHANNEL ${channelNumber} UNITS?`, '?/s');
+      commandResponses.set(`SENSOR ${sensorSlot} CHANNEL ${channelNumber} GAIN?`, '16.4');
+    }
+  };
+
+  registerSensor(1, 2, 'SP-W02C-1759');
+  registerSensor(2, 5, 'SP-W02C-1760');
 
   const { server: commandServer, port: commandPort } = await listenServer((socket) => {
     socket.write(`Delsys Trigno System Digital Protocol Version 3.6.0${CommandTerminator}`);
@@ -204,6 +240,31 @@ async function createMockTrignoServer(): Promise<MockTrignoServer> {
         { x: 4, y: 5, z: 6 },
       ]));
     },
+    sendPairedData() {
+      if (!dataSockets.emg || !dataSockets.aux) {
+        throw new Error('data sockets ещё не подключены');
+      }
+      writeChunks(dataSockets.emg, buildPairedEmgPacket(
+        { startIndex: 2, samples: [0.25, 0.5] },
+        { startIndex: 5, samples: [1.25, 1.5] },
+      ));
+      writeChunks(dataSockets.aux, buildPairedAuxPacket(
+        {
+          startIndex: 2,
+          samples: [
+            { x: 1, y: 2, z: 3 },
+            { x: 4, y: 5, z: 6 },
+          ],
+        },
+        {
+          startIndex: 5,
+          samples: [
+            { x: 7, y: 8, z: 9 },
+            { x: 10, y: 11, z: 12 },
+          ],
+        },
+      ));
+    },
     async close() {
       delayedWrites.forEach((timeoutId) => clearTimeout(timeoutId));
       dataSockets.emg?.destroy();
@@ -297,10 +358,10 @@ describe('trigno-transport', () => {
     await session.applyProfileConfig();
     await session.queryStatus();
     session.setDataCallbacks({
-      onEmgSamples(values) {
+      onSensorEmgSamples(_sensorKey, values) {
         emgBatches.push([...values]);
       },
-      onGyroSamples(values) {
+      onSensorGyroSamples(_sensorKey, values) {
         gyroBatches.push({
           x: [...values.x],
           y: [...values.y],
@@ -320,6 +381,70 @@ describe('trigno-transport', () => {
         x: [1, 4],
         y: [2, 5],
         z: [3, 6],
+      },
+    ]);
+
+    await session.stop();
+    await session.close();
+  });
+
+  it('в paired mode возвращает per-sensor snapshot и данные для VL/RF', async () => {
+    const server = await createMockTrignoServer();
+    serversToClose.push(server);
+
+    const session = new TrignoTcpSession({
+      host: server.host,
+      vlSensorSlot: 1,
+      rfSensorSlot: 2,
+      backwardsCompatibility: false,
+      upsampling: false,
+      commandPort: server.commandPort,
+      emgPort: server.emgPort,
+      auxPort: server.auxPort,
+      commandTimeoutMs: 200,
+      stopTimeoutMs: 250,
+    });
+
+    const emgBySensor = new Map<string, number[][]>();
+    const gyroBySensor = new Map<string, Array<{ x: number[]; y: number[]; z: number[] }>>();
+
+    await session.connect();
+    await session.applyProfileConfig();
+    const snapshot = await session.queryStatus();
+    expect('sensors' in snapshot && snapshot.sensors.vl.sensorSlot).toBe(1);
+    expect('sensors' in snapshot && snapshot.sensors.rf.sensorSlot).toBe(2);
+
+    session.setDataCallbacks({
+      onSensorEmgSamples(sensorKey, values) {
+        emgBySensor.set(sensorKey, [...(emgBySensor.get(sensorKey) ?? []), [...values]]);
+      },
+      onSensorGyroSamples(sensorKey, values) {
+        gyroBySensor.set(sensorKey, [
+          ...(gyroBySensor.get(sensorKey) ?? []),
+          { x: [...values.x], y: [...values.y], z: [...values.z] },
+        ]);
+      },
+    });
+    await session.openDataSockets();
+    await session.start();
+
+    server.sendPairedData();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(emgBySensor.get('vl')).toEqual([[0.25, 0.5]]);
+    expect(emgBySensor.get('rf')).toEqual([[1.25, 1.5]]);
+    expect(gyroBySensor.get('vl')).toEqual([
+      {
+        x: [1, 4],
+        y: [2, 5],
+        z: [3, 6],
+      },
+    ]);
+    expect(gyroBySensor.get('rf')).toEqual([
+      {
+        x: [7, 10],
+        y: [8, 11],
+        z: [9, 12],
       },
     ]);
 

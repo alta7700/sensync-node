@@ -54,7 +54,12 @@ function ensureSimulationSession(filePath: string): SimulationSessionState {
   }
 
   closeCurrentSession();
-  const nextSession = loadHdf5SimulationSession(normalizedFilePath, config.streamIds, config.readChunkSamples);
+  const nextSession = loadHdf5SimulationSession(
+    normalizedFilePath,
+    config.streamIds,
+    config.readChunkSamples,
+    config.requireAllStreamIds,
+  );
   session = nextSession;
   config.filePath = normalizedFilePath;
   return nextSession;
@@ -282,7 +287,12 @@ export default definePlugin({
     await h5wasm.ready;
     config = resolveHdf5SimulationConfig(ctx.getConfig<Hdf5SimulationAdapterConfig>());
     if (config.filePath.length > 0) {
-      session = loadHdf5SimulationSession(config.filePath, config.streamIds, config.readChunkSamples);
+      session = loadHdf5SimulationSession(
+        config.filePath,
+        config.streamIds,
+        config.readChunkSamples,
+        config.requireAllStreamIds,
+      );
     } else {
       session = null;
     }

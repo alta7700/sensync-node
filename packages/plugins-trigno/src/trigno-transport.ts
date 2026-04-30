@@ -1,7 +1,11 @@
 import net from 'node:net';
 import {
+  isPairedTrignoStatusSnapshot,
   normalizeTrignoUnits,
   type TrignoChannelSnapshot,
+  type TrignoConnectRequest,
+  type TrignoSensorRole,
+  type TrignoSensorStatusSnapshot,
   type TrignoStatusSnapshot,
 } from './trigno-boundary.ts';
 
@@ -15,8 +19,7 @@ export const TrignoEmgStepBytes = TrignoChannelSlots * EmgFrameWidth * 4;
 export const TrignoAuxStepBytes = TrignoChannelSlots * AuxFrameWidth * 4;
 
 export interface TrignoTcpSessionOptions {
-  host: string;
-  sensorSlot: number;
+  host: TrignoConnectRequest['host'];
   backwardsCompatibility: boolean;
   upsampling: boolean;
   commandPort: number;
@@ -26,11 +29,38 @@ export interface TrignoTcpSessionOptions {
   commandTimeoutMs: number;
   startTimeoutMs?: number;
   stopTimeoutMs: number;
+  sensorSlot?: number;
+  vlSensorSlot?: number;
+  rfSensorSlot?: number;
 }
 
+export type TrignoDataSensorKey = 'single' | TrignoSensorRole;
+
 export interface TrignoDataCallbacks {
-  onEmgSamples?: (values: Float32Array) => void;
-  onGyroSamples?: (samples: { x: Float32Array; y: Float32Array; z: Float32Array }) => void;
+  onSensorEmgSamples?: (sensorKey: TrignoDataSensorKey, values: Float32Array) => void;
+  onSensorGyroSamples?: (
+    sensorKey: TrignoDataSensorKey,
+    samples: { x: Float32Array; y: Float32Array; z: Float32Array },
+  ) => void;
+}
+
+function isPairedSessionOptions(
+  input: TrignoTcpSessionOptions,
+): input is TrignoTcpSessionOptions & Required<Pick<TrignoTcpSessionOptions, 'vlSensorSlot' | 'rfSensorSlot'>> {
+  return typeof input.vlSensorSlot === 'number' && typeof input.rfSensorSlot === 'number';
+}
+
+function configuredSensorSlots(options: TrignoTcpSessionOptions): Array<{ key: TrignoDataSensorKey; sensorSlot: number }> {
+  if (isPairedSessionOptions(options)) {
+    return [
+      { key: 'vl', sensorSlot: options.vlSensorSlot },
+      { key: 'rf', sensorSlot: options.rfSensorSlot },
+    ];
+  }
+  if (typeof options.sensorSlot !== 'number') {
+    throw new Error('Для Trigno session нужен sensorSlot или пара vlSensorSlot/rfSensorSlot');
+  }
+  return [{ key: 'single', sensorSlot: options.sensorSlot }];
 }
 
 export class TrignoCommandRejectedError extends Error {
@@ -334,31 +364,13 @@ export class TrignoTcpSession {
       `UPSAMPLE ${this.options.upsampling ? 'ON' : 'OFF'}`,
       this.options.commandTimeoutMs,
     );
-    await client.request(`SENSOR ${this.options.sensorSlot} SETMODE 7`, this.options.commandTimeoutMs);
+    for (const sensor of configuredSensorSlots(this.options)) {
+      await client.request(`SENSOR ${sensor.sensorSlot} SETMODE 7`, this.options.commandTimeoutMs);
+    }
   }
 
   async queryStatus(): Promise<TrignoStatusSnapshot> {
     const client = this.requireCommandClient();
-    const slot = this.options.sensorSlot;
-
-    const paired = parseBooleanResponse(`SENSOR ${slot} PAIRED?`, await client.request(`SENSOR ${slot} PAIRED?`, this.options.commandTimeoutMs));
-    const mode = parseNumberResponse(`SENSOR ${slot} MODE?`, await client.request(`SENSOR ${slot} MODE?`, this.options.commandTimeoutMs));
-    const startIndex = parseNumberResponse(
-      `SENSOR ${slot} STARTINDEX?`,
-      await client.request(`SENSOR ${slot} STARTINDEX?`, this.options.commandTimeoutMs),
-    );
-    const channelCount = parseNumberResponse(
-      `SENSOR ${slot} CHANNELCOUNT?`,
-      await client.request(`SENSOR ${slot} CHANNELCOUNT?`, this.options.commandTimeoutMs),
-    );
-    const emgChannelCount = parseNumberResponse(
-      `SENSOR ${slot} EMGCHANNELCOUNT?`,
-      await client.request(`SENSOR ${slot} EMGCHANNELCOUNT?`, this.options.commandTimeoutMs),
-    );
-    const auxChannelCount = parseNumberResponse(
-      `SENSOR ${slot} AUXCHANNELCOUNT?`,
-      await client.request(`SENSOR ${slot} AUXCHANNELCOUNT?`, this.options.commandTimeoutMs),
-    );
     const backwardsCompatibility = parseBooleanResponse(
       'BACKWARDS COMPATIBILITY?',
       await client.request('BACKWARDS COMPATIBILITY?', this.options.commandTimeoutMs),
@@ -370,35 +382,52 @@ export class TrignoTcpSession {
     const frameInterval = parseNumberResponse('FRAME INTERVAL?', await client.request('FRAME INTERVAL?', this.options.commandTimeoutMs));
     const maxSamplesEmg = parseNumberResponse('MAX SAMPLES EMG?', await client.request('MAX SAMPLES EMG?', this.options.commandTimeoutMs));
     const maxSamplesAux = parseNumberResponse('MAX SAMPLES AUX?', await client.request('MAX SAMPLES AUX?', this.options.commandTimeoutMs));
-    const serial = await optionalQuery(client, `SENSOR ${slot} SERIAL?`);
-    const firmware = await optionalQuery(client, `SENSOR ${slot} FIRMWARE?`);
-    const emg = await this.queryChannel(slot, 1);
-    const gyro = assertGyroLayout([
-      await this.queryChannel(slot, 2),
-      await this.queryChannel(slot, 3),
-      await this.queryChannel(slot, 4),
-    ]);
+    const sensors = configuredSensorSlots(this.options);
+    if (sensors.length === 1) {
+      const sensorSnapshot = await this.querySensorStatus(sensors[0]!.sensorSlot, {
+        backwardsCompatibility,
+        upsampling,
+        frameInterval,
+        maxSamplesEmg,
+        maxSamplesAux,
+      });
+      this.snapshot = {
+        host: this.options.host,
+        banner: this.banner,
+        protocolVersion: parseProtocolVersion(this.banner),
+        backwardsCompatibility,
+        upsampling,
+        frameInterval,
+        maxSamplesEmg,
+        maxSamplesAux,
+        ...sensorSnapshot,
+      };
+      return this.snapshot;
+    }
+
+    const sensorStatuses = await Promise.all(sensors.map(async (sensor) => {
+      return [sensor.key, await this.querySensorStatus(sensor.sensorSlot, {
+        backwardsCompatibility,
+        upsampling,
+        frameInterval,
+        maxSamplesEmg,
+        maxSamplesAux,
+      })] as const;
+    }));
 
     this.snapshot = {
       host: this.options.host,
-      sensorSlot: slot,
       banner: this.banner,
       protocolVersion: parseProtocolVersion(this.banner),
-      paired,
-      mode,
-      startIndex,
-      channelCount,
-      emgChannelCount,
-      auxChannelCount,
       backwardsCompatibility,
       upsampling,
       frameInterval,
       maxSamplesEmg,
       maxSamplesAux,
-      serial,
-      firmware,
-      emg,
-      gyro,
+      sensors: {
+        vl: sensorStatuses.find(([key]) => key === 'vl')?.[1] ?? failMissingSensor('vl'),
+        rf: sensorStatuses.find(([key]) => key === 'rf')?.[1] ?? failMissingSensor('rf'),
+      },
     };
 
     return this.snapshot;
@@ -467,6 +496,61 @@ export class TrignoTcpSession {
     return this.snapshot;
   }
 
+  private async querySensorStatus(
+    slot: number,
+    sharedSnapshot: Pick<
+      TrignoSensorStatusSnapshot,
+      'backwardsCompatibility' | 'upsampling' | 'frameInterval' | 'maxSamplesEmg' | 'maxSamplesAux'
+    >,
+  ): Promise<TrignoSensorStatusSnapshot> {
+    const client = this.requireCommandClient();
+    const paired = parseBooleanResponse(`SENSOR ${slot} PAIRED?`, await client.request(`SENSOR ${slot} PAIRED?`, this.options.commandTimeoutMs));
+    const mode = parseNumberResponse(`SENSOR ${slot} MODE?`, await client.request(`SENSOR ${slot} MODE?`, this.options.commandTimeoutMs));
+    const startIndex = parseNumberResponse(
+      `SENSOR ${slot} STARTINDEX?`,
+      await client.request(`SENSOR ${slot} STARTINDEX?`, this.options.commandTimeoutMs),
+    );
+    const channelCount = parseNumberResponse(
+      `SENSOR ${slot} CHANNELCOUNT?`,
+      await client.request(`SENSOR ${slot} CHANNELCOUNT?`, this.options.commandTimeoutMs),
+    );
+    const emgChannelCount = parseNumberResponse(
+      `SENSOR ${slot} EMGCHANNELCOUNT?`,
+      await client.request(`SENSOR ${slot} EMGCHANNELCOUNT?`, this.options.commandTimeoutMs),
+    );
+    const auxChannelCount = parseNumberResponse(
+      `SENSOR ${slot} AUXCHANNELCOUNT?`,
+      await client.request(`SENSOR ${slot} AUXCHANNELCOUNT?`, this.options.commandTimeoutMs),
+    );
+    const serial = await optionalQuery(client, `SENSOR ${slot} SERIAL?`);
+    const firmware = await optionalQuery(client, `SENSOR ${slot} FIRMWARE?`);
+    const emg = await this.queryChannel(slot, 1);
+    const gyro = assertGyroLayout([
+      await this.queryChannel(slot, 2),
+      await this.queryChannel(slot, 3),
+      await this.queryChannel(slot, 4),
+    ]);
+
+    return {
+      sensorSlot: slot,
+      paired,
+      mode,
+      startIndex,
+      channelCount,
+      emgChannelCount,
+      auxChannelCount,
+      backwardsCompatibility: sharedSnapshot.backwardsCompatibility,
+      upsampling: sharedSnapshot.upsampling,
+      frameInterval: sharedSnapshot.frameInterval,
+      maxSamplesEmg: sharedSnapshot.maxSamplesEmg,
+      maxSamplesAux: sharedSnapshot.maxSamplesAux,
+      serial,
+      firmware,
+      emg,
+      gyro,
+    };
+  }
+
   private async queryChannel(slot: number, channelNumber: number): Promise<TrignoChannelSnapshot> {
     const client = this.requireCommandClient();
     const commandPrefix = `SENSOR ${slot} CHANNEL ${channelNumber}`;
@@ -507,9 +591,19 @@ export class TrignoTcpSession {
     if (!this.snapshot) return;
     const packet = this.emgAccumulator.append(chunk);
     if (!packet) return;
+    if (isPairedTrignoStatusSnapshot(this.snapshot)) {
+      for (const [sensorKey, sensorSnapshot] of Object.entries(this.snapshot.sensors) as Array<[TrignoSensorRole, TrignoSensorStatusSnapshot]>) {
+        const values = sliceEmgSamplesFromPacket(packet, sensorSnapshot.startIndex);
+        if (values.length > 0) {
+          this.callbacks.onSensorEmgSamples?.(sensorKey, values);
+        }
+      }
+      return;
+    }
+
     const values = sliceEmgSamplesFromPacket(packet, this.snapshot.startIndex);
     if (values.length > 0) {
-      this.callbacks.onEmgSamples?.(values);
+      this.callbacks.onSensorEmgSamples?.('single', values);
     }
   }
 
@@ -517,9 +611,23 @@ export class TrignoTcpSession {
     if (!this.snapshot) return;
     const packet = this.auxAccumulator.append(chunk);
     if (!packet) return;
+    if (isPairedTrignoStatusSnapshot(this.snapshot)) {
+      for (const [sensorKey, sensorSnapshot] of Object.entries(this.snapshot.sensors) as Array<[TrignoSensorRole, TrignoSensorStatusSnapshot]>) {
+        const samples = sliceGyroSamplesFromPacket(packet, sensorSnapshot.startIndex);
+        if (samples.x.length > 0) {
+          this.callbacks.onSensorGyroSamples?.(sensorKey, samples);
+        }
+      }
+      return;
+    }
+
     const samples = sliceGyroSamplesFromPacket(packet, this.snapshot.startIndex);
     if (samples.x.length > 0) {
-      this.callbacks.onGyroSamples?.(samples);
+      this.callbacks.onSensorGyroSamples?.('single', samples);
     }
   }
+}
+
+function failMissingSensor(sensorKey: TrignoSensorRole): never {
+  throw new Error(`В paired snapshot Trigno отсутствует обязательный датчик ${sensorKey}`);
 }

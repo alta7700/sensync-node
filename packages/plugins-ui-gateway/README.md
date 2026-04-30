@@ -24,15 +24,15 @@ UI gateway plugin.
 - Для HDF5 viewer `ui-gateway` тоже умеет локально сбрасывать UI timeline/buffers по `viewer.state.changed`, чтобы новый файл целиком заменял предыдущую историю.
 - Concrete `UiSchema` теперь строится вне плагина в runtime launch profile и передаётся в `ui-gateway` уже готовой.
 - В `veloerg` схема теперь composite:
-  - отдельный control-блок Trigno с modal form `host + sensorSlot`;
+  - отдельный control-блок Trigno с modal form `host + vlSensorSlot + rfSensorSlot`;
   - явный layout с левой колонкой control-виджетов и отдельной правой панелью статуса;
   - отдельный control-блок для `power`;
   - summary-строка между controls и графиками с текущим временем теста и живыми метриками;
-  - raw-графики `EMG` и `Gyroscope` без pedaling-derived overlays;
+  - четыре raw-графика `VL EMG`, `VL Gyroscope`, `RF EMG`, `RF Gyroscope` без pedaling-derived overlays;
   - ступенчатый график `Power`;
   - рядом остаются Moxy (`SmO2`, `tHb`) и Zephyr (`RR`).
 - ANT+ блок уже разбит на профильный connect flow: `muscle-oxygen` и `train.red` используют один raw decode и те же streamId, но различаются на уровне scan/connect entry point и UI-подписи.
-- В `veloerg-replay` схема использует те же графики `veloerg`, но вместо live transport/recording controls даёт один replay-control блок для выбора HDF5, pause/resume и смены скорости.
+- В `veloerg-replay` схема использует те же графики `veloerg`, но вместо live transport/recording controls даёт один replay-control блок для выбора HDF5, pause/resume и смены скорости; старые single-sensor `veloerg`-файлы под эту схему больше не подходят.
 - В `veloerg-viewer` и `pedaling-emg-viewer` схема использует те же графики соответствующих replay/live профилей, но переводит их в history-режим для интерактивного pan/zoom без simulation cadence.
 - `ui.telemetry` теперь несёт не только runtime queue snapshot, но и latest plugin metrics, например качество ANT+ канала и BLE/Zephyr transport.
 

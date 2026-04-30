@@ -7,10 +7,14 @@ import {
   type RuntimeEventInputOf,
 } from '@sensync2/core';
 import type { PluginContext } from '@sensync2/plugin-sdk';
-import { TrignoEventTypes, type TrignoStatusSnapshot } from './trigno-boundary.ts';
+import {
+  TrignoEventTypes,
+  type TrignoSingleSensorStatusSnapshot,
+  type TrignoStatusSnapshot,
+} from './trigno-boundary.ts';
 
 const sessionControl = vi.hoisted(() => {
-  const snapshot: TrignoStatusSnapshot = {
+  const singleSnapshot: TrignoSingleSensorStatusSnapshot = {
     host: '10.9.15.71',
     sensorSlot: 1,
     banner: 'Delsys Trigno System Digital Protocol Version 3.6.0',
@@ -42,14 +46,16 @@ const sessionControl = vi.hoisted(() => {
     },
   };
 
+  let currentSnapshot: TrignoStatusSnapshot = structuredClone(singleSnapshot);
+
   interface FakeSession {
     connect(): Promise<void>;
     applyProfileConfig(): Promise<void>;
     queryStatus(): Promise<TrignoStatusSnapshot>;
     openDataSockets(): Promise<void>;
     setDataCallbacks(callbacks: {
-      onEmgSamples?: (values: Float32Array) => void;
-      onGyroSamples?: (samples: { x: Float32Array; y: Float32Array; z: Float32Array }) => void;
+      onSensorEmgSamples?: (sensorKey: string, values: Float32Array) => void;
+      onSensorGyroSamples?: (sensorKey: string, samples: { x: Float32Array; y: Float32Array; z: Float32Array }) => void;
     }): void;
     start(): Promise<void>;
     stop(): Promise<void>;
@@ -57,6 +63,8 @@ const sessionControl = vi.hoisted(() => {
     takeDisconnectReason(): string | null;
     emitEmg(values: Float32Array): void;
     emitGyro(samples: { x: Float32Array; y: Float32Array; z: Float32Array }): void;
+    emitSensorEmg(sensorKey: string, values: Float32Array): void;
+    emitSensorGyro(sensorKey: string, samples: { x: Float32Array; y: Float32Array; z: Float32Array }): void;
     setDisconnectReason(reason: string | null): void;
   }
 
@@ -65,8 +73,8 @@ const sessionControl = vi.hoisted(() => {
 
   class MockTrignoTcpSession implements FakeSession {
     private callbacks: {
-      onEmgSamples?: (values: Float32Array) => void;
-      onGyroSamples?: (samples: { x: Float32Array; y: Float32Array; z: Float32Array }) => void;
+      onSensorEmgSamples?: (sensorKey: string, values: Float32Array) => void;
+      onSensorGyroSamples?: (sensorKey: string, samples: { x: Float32Array; y: Float32Array; z: Float32Array }) => void;
     } = {};
 
     private disconnectReason: string | null = null;
@@ -80,12 +88,12 @@ const sessionControl = vi.hoisted(() => {
     async connect(): Promise<void> {}
     async applyProfileConfig(): Promise<void> {}
     async queryStatus(): Promise<TrignoStatusSnapshot> {
-      return structuredClone(snapshot);
+      return structuredClone(currentSnapshot);
     }
     async openDataSockets(): Promise<void> {}
     setDataCallbacks(callbacks: {
-      onEmgSamples?: (values: Float32Array) => void;
-      onGyroSamples?: (samples: { x: Float32Array; y: Float32Array; z: Float32Array }) => void;
+      onSensorEmgSamples?: (sensorKey: string, values: Float32Array) => void;
+      onSensorGyroSamples?: (sensorKey: string, samples: { x: Float32Array; y: Float32Array; z: Float32Array }) => void;
     }): void {
       this.callbacks = callbacks;
     }
@@ -98,10 +106,16 @@ const sessionControl = vi.hoisted(() => {
       return reason;
     }
     emitEmg(values: Float32Array): void {
-      this.callbacks.onEmgSamples?.(values);
+      this.emitSensorEmg('single', values);
     }
     emitGyro(samples: { x: Float32Array; y: Float32Array; z: Float32Array }): void {
-      this.callbacks.onGyroSamples?.(samples);
+      this.emitSensorGyro('single', samples);
+    }
+    emitSensorEmg(sensorKey: string, values: Float32Array): void {
+      this.callbacks.onSensorEmgSamples?.(sensorKey, values);
+    }
+    emitSensorGyro(sensorKey: string, samples: { x: Float32Array; y: Float32Array; z: Float32Array }): void {
+      this.callbacks.onSensorGyroSamples?.(sensorKey, samples);
     }
     setDisconnectReason(reason: string | null): void {
       this.disconnectReason = reason;
@@ -110,12 +124,16 @@ const sessionControl = vi.hoisted(() => {
 
   return {
     MockTrignoTcpSession,
+    setStatusSnapshot(snapshot: TrignoStatusSnapshot): void {
+      currentSnapshot = structuredClone(snapshot);
+    },
     getLatestSession(): FakeSession | null {
       return sessions.at(-1) ?? null;
     },
     reset(): void {
       sessions = [];
       nextDisconnectReason = null;
+      currentSnapshot = structuredClone(singleSnapshot);
     },
   };
 });
@@ -140,6 +158,15 @@ interface TestHarness {
 
 describe('trigno-adapter', () => {
   afterEach(async () => {
+    const cleanupHarness = createHarness({
+      adapterId: 'trigno',
+      backwardsCompatibility: false,
+      upsampling: false,
+      pollIntervalMs: 250,
+      reconnectRetryDelayMs: 250,
+      connectCooldownMs: 0,
+    });
+    await trignoAdapter.onShutdown(cleanupHarness.ctx);
     sessionControl.reset();
   });
 
@@ -208,6 +235,150 @@ describe('trigno-adapter', () => {
       'trigno.avanti.gyro.x',
       'trigno.avanti.gyro.y',
       'trigno.avanti.gyro.z',
+    ]);
+  });
+
+  it('в paired mode публикует VL и RF потоки отдельными streamId', async () => {
+    sessionControl.setStatusSnapshot({
+      host: '10.9.15.71',
+      banner: 'Delsys Trigno System Digital Protocol Version 3.6.0',
+      protocolVersion: '3.6.0',
+      backwardsCompatibility: false,
+      upsampling: false,
+      frameInterval: 0.0135,
+      maxSamplesEmg: 26,
+      maxSamplesAux: 2,
+      sensors: {
+        vl: {
+          sensorSlot: 1,
+          paired: true,
+          mode: 7,
+          startIndex: 1,
+          channelCount: 4,
+          emgChannelCount: 1,
+          auxChannelCount: 3,
+          backwardsCompatibility: false,
+          upsampling: false,
+          frameInterval: 0.0135,
+          maxSamplesEmg: 26,
+          maxSamplesAux: 2,
+          serial: 'VL-001',
+          firmware: '3.6.0',
+          emg: {
+            rateHz: 1925.92592592593,
+            samplesPerFrame: 26,
+            units: 'V',
+            gain: 300,
+          },
+          gyro: {
+            rateHz: 148.148148148148,
+            samplesPerFrame: 2,
+            units: 'deg/s',
+            gain: 16.4,
+          },
+        },
+        rf: {
+          sensorSlot: 2,
+          paired: true,
+          mode: 7,
+          startIndex: 5,
+          channelCount: 4,
+          emgChannelCount: 1,
+          auxChannelCount: 3,
+          backwardsCompatibility: false,
+          upsampling: false,
+          frameInterval: 0.0135,
+          maxSamplesEmg: 26,
+          maxSamplesAux: 2,
+          serial: 'RF-002',
+          firmware: '3.6.0',
+          emg: {
+            rateHz: 1925.92592592593,
+            samplesPerFrame: 26,
+            units: 'V',
+            gain: 300,
+          },
+          gyro: {
+            rateHz: 148.148148148148,
+            samplesPerFrame: 2,
+            units: 'deg/s',
+            gain: 16.4,
+          },
+        },
+      },
+    });
+
+    const harness = createHarness({
+      adapterId: 'trigno',
+      backwardsCompatibility: false,
+      upsampling: false,
+      pollIntervalMs: 250,
+      reconnectRetryDelayMs: 250,
+      connectCooldownMs: 0,
+    });
+
+    await trignoAdapter.onInit(harness.ctx);
+    await harness.dispatch({
+      type: EventTypes.adapterConnectRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'trigno',
+        requestId: 'connect-paired',
+        formData: {
+          host: '10.9.15.71',
+          vlSensorSlot: 1,
+          rfSensorSlot: 2,
+        },
+      },
+    });
+    await harness.dispatch({
+      type: TrignoEventTypes.streamStartRequest,
+      v: 1,
+      kind: 'command',
+      priority: 'control',
+      payload: {
+        adapterId: 'trigno',
+        requestId: 'start-paired',
+      },
+    });
+
+    expect(lastAdapterState(harness.emitted, 'trigno')).toEqual({
+      adapterId: 'trigno',
+      state: 'connected',
+      requestId: 'start-paired',
+    });
+
+    const session = sessionControl.getLatestSession();
+    if (!session) {
+      throw new Error('Ожидалась Trigno session');
+    }
+
+    session.emitSensorEmg('vl', new Float32Array([1, 2]));
+    session.emitSensorGyro('vl', {
+      x: new Float32Array([0.1]),
+      y: new Float32Array([0.2]),
+      z: new Float32Array([0.3]),
+    });
+    session.emitSensorEmg('rf', new Float32Array([3, 4]));
+    session.emitSensorGyro('rf', {
+      x: new Float32Array([0.4]),
+      y: new Float32Array([0.5]),
+      z: new Float32Array([0.6]),
+    });
+    await Promise.resolve();
+
+    const signalEvents = harness.emitted.filter((event) => event.type === EventTypes.signalBatch);
+    expect(signalEvents.map((event) => event.payload.streamId).sort()).toEqual([
+      'trigno.rf.avanti',
+      'trigno.rf.avanti.gyro.x',
+      'trigno.rf.avanti.gyro.y',
+      'trigno.rf.avanti.gyro.z',
+      'trigno.vl.avanti',
+      'trigno.vl.avanti.gyro.x',
+      'trigno.vl.avanti.gyro.y',
+      'trigno.vl.avanti.gyro.z',
     ]);
   });
 

@@ -24,7 +24,11 @@ import {
   type UiStreamDeclaration,
 } from '@sensync2/core';
 import { definePlugin, type TimelineResetCommitContext } from '@sensync2/plugin-sdk';
-import { TrignoEventTypes, type TrignoStatusReportedPayload } from '@sensync2/plugins-trigno';
+import {
+  isPairedTrignoStatusSnapshot,
+  TrignoEventTypes,
+  type TrignoStatusReportedPayload,
+} from '@sensync2/plugins-trigno';
 import { buildFakeUiSchema } from './profile-schemas.ts';
 
 interface UiGatewayConfig {
@@ -510,18 +514,39 @@ export default definePlugin({
 
     if (event.type === TrignoEventTypes.statusReported) {
       const payload: TrignoStatusReportedPayload = event.payload;
-      const { patch, version } = patchFlags({
-        'trigno.host': payload.status.host,
-        'trigno.sensorSlot': payload.status.sensorSlot,
-        'trigno.mode': payload.status.mode,
-        'trigno.startIndex': payload.status.startIndex,
-        'trigno.serial': payload.status.serial ?? null,
-        'trigno.firmware': payload.status.firmware ?? payload.status.protocolVersion ?? null,
-        'trigno.backwardsCompatibility': payload.status.backwardsCompatibility,
-        'trigno.upsampling': payload.status.upsampling,
-        'trigno.emgRateHz': payload.status.emg.rateHz,
-        'trigno.gyroRateHz': payload.status.gyro.rateHz,
-      });
+      const nextTrignoPatch = isPairedTrignoStatusSnapshot(payload.status)
+        ? {
+          'trigno.host': payload.status.host,
+          'trigno.backwardsCompatibility': payload.status.backwardsCompatibility,
+          'trigno.upsampling': payload.status.upsampling,
+          'trigno.vl.sensorSlot': payload.status.sensors.vl.sensorSlot,
+          'trigno.vl.mode': payload.status.sensors.vl.mode,
+          'trigno.vl.startIndex': payload.status.sensors.vl.startIndex,
+          'trigno.vl.serial': payload.status.sensors.vl.serial ?? null,
+          'trigno.vl.firmware': payload.status.sensors.vl.firmware ?? payload.status.protocolVersion ?? null,
+          'trigno.vl.emgRateHz': payload.status.sensors.vl.emg.rateHz,
+          'trigno.vl.gyroRateHz': payload.status.sensors.vl.gyro.rateHz,
+          'trigno.rf.sensorSlot': payload.status.sensors.rf.sensorSlot,
+          'trigno.rf.mode': payload.status.sensors.rf.mode,
+          'trigno.rf.startIndex': payload.status.sensors.rf.startIndex,
+          'trigno.rf.serial': payload.status.sensors.rf.serial ?? null,
+          'trigno.rf.firmware': payload.status.sensors.rf.firmware ?? payload.status.protocolVersion ?? null,
+          'trigno.rf.emgRateHz': payload.status.sensors.rf.emg.rateHz,
+          'trigno.rf.gyroRateHz': payload.status.sensors.rf.gyro.rateHz,
+        }
+        : {
+          'trigno.host': payload.status.host,
+          'trigno.sensorSlot': payload.status.sensorSlot,
+          'trigno.mode': payload.status.mode,
+          'trigno.startIndex': payload.status.startIndex,
+          'trigno.serial': payload.status.serial ?? null,
+          'trigno.firmware': payload.status.firmware ?? payload.status.protocolVersion ?? null,
+          'trigno.backwardsCompatibility': payload.status.backwardsCompatibility,
+          'trigno.upsampling': payload.status.upsampling,
+          'trigno.emgRateHz': payload.status.emg.rateHz,
+          'trigno.gyroRateHz': payload.status.gyro.rateHz,
+        };
+      const { patch, version } = patchFlags(nextTrignoPatch);
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
       return;
     }

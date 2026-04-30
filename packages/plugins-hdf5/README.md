@@ -18,6 +18,7 @@
 - `startConditions` в `v1` поддерживают только `fact-field`, чтобы preflight записи оставался runtime-driven и не тащил signal-specific framework в recorder.
 - `hdf5-simulation-adapter.ts` лениво читает те же datasets с помощью `h5wasm.slice()` и формирует новые runtime-batch по окну `batchMs`.
 - `hdf5-simulation-adapter.ts` может ограничивать воспроизведение только выбранными `streamIds`, которые пришли в plugin config.
+- `hdf5-simulation-adapter.ts` может дополнительно требовать полный набор этих `streamIds` через `requireAllStreamIds`, а не молча проигрывать частичный файл.
 - `hdf5-simulation-adapter.ts` может работать и без заранее заданного `filePath`, если в config включён `allowConnectFilePathOverride`; в таком режиме путь приходит через `adapter.connect.request.formData.filePath`.
 - `hdf5-simulation-adapter.ts` не переписывает timestamps из datasets ради replay UI; вместо этого он пробрасывает `recordingStartSessionMs` из root attrs в `simulation.state.changed`.
 - `hdf5-viewer-adapter.ts` использует тот же boundary, но вместо таймерного чтения загружает каждый выбранный stream целиком и публикует `viewer.state.changed` для UI history-режима; uniform-потоки в viewer отдаются с явным `timestampsMs`, чтобы UI не пересчитывал X по `sampleRateHz`.
@@ -32,6 +33,7 @@
 - Recorder подключается к live-источникам, а simulation-плагин работает как отдельный data-source profile.
 - В live-profile `veloerg` recorder сам инициирует `timeline reset` на start/stop записи; UI больше не считается requester'ом этого reset-flow.
 - В replay- и viewer-профилях simulation boundary принимает путь к HDF5 либо из env/profile config, либо из UI `connect`-формы, но дальше адаптеры работают уже только с нормализованным `SimulationSessionState`.
+- В `veloerg-replay` и `veloerg-viewer` этот boundary теперь используется в строгом режиме: если в файле нет полного парного набора `trigno.vl.avanti*` и `trigno.rf.avanti*`, подключение завершается ошибкой.
 - Если replay-файл был записан не с начала runtime-сессии, UI может всё равно начать график с `00:00`, потому что origin берётся из `recordingStartSessionMs`, а не из первого sample.
 
 Дополнительно:

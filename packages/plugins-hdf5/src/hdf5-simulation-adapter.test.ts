@@ -11,7 +11,7 @@ function createAttribute(target: InstanceType<typeof h5wasm.File> | InstanceType
   target.create_attribute(name, value);
 }
 
-async function createFixtureFile(): Promise<string> {
+async function createFixtureFile(streamId = 'trigno.avanti'): Promise<string> {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'sensync2-hdf5-simulation-adapter-'));
   const filePath = path.join(tempDir, 'fixture.h5');
 
@@ -20,8 +20,8 @@ async function createFixtureFile(): Promise<string> {
   try {
     createAttribute(file, 'recordingStartSessionMs', 1234);
     const channels = file.create_group('channels', true);
-    const group = channels.create_group('trigno.avanti', true);
-    createAttribute(group, 'streamId', 'trigno.avanti');
+    const group = channels.create_group(streamId, true);
+    createAttribute(group, 'streamId', streamId);
     createAttribute(group, 'sampleFormat', 'f32');
     createAttribute(group, 'frameKind', 'uniform-signal-batch');
     createAttribute(group, 'sampleRateHz', 1000);
@@ -122,6 +122,45 @@ describe('hdf5-simulation-adapter', () => {
     expect(states.at(-1)).toMatchObject({
       state: 'connected',
       recordingStartSessionMs: 1234,
+    });
+  });
+
+  it('отклоняет partial replay файл при requireAllStreamIds', async () => {
+    const filePath = await createFixtureFile('moxy.smo2');
+    const { ctx, emitted } = createHarness({
+      adapterId: 'veloerg-replay',
+      allowConnectFilePathOverride: true,
+      requireAllStreamIds: true,
+      streamIds: ['moxy.smo2', 'trigno.vl.avanti'],
+    });
+
+    await plugin.onInit(ctx);
+    await plugin.onEvent({
+      ...defineRuntimeEventInput({
+        type: EventTypes.adapterConnectRequest,
+        v: 1,
+        kind: 'command',
+        priority: 'control',
+        payload: {
+          adapterId: 'veloerg-replay',
+          formData: {
+            filePath,
+          },
+        },
+      }),
+      seq: 1n,
+      timelineId: 'timeline-test',
+      tsMonoMs: 0,
+      sourcePluginId: 'external-ui',
+    }, ctx);
+
+    expect(emitted.at(-1)).toMatchObject({
+      type: EventTypes.simulationStateChanged,
+      payload: {
+        adapterId: 'veloerg-replay',
+        state: 'failed',
+        message: expect.stringContaining('обязательные потоки'),
+      },
     });
   });
 });

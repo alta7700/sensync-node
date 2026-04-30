@@ -1,12 +1,14 @@
 # packages/plugins-trigno
 
-TCP-интеграция с `Delsys Trigno` для live-профиля `veloerg`.
+TCP-интеграция с `Delsys Trigno` для live-профилей `veloerg` и `pedaling-emg-*`.
 
 ## Для чего
 
 - Пакет добавляет отдельный worker-plugin `trigno-adapter`.
 - Он держит boundary к command/data TCP sockets Trigno вне `core`, `runtime` и UI.
-- В `v1` пакет публикует только raw `EMG + Gyroscope` для одного выбранного слота датчика.
+- Пакет поддерживает два режима:
+  - legacy single-sensor для `pedaling-emg-*` через `sensorSlot`;
+  - paired mode для `veloerg` через `vlSensorSlot` и `rfSensorSlot`.
 
 ## Как работает
 
@@ -15,12 +17,21 @@ TCP-интеграция с `Delsys Trigno` для live-профиля `veloerg`
 - Это сделано осознанно: по `Trigno SDK User Guide` режим `BC=ON` меняет частотную схему SDK data ports, из-за чего `EMG` на порту `50043` перестаёт совпадать с нативным `mode 7` snapshot.
 - Connect flow делится на два этапа:
   - `adapter.connect.request` поднимает command socket, применяет фиксированный profile config, читает status snapshot, открывает data sockets и переводит адаптер в `paused`;
-  - `trigno.stream.start.request` валидирует live snapshot против ожидаемого режима `veloerg` и только потом отправляет `START`.
+  - `trigno.stream.start.request` валидирует live snapshot против ожидаемого режима активного профиля и только потом отправляет `START`.
 - Data path разбирает standard ports:
   - `50043` как фиксированную матрицу `16 x 1 float32`;
   - `50044` как фиксированную матрицу `16 x 9 float32`.
 - `STARTINDEX?` используется как единственный источник истины для смещения внутри этих матриц.
-- В `v1` публикуются четыре потока:
+- В paired mode один и тот же raw packet режется по `startIndex` обоих датчиков и публикует восемь потоков:
+  - `trigno.vl.avanti`
+  - `trigno.vl.avanti.gyro.x`
+  - `trigno.vl.avanti.gyro.y`
+  - `trigno.vl.avanti.gyro.z`
+  - `trigno.rf.avanti`
+  - `trigno.rf.avanti.gyro.x`
+  - `trigno.rf.avanti.gyro.y`
+  - `trigno.rf.avanti.gyro.z`
+- В legacy single-sensor mode по-прежнему публикуются четыре потока:
   - `trigno.avanti`
   - `trigno.avanti.gyro.x`
   - `trigno.avanti.gyro.y`
@@ -35,5 +46,5 @@ TCP-интеграция с `Delsys Trigno` для live-профиля `veloerg`
 
 - Использует `@sensync2/plugin-kit`, `@sensync2/core` и `@sensync2/plugin-sdk`.
 - Экспортирует plugin-specific runtime contracts и `trignoUiCommandBoundaryGuards`.
-- Подключается в `apps/runtime` как часть профиля `veloerg`.
+- Подключается в `apps/runtime` как часть профиля `veloerg` и отдельных `pedaling-emg-*` профилей.
 - Concrete UI materialization живёт в `packages/plugins-ui-gateway`.

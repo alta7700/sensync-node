@@ -246,23 +246,28 @@
 
 Что считается boundary:
 
-- `formData.host` и `formData.sensorSlot` из UI;
+- `formData.host`, `formData.sensorSlot`, `formData.vlSensorSlot`, `formData.rfSensorSlot` из UI;
 - TCP banner и ASCII-ответы command socket;
 - бинарные data sockets `50043/50044`;
 - live status snapshot устройства перед `START`.
 
 Что происходит:
 
-- `formData` нормализуется до `TrignoConnectRequest`;
-- command-layer ответы валидируются и переводятся в `TrignoStatusSnapshot`;
+- `formData` нормализуется до `TrignoConnectRequest` в одном из двух режимов:
+  - legacy single-sensor `host + sensorSlot`;
+  - paired `host + vlSensorSlot + rfSensorSlot`;
+- command-layer ответы валидируются и переводятся в `TrignoStatusSnapshot`, который тоже может быть single-sensor или paired с `sensors.vl` / `sensors.rf`;
 - бинарные data sockets режутся по fixed step layout протокола;
+- в paired mode один и тот же пакет режется по `startIndex` обоих датчиков;
 - только потом адаптер публикует `signal.batch` и runtime state.
 
 Что уже trusted:
 
 - `TrignoConnectRequest`;
 - `TrignoStatusSnapshot`;
-- extracted raw batches `trigno.avanti` и `trigno.avanti.gyro.{x,y,z}`.
+- extracted raw batches:
+  - legacy `trigno.avanti` и `trigno.avanti.gyro.{x,y,z}`;
+  - paired `trigno.vl.avanti*` и `trigno.rf.avanti*`.
 
 ## Что boundary **не** делает
 

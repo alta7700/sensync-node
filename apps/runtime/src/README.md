@@ -17,7 +17,7 @@
 - `session-clock.ts` — относительное время сессии.
 - `compute-worker-boundary.ts` — boundary dev/runtime-конфига для внешних Python compute-worker'ов; он резолвит команду запуска, но не тащит transport-код в launch profiles.
 - `profiles/index.ts` — registry launch profiles и thin API `resolve/build`.
-- `profiles/*.ts` — отдельные profile-модули, которые собирают plugin composition и готовую `UiSchema`, включая пары `replay/viewer` для HDF5 сценариев.
+- `profiles/*.ts` — отдельные profile-модули, которые собирают plugin composition и готовую `UiSchema`, включая пары `replay/viewer` для HDF5 сценариев и строгие stream-контракты для `veloerg`.
 - `profiles/shared.ts` — общие helper'ы для profile composition, например descriptor `ui-gateway`.
 - `launch-profile-boundary.ts` — boundary для `process.env` и file-path validation при сборке launch profiles.
 - `main.ts` — standalone-точка входа, которая выбирает профиль через `SENSYNC2_PROFILE` и строит `ResolvedLaunchProfile`.
@@ -29,4 +29,4 @@
 - Работает уже не со строковыми "псевдо-ивентами", а с exact union `RuntimeEvent`, который собирается из shared/plugin-specific event map.
 - Загружает plugin modules через `packages/plugin-sdk`.
 - Наружу отдаёт API класса `RuntimeHost`, который использует `apps/desktop`.
-- В `profiles/*` зафиксированы базовый профиль `fake`, переходная композиция `fake-hdf5-simulation` и composite-профиль `veloerg` для ANT+/Moxy, BLE/Zephyr, `power.label`, TCP/Trigno и профильного UI с отдельным power-блоком и summary-строкой.
+- В `profiles/*` зафиксированы базовый профиль `fake`, переходная композиция `fake-hdf5-simulation` и composite-профиль `veloerg` для ANT+/Moxy, BLE/Zephyr, `power.label`, парного TCP/Trigno (`VL + RF`) и профильного UI с отдельным power-блоком и summary-строкой.

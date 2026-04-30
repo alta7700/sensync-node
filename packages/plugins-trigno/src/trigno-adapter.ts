@@ -10,9 +10,7 @@ import {
   createAdapterStateHolder,
   createTimelineResetParticipant,
   clipSignalBatchToTimelineStart,
-  createOutputRegistry,
   createReconnectPolicy,
-  createUniformSignalEmitter,
 } from '@sensync2/plugin-kit';
 import { definePlugin, type PluginContext } from '@sensync2/plugin-sdk';
 import {
@@ -20,28 +18,46 @@ import {
   buildTrignoConnectRequest,
   diffTrignoExpectedStartSnapshot,
   formatTrignoSnapshotMismatchMessage,
+  isPairedTrignoConnectRequest,
+  isPairedTrignoStatusSnapshot,
   resolveTrignoAdapterConfig,
   TrignoEventTypes,
   type TrignoAdapterConfig,
   type TrignoCommandRequestPayload,
   type TrignoConnectRequest,
+  type TrignoSensorStatusSnapshot,
   type TrignoStatusReportedPayload,
   type TrignoStatusSnapshot,
 } from './trigno-boundary.ts';
-import { TrignoTcpSession, type TrignoTcpSessionOptions } from './trigno-transport.ts';
+import {
+  TrignoTcpSession,
+  type TrignoDataSensorKey,
+  type TrignoTcpSessionOptions,
+} from './trigno-transport.ts';
 
 const TrignoPollTimerId = 'trigno.poll';
-const TrignoEmgStreamId = 'trigno.avanti';
-const TrignoGyroXStreamId = 'trigno.avanti.gyro.x';
-const TrignoGyroYStreamId = 'trigno.avanti.gyro.y';
-const TrignoGyroZStreamId = 'trigno.avanti.gyro.z';
-const TrignoOutputs = createOutputRegistry({
-  emg: { streamId: TrignoEmgStreamId, units: 'V' },
-  gyroX: { streamId: TrignoGyroXStreamId, units: 'deg/s' },
-  gyroY: { streamId: TrignoGyroYStreamId, units: 'deg/s' },
-  gyroZ: { streamId: TrignoGyroZStreamId, units: 'deg/s' },
-});
-const trignoEmitter = createUniformSignalEmitter(TrignoOutputs);
+const TrignoSensorKeys = ['single', 'vl', 'rf'] as const satisfies readonly TrignoDataSensorKey[];
+
+const TrignoStreamDescriptors = {
+  single: {
+    emg: { streamId: 'trigno.avanti', units: 'V' },
+    gyroX: { streamId: 'trigno.avanti.gyro.x', units: 'deg/s' },
+    gyroY: { streamId: 'trigno.avanti.gyro.y', units: 'deg/s' },
+    gyroZ: { streamId: 'trigno.avanti.gyro.z', units: 'deg/s' },
+  },
+  vl: {
+    emg: { streamId: 'trigno.vl.avanti', units: 'V' },
+    gyroX: { streamId: 'trigno.vl.avanti.gyro.x', units: 'deg/s' },
+    gyroY: { streamId: 'trigno.vl.avanti.gyro.y', units: 'deg/s' },
+    gyroZ: { streamId: 'trigno.vl.avanti.gyro.z', units: 'deg/s' },
+  },
+  rf: {
+    emg: { streamId: 'trigno.rf.avanti', units: 'V' },
+    gyroX: { streamId: 'trigno.rf.avanti.gyro.x', units: 'deg/s' },
+    gyroY: { streamId: 'trigno.rf.avanti.gyro.y', units: 'deg/s' },
+    gyroZ: { streamId: 'trigno.rf.avanti.gyro.z', units: 'deg/s' },
+  },
+} as const;
 
 class TrignoStartBlockedError extends Error {
   constructor(message: string) {
@@ -56,6 +72,29 @@ interface StreamTimeline {
   sampleRateHz: number;
 }
 
+type TimelineMap = Record<TrignoDataSensorKey, StreamTimeline>;
+type ResetCutoffMap = Record<TrignoDataSensorKey, number | null>;
+
+function createDefaultTimeline(): StreamTimeline {
+  return { nextT0Ms: null, dtMs: 1, sampleRateHz: 1 };
+}
+
+function createDefaultTimelineMap(): TimelineMap {
+  return {
+    single: createDefaultTimeline(),
+    vl: createDefaultTimeline(),
+    rf: createDefaultTimeline(),
+  };
+}
+
+function createDefaultResetCutoffMap(): ResetCutoffMap {
+  return {
+    single: null,
+    vl: null,
+    rf: null,
+  };
+}
+
 let config = resolveTrignoAdapterConfig(undefined);
 let currentSession: TrignoTcpSession | null = null;
 let lastConnectRequest: TrignoConnectRequest | null = null;
@@ -66,10 +105,10 @@ let lastStatusSnapshot: TrignoStatusSnapshot | null = null;
 let nextConnectAllowedSessionMs: number | null = null;
 let lastEmgDataSessionMs: number | null = null;
 let lastAuxDataSessionMs: number | null = null;
-let emgTimeline: StreamTimeline = { nextT0Ms: null, dtMs: 1, sampleRateHz: 1 };
-let gyroTimeline: StreamTimeline = { nextT0Ms: null, dtMs: 1, sampleRateHz: 1 };
-let emgResetCutoffSessionMs: number | null = null;
-let gyroResetCutoffSessionMs: number | null = null;
+let emgTimelines = createDefaultTimelineMap();
+let gyroTimelines = createDefaultTimelineMap();
+let emgResetCutoffSessionMs = createDefaultResetCutoffMap();
+let gyroResetCutoffSessionMs = createDefaultResetCutoffMap();
 let trignoState = createAdapterStateHolder({ adapterId: config.adapterId });
 let reconnectPolicy = createReconnectPolicy({ initialDelayMs: config.reconnectRetryDelayMs });
 const timelineResetParticipant = createTimelineResetParticipant({
@@ -88,13 +127,13 @@ const timelineResetParticipant = createTimelineResetParticipant({
       resetTimelines(null);
     }
     if (currentSession && shouldStream && trignoState.isState('connected')) {
-      emgResetCutoffSessionMs = input.timelineStartSessionMs;
-      gyroResetCutoffSessionMs = input.timelineStartSessionMs;
+      setResetCutoffForActiveSensors(emgResetCutoffSessionMs, lastStatusSnapshot, input.timelineStartSessionMs);
+      setResetCutoffForActiveSensors(gyroResetCutoffSessionMs, lastStatusSnapshot, input.timelineStartSessionMs);
       lastEmgDataSessionMs = input.timelineStartSessionMs;
       lastAuxDataSessionMs = input.timelineStartSessionMs;
     } else {
-      emgResetCutoffSessionMs = null;
-      gyroResetCutoffSessionMs = null;
+      emgResetCutoffSessionMs = createDefaultResetCutoffMap();
+      gyroResetCutoffSessionMs = createDefaultResetCutoffMap();
       resetDataActivity();
     }
     if (shouldPollAfterReset()) {
@@ -165,22 +204,65 @@ async function waitForConnectCooldown(ctx: PluginContext): Promise<void> {
   nextConnectAllowedSessionMs = null;
 }
 
+function activeSensorKeys(snapshot: TrignoStatusSnapshot | null): TrignoDataSensorKey[] {
+  if (!snapshot) {
+    return ['single'];
+  }
+  if (isPairedTrignoStatusSnapshot(snapshot)) {
+    return ['vl', 'rf'];
+  }
+  return ['single'];
+}
+
+function sensorSnapshotByKey(snapshot: TrignoStatusSnapshot, sensorKey: Exclude<TrignoDataSensorKey, 'single'>): TrignoSensorStatusSnapshot {
+  if (!isPairedTrignoStatusSnapshot(snapshot)) {
+    throw new Error(`Для ключа ${sensorKey} ожидался paired snapshot Trigno`);
+  }
+  return snapshot.sensors[sensorKey];
+}
+
+function resolveSensorSnapshot(snapshot: TrignoStatusSnapshot, sensorKey: TrignoDataSensorKey): TrignoSensorStatusSnapshot {
+  if (sensorKey === 'single') {
+    if (isPairedTrignoStatusSnapshot(snapshot)) {
+      throw new Error('Для single timeline нельзя использовать paired snapshot Trigno');
+    }
+    return snapshot;
+  }
+  return sensorSnapshotByKey(snapshot, sensorKey);
+}
+
+function assignTimeline(target: StreamTimeline, rateHz: number): void {
+  target.nextT0Ms = null;
+  target.sampleRateHz = rateHz;
+  target.dtMs = 1_000 / rateHz;
+}
+
 function resetTimelines(snapshot: TrignoStatusSnapshot | null): void {
   if (!snapshot) {
-    emgTimeline = { nextT0Ms: null, dtMs: 1, sampleRateHz: 1 };
-    gyroTimeline = { nextT0Ms: null, dtMs: 1, sampleRateHz: 1 };
+    emgTimelines = createDefaultTimelineMap();
+    gyroTimelines = createDefaultTimelineMap();
     return;
   }
-  emgTimeline = {
-    nextT0Ms: null,
-    sampleRateHz: snapshot.emg.rateHz,
-    dtMs: 1_000 / snapshot.emg.rateHz,
-  };
-  gyroTimeline = {
-    nextT0Ms: null,
-    sampleRateHz: snapshot.gyro.rateHz,
-    dtMs: 1_000 / snapshot.gyro.rateHz,
-  };
+  emgTimelines = createDefaultTimelineMap();
+  gyroTimelines = createDefaultTimelineMap();
+  for (const sensorKey of activeSensorKeys(snapshot)) {
+    const sensorSnapshot = resolveSensorSnapshot(snapshot, sensorKey);
+    assignTimeline(emgTimelines[sensorKey], sensorSnapshot.emg.rateHz);
+    assignTimeline(gyroTimelines[sensorKey], sensorSnapshot.gyro.rateHz);
+  }
+}
+
+function setResetCutoffForActiveSensors(
+  target: ResetCutoffMap,
+  snapshot: TrignoStatusSnapshot | null,
+  timelineStartSessionMs: number,
+): void {
+  for (const sensorKey of TrignoSensorKeys) {
+    target[sensorKey] = null;
+  }
+  for (const sensorKey of activeSensorKeys(snapshot)) {
+    target[sensorKey] = timelineStartSessionMs;
+  }
 }
 
 function resetDataActivity(): void {
@@ -224,9 +306,8 @@ function stopPolling(ctx: PluginContext): void {
 }
 
 function sessionOptions(request: TrignoConnectRequest): TrignoTcpSessionOptions {
-  return {
+  const baseOptions: TrignoTcpSessionOptions = {
     host: request.host,
-    sensorSlot: request.sensorSlot,
     backwardsCompatibility: config.backwardsCompatibility,
     upsampling: config.upsampling,
     commandPort: config.commandPort,
@@ -236,6 +317,19 @@ function sessionOptions(request: TrignoConnectRequest): TrignoTcpSessionOptions 
     commandTimeoutMs: config.commandTimeoutMs,
     startTimeoutMs: config.startTimeoutMs,
     stopTimeoutMs: config.stopTimeoutMs,
+  };
+
+  if (isPairedTrignoConnectRequest(request)) {
+    return {
+      ...baseOptions,
+      vlSensorSlot: request.vlSensorSlot,
+      rfSensorSlot: request.rfSensorSlot,
+    };
+  }
+
+  return {
+    ...baseOptions,
+    sensorSlot: request.sensorSlot,
   };
 }
 
@@ -264,7 +358,15 @@ async function validateStartSnapshot(
   requestId?: string,
 ): Promise<TrignoStatusSnapshot> {
   const snapshot = await refreshStatusSnapshot(ctx, requestId);
-  const mismatches = diffTrignoExpectedStartSnapshot(snapshot, buildTrignoExpectedStartSnapshot(config));
+  const expected = buildTrignoExpectedStartSnapshot(config);
+  const mismatches = isPairedTrignoStatusSnapshot(snapshot)
+    ? (['vl', 'rf'] as const).flatMap((sensorKey) => {
+      return diffTrignoExpectedStartSnapshot(snapshot.sensors[sensorKey], expected).map((mismatch) => ({
+        ...mismatch,
+        field: `${sensorKey}.${mismatch.field}`,
+      }));
+    })
+    : diffTrignoExpectedStartSnapshot(snapshot, expected);
   if (mismatches.length > 0) {
     throw new TrignoStartBlockedError(formatTrignoSnapshotMismatchMessage(mismatches));
   }
@@ -277,19 +379,44 @@ function nextBatchT0(ctx: PluginContext, timeline: StreamTimeline, sampleCount: 
   return t0Ms;
 }
 
-async function emitEmgBatch(ctx: PluginContext, values: Float32Array): Promise<void> {
-  const t0Ms = nextBatchT0(ctx, emgTimeline, values.length);
-  const event = trignoEmitter.createEvent('emg', values, {
-    t0Ms,
-    dtMs: emgTimeline.dtMs,
-    sampleRateHz: emgTimeline.sampleRateHz,
+function createSignalBatchEvent(
+  sensorKey: TrignoDataSensorKey,
+  signalKey: 'emg' | 'gyroX' | 'gyroY' | 'gyroZ',
+  values: Float32Array,
+  timeline: StreamTimeline,
+  t0Ms: number,
+) {
+  const descriptor = TrignoStreamDescriptors[sensorKey][signalKey];
+  return defineRuntimeEventInput({
+    type: EventTypes.signalBatch,
+    v: 1,
+    kind: 'data',
+    priority: 'data',
+    payload: {
+      streamId: descriptor.streamId,
+      sampleFormat: 'f32',
+      frameKind: 'uniform-signal-batch',
+      units: descriptor.units,
+      t0Ms,
+      dtMs: timeline.dtMs,
+      sampleRateHz: timeline.sampleRateHz,
+      sampleCount: values.length,
+      values,
+    },
   });
-  if (emgResetCutoffSessionMs !== null) {
-    const clipped = clipSignalBatchToTimelineStart(event.payload, emgResetCutoffSessionMs);
+}
+
+async function emitEmgBatch(ctx: PluginContext, sensorKey: TrignoDataSensorKey, values: Float32Array): Promise<void> {
+  const timeline = emgTimelines[sensorKey];
+  const t0Ms = nextBatchT0(ctx, timeline, values.length);
+  const event = createSignalBatchEvent(sensorKey, 'emg', values, timeline, t0Ms);
+  const cutoffSessionMs = emgResetCutoffSessionMs[sensorKey];
+  if (cutoffSessionMs !== null) {
+    const clipped = clipSignalBatchToTimelineStart(event.payload, cutoffSessionMs);
     if (clipped.kind === 'drop') {
       return;
     }
-    emgResetCutoffSessionMs = null;
+    emgResetCutoffSessionMs[sensorKey] = null;
     await ctx.emit({ ...event, payload: clipped.payload });
     return;
   }
@@ -298,17 +425,19 @@ async function emitEmgBatch(ctx: PluginContext, values: Float32Array): Promise<v
 
 async function emitGyroBatches(
   ctx: PluginContext,
+  sensorKey: TrignoDataSensorKey,
   samples: { x: Float32Array; y: Float32Array; z: Float32Array },
 ): Promise<void> {
-  const t0Ms = nextBatchT0(ctx, gyroTimeline, samples.x.length);
+  const timeline = gyroTimelines[sensorKey];
+  const t0Ms = nextBatchT0(ctx, timeline, samples.x.length);
   const events = [
-    trignoEmitter.createEvent('gyroX', samples.x, { t0Ms, dtMs: gyroTimeline.dtMs, sampleRateHz: gyroTimeline.sampleRateHz }),
-    trignoEmitter.createEvent('gyroY', samples.y, { t0Ms, dtMs: gyroTimeline.dtMs, sampleRateHz: gyroTimeline.sampleRateHz }),
-    trignoEmitter.createEvent('gyroZ', samples.z, { t0Ms, dtMs: gyroTimeline.dtMs, sampleRateHz: gyroTimeline.sampleRateHz }),
+    createSignalBatchEvent(sensorKey, 'gyroX', samples.x, timeline, t0Ms),
+    createSignalBatchEvent(sensorKey, 'gyroY', samples.y, timeline, t0Ms),
+    createSignalBatchEvent(sensorKey, 'gyroZ', samples.z, timeline, t0Ms),
   ];
 
-  if (gyroResetCutoffSessionMs !== null) {
-    const cutoffSessionMs = gyroResetCutoffSessionMs;
+  const cutoffSessionMs = gyroResetCutoffSessionMs[sensorKey];
+  if (cutoffSessionMs !== null) {
     const clippedEvents = events.flatMap((event) => {
       const clipped = clipSignalBatchToTimelineStart(event.payload, cutoffSessionMs);
       if (clipped.kind === 'drop') {
@@ -319,7 +448,7 @@ async function emitGyroBatches(
     if (clippedEvents.length === 0) {
       return;
     }
-    gyroResetCutoffSessionMs = null;
+    gyroResetCutoffSessionMs[sensorKey] = null;
     await Promise.all(clippedEvents.map((event) => ctx.emit(event)));
     return;
   }
@@ -340,15 +469,15 @@ async function openSession(
   resetDataActivity();
 
   session.setDataCallbacks({
-    onEmgSamples: (values) => {
+    onSensorEmgSamples: (sensorKey, values) => {
       if (currentSession !== session || !shouldStream) return;
       markDataActivity(ctx, 'emg');
-      void emitEmgBatch(ctx, values).catch(() => undefined);
+      void emitEmgBatch(ctx, sensorKey, values).catch(() => undefined);
     },
-    onGyroSamples: (samples) => {
+    onSensorGyroSamples: (sensorKey, samples) => {
       if (currentSession !== session || !shouldStream) return;
       markDataActivity(ctx, 'aux');
-      void emitGyroBatches(ctx, samples).catch(() => undefined);
+      void emitGyroBatches(ctx, sensorKey, samples).catch(() => undefined);
     },
   });
 
@@ -614,8 +743,8 @@ export default definePlugin({
     resetReconnectState();
     resetDataActivity();
     resetTimelines(null);
-    emgResetCutoffSessionMs = null;
-    gyroResetCutoffSessionMs = null;
+    emgResetCutoffSessionMs = createDefaultResetCutoffMap();
+    gyroResetCutoffSessionMs = createDefaultResetCutoffMap();
     nextConnectAllowedSessionMs = null;
     timelineResetParticipant.initialize(ctx.currentTimelineId());
     startPolling(ctx);
@@ -668,8 +797,8 @@ export default definePlugin({
     resetReconnectState();
     resetDataActivity();
     resetTimelines(null);
-    emgResetCutoffSessionMs = null;
-    gyroResetCutoffSessionMs = null;
+    emgResetCutoffSessionMs = createDefaultResetCutoffMap();
+    gyroResetCutoffSessionMs = createDefaultResetCutoffMap();
     nextConnectAllowedSessionMs = null;
   },
   async onTimelineResetPrepare(input, ctx) {

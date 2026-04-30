@@ -31,8 +31,8 @@
 - Для `fake-hdf5-simulation` схема отдельная: по графикам она совместима с fake-демо, но управляющие кнопки уже относятся к simulation-источнику.
 - Для `fake` схема больше не рисует connect/disconnect для `fake-signal-adapter`: live source поднимается автоматически, manual-control остаётся только у `shapes`.
 - Interval toggle в `fake` теперь отправляет generic `label.mark.request`, а не interval-specific команды.
-- Для `veloerg` схема composite: отдельный Trigno control-блок, отдельный блок `power`, summary-строка с живыми метриками, raw-графики `EMG/Gyroscope`, ступенчатый `Power` и scan/connect/disconnect для Moxy и Zephyr.
-- Для `veloerg-replay` схема повторяет графики `veloerg`, но заменяет live-control блоки одним replay-control виджетом `HDF5 replay`.
+- Для `veloerg` схема composite: отдельный Trigno control-блок с парной формой `host + vlSensorSlot + rfSensorSlot`, отдельный блок `power`, summary-строка с живыми метриками, четыре raw-графика `VL/RF EMG/Gyroscope`, ступенчатый `Power` и scan/connect/disconnect для Moxy и Zephyr.
+- Для `veloerg-replay` схема повторяет графики `veloerg`, но заменяет live-control блоки одним replay-control виджетом `HDF5 replay` и исходит из строгого набора потоков `trigno.vl.avanti*` / `trigno.rf.avanti*`.
 - Для viewer-профилей схема использует те же наборы графиков, но ставит `viewportMode = history`, чтобы renderer включал data-zoom и панорамирование.
 
 ## Взаимодействие

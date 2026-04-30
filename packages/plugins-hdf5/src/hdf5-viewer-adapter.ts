@@ -23,6 +23,7 @@ export interface Hdf5ViewerAdapterConfig {
   filePath?: string;
   allowConnectFilePathOverride?: boolean;
   streamIds?: string[];
+  requireAllStreamIds?: boolean;
   readChunkSamples?: number;
 }
 
@@ -33,6 +34,7 @@ const DefaultHdf5ViewerConfig: Required<Hdf5ViewerAdapterConfig> = {
   filePath: '',
   allowConnectFilePathOverride: false,
   streamIds: [],
+  requireAllStreamIds: false,
   readChunkSamples: 4096,
 };
 
@@ -81,7 +83,12 @@ function ensureViewerSession(filePath: string): SimulationSessionState {
   }
 
   closeCurrentSession();
-  const nextSession = loadHdf5SimulationSession(normalizedFilePath, config.streamIds, config.readChunkSamples);
+  const nextSession = loadHdf5SimulationSession(
+    normalizedFilePath,
+    config.streamIds,
+    config.readChunkSamples,
+    config.requireAllStreamIds,
+  );
   session = nextSession;
   config.filePath = normalizedFilePath;
   return nextSession;
@@ -231,7 +238,12 @@ export default definePlugin({
     await h5wasm.ready;
     config = resolveHdf5ViewerConfig(ctx.getConfig<Hdf5ViewerAdapterConfig>());
     if (config.filePath.length > 0) {
-      session = loadHdf5SimulationSession(config.filePath, config.streamIds, config.readChunkSamples);
+      session = loadHdf5SimulationSession(
+        config.filePath,
+        config.streamIds,
+        config.readChunkSamples,
+        config.requireAllStreamIds,
+      );
     } else {
       session = null;
     }

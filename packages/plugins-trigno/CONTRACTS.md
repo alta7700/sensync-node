@@ -44,14 +44,62 @@
 - `commandType` в schema может быть exact-литералом `trigno.stream.start.request`, `trigno.stream.stop.request` или `trigno.status.refresh.request`;
 - runtime принимает эти команды через тот же boundary-путь, что и shared `adapter.connect.request`.
 
+### Connect payload для `adapter.connect.request`
+
+Пакет ожидает два допустимых вида `formData`:
+
+- legacy single-sensor:
+  - `host: string`
+  - `sensorSlot: number`
+- paired mode:
+  - `host: string`
+  - `vlSensorSlot: number`
+  - `rfSensorSlot: number`
+
+Правила:
+
+- все sensor slot должны лежать в диапазоне `1..16`;
+- в paired mode `vlSensorSlot !== rfSensorSlot`;
+- `pedaling-emg-*` используют legacy single-sensor форму;
+- `veloerg` использует только paired форму.
+
 ## 3. TrignoStatusSnapshot
 
-`trigno.status.reported` несёт нормализованный snapshot command-layer состояния:
+`trigno.status.reported` несёт нормализованный snapshot command-layer состояния.
+
+Общие поля верхнего уровня:
 
 - `host`
-- `sensorSlot`
 - `banner`
 - `protocolVersion`
+- `backwardsCompatibility`
+- `upsampling`
+- `frameInterval`
+- `maxSamplesEmg`
+- `maxSamplesAux`
+
+Legacy single-sensor snapshot дополнительно несёт:
+
+- `sensorSlot`
+- `paired`
+- `mode`
+- `startIndex`
+- `channelCount`
+- `emgChannelCount`
+- `auxChannelCount`
+- `serial`
+- `firmware`
+- `emg.{ rateHz, samplesPerFrame, units, gain }`
+- `gyro.{ rateHz, samplesPerFrame, units, gain }`
+
+Paired snapshot вместо этого несёт:
+
+- `sensors.vl`
+- `sensors.rf`
+
+Каждый sensor snapshot внутри `sensors.<role>` содержит:
+
+- `sensorSlot`
 - `paired`
 - `mode`
 - `startIndex`
@@ -75,7 +123,8 @@
 Семантика:
 
 - `adapter.connect.request` поднимает TCP-сессию, применяет profile config, читает status snapshot и оставляет адаптер в `paused`;
-- `trigno.stream.start.request` заново читает status snapshot и сравнивает его с ожидаемым режимом `veloerg`;
+- `trigno.stream.start.request` заново читает status snapshot и сравнивает его с ожидаемым режимом профиля;
+- в paired mode сравнение выполняется отдельно для `vl` и `rf`, а mismatch-поля префиксуются как `vl.*` и `rf.*`;
 - при несовпадении адаптер остаётся в `paused`, а не переходит в `connected`.
 - если TCP-сессия рвётся в `paused`, адаптер переходит в `failed` без auto-reconnect, чтобы оператор явно переподключил устройство.
 

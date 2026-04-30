@@ -23,10 +23,14 @@ const VeloergRecordingChannels = [
   { streamId: 'zephyr.rr', minSamples: 10, maxBufferedMs: 2_000 },
   { streamId: 'zephyr.hr', minSamples: 10, maxBufferedMs: 2_000 },
   { streamId: 'zephyr.dfa_a1', minSamples: 1, maxBufferedMs: 5_000 },
-  { streamId: 'trigno.avanti', minSamples: 500, maxBufferedMs: 500 },
-  { streamId: 'trigno.avanti.gyro.x', minSamples: 50, maxBufferedMs: 1_000 },
-  { streamId: 'trigno.avanti.gyro.y', minSamples: 50, maxBufferedMs: 1_000 },
-  { streamId: 'trigno.avanti.gyro.z', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.vl.avanti', minSamples: 500, maxBufferedMs: 500 },
+  { streamId: 'trigno.vl.avanti.gyro.x', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.vl.avanti.gyro.y', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.vl.avanti.gyro.z', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.rf.avanti', minSamples: 500, maxBufferedMs: 500 },
+  { streamId: 'trigno.rf.avanti.gyro.x', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.rf.avanti.gyro.y', minSamples: 50, maxBufferedMs: 1_000 },
+  { streamId: 'trigno.rf.avanti.gyro.z', minSamples: 50, maxBufferedMs: 1_000 },
   { streamId: 'power.label', minSamples: 1, maxBufferedMs: 120_000 },
 ] as const;
 const PedalingEmgTestRecordingChannels = [
@@ -463,7 +467,43 @@ function makeZephyrConnectModalForm(adapterId: string): UiModalForm {
   };
 }
 
-function makeTrignoConnectModalForm(adapterId: string): UiModalForm {
+function makeTrignoConnectModalForm(adapterId: string, mode: 'single' | 'paired' = 'single'): UiModalForm {
+  const slotFields = mode === 'paired'
+    ? [
+      {
+        kind: 'numberInput' as const,
+        fieldId: 'vlSensorSlot',
+        label: 'Слот VL',
+        required: true,
+        defaultValue: 1,
+        min: 1,
+        max: 16,
+        step: 1,
+      },
+      {
+        kind: 'numberInput' as const,
+        fieldId: 'rfSensorSlot',
+        label: 'Слот RF',
+        required: true,
+        defaultValue: 2,
+        min: 1,
+        max: 16,
+        step: 1,
+      },
+    ]
+    : [
+      {
+        kind: 'numberInput' as const,
+        fieldId: 'sensorSlot',
+        label: 'Слот датчика',
+        required: true,
+        defaultValue: 1,
+        min: 1,
+        max: 16,
+        step: 1,
+      },
+    ];
+
   return {
     id: `connect-trigno-${adapterId}`,
     title: 'Подключение Trigno',
@@ -484,20 +524,142 @@ function makeTrignoConnectModalForm(adapterId: string): UiModalForm {
             defaultValue: '10.9.15.71',
             placeholder: '10.9.15.71',
           },
-          {
-            kind: 'numberInput',
-            fieldId: 'sensorSlot',
-            label: 'Слот датчика',
-            required: true,
-            defaultValue: 1,
-            min: 1,
-            max: 16,
-            step: 1,
-          },
+          ...slotFields,
         ],
       },
     ],
   };
+}
+
+function makeVeloergTrignoStatusFlagKeys(): string[] {
+  return [
+    'trigno.host',
+    'trigno.backwardsCompatibility',
+    'trigno.upsampling',
+    'trigno.vl.sensorSlot',
+    'trigno.vl.mode',
+    'trigno.vl.startIndex',
+    'trigno.vl.serial',
+    'trigno.vl.firmware',
+    'trigno.vl.emgRateHz',
+    'trigno.vl.gyroRateHz',
+    'trigno.rf.sensorSlot',
+    'trigno.rf.mode',
+    'trigno.rf.startIndex',
+    'trigno.rf.serial',
+    'trigno.rf.firmware',
+    'trigno.rf.emgRateHz',
+    'trigno.rf.gyroRateHz',
+  ];
+}
+
+function makeVeloergTrignoChartWidgets(): UiSchema['widgets'] {
+  return [
+    {
+      kind: 'chart',
+      id: 'chart-trigno-vl-emg',
+      title: 'VL EMG',
+      renderer: 'echarts',
+      height: 320,
+      timeWindowMs: 20_000,
+      showLegend: true,
+      yAxis: { label: 'V' },
+      series: [
+        {
+          type: 'line',
+          streamId: 'trigno.vl.avanti',
+          label: 'VL EMG',
+          color: '#ff922b',
+          lineWidth: 2,
+        },
+      ],
+    },
+    {
+      kind: 'chart',
+      id: 'chart-trigno-vl-gyro',
+      title: 'VL Trigno',
+      renderer: 'echarts',
+      height: 320,
+      timeWindowMs: 20_000,
+      showLegend: true,
+      yAxis: { label: 'deg/s' },
+      series: [
+        {
+          type: 'line',
+          streamId: 'trigno.vl.avanti.gyro.x',
+          label: 'VL gyro.x',
+          color: '#f03e3e',
+          lineWidth: 2,
+        },
+        {
+          type: 'line',
+          streamId: 'trigno.vl.avanti.gyro.y',
+          label: 'VL gyro.y',
+          color: '#2b8a3e',
+          lineWidth: 2,
+        },
+        {
+          type: 'line',
+          streamId: 'trigno.vl.avanti.gyro.z',
+          label: 'VL gyro.z',
+          color: '#1c7ed6',
+          lineWidth: 2,
+        },
+      ],
+    },
+    {
+      kind: 'chart',
+      id: 'chart-trigno-rf-emg',
+      title: 'RF EMG',
+      renderer: 'echarts',
+      height: 320,
+      timeWindowMs: 20_000,
+      showLegend: true,
+      yAxis: { label: 'V' },
+      series: [
+        {
+          type: 'line',
+          streamId: 'trigno.rf.avanti',
+          label: 'RF EMG',
+          color: '#ffd43b',
+          lineWidth: 2,
+        },
+      ],
+    },
+    {
+      kind: 'chart',
+      id: 'chart-trigno-rf-gyro',
+      title: 'RF Trigno',
+      renderer: 'echarts',
+      height: 320,
+      timeWindowMs: 20_000,
+      showLegend: true,
+      yAxis: { label: 'deg/s' },
+      series: [
+        {
+          type: 'line',
+          streamId: 'trigno.rf.avanti.gyro.x',
+          label: 'RF gyro.x',
+          color: '#c92a2a',
+          lineWidth: 2,
+        },
+        {
+          type: 'line',
+          streamId: 'trigno.rf.avanti.gyro.y',
+          label: 'RF gyro.y',
+          color: '#2f9e44',
+          lineWidth: 2,
+        },
+        {
+          type: 'line',
+          streamId: 'trigno.rf.avanti.gyro.z',
+          label: 'RF gyro.z',
+          color: '#1971c2',
+          lineWidth: 2,
+        },
+      ],
+    },
+  ];
 }
 
 function makeReplayConnectModalForm(adapterId: string, formId: string): UiModalForm {
@@ -1054,8 +1216,10 @@ export function buildVeloergUiSchema(): UiSchema {
           'controls-power',
           'controls-recording',
           'summary-main',
-          'chart-trigno-emg',
-          'chart-trigno-gyro',
+          'chart-trigno-vl-emg',
+          'chart-trigno-vl-gyro',
+          'chart-trigno-rf-emg',
+          'chart-trigno-rf-gyro',
           'chart-moxy-smo2',
           'chart-moxy-thb',
           'chart-power',
@@ -1120,8 +1284,16 @@ export function buildVeloergUiSchema(): UiSchema {
               kind: 'row',
               gap: 12,
               children: [
-                { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
-                { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-vl-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-vl-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-trigno-rf-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-rf-gyro', minWidth: 420 },
               ],
             },
             {
@@ -1175,7 +1347,7 @@ export function buildVeloergUiSchema(): UiSchema {
             id: 'connect-trigno',
             kind: 'button',
             label: 'Подключить Trigno',
-            modalForm: makeTrignoConnectModalForm(trignoAdapterId),
+            modalForm: makeTrignoConnectModalForm(trignoAdapterId, 'paired'),
             variants: [
               {
                 when: { flag: `adapter.${trignoAdapterId}.state`, eq: 'connecting' },
@@ -1597,73 +1769,13 @@ export function buildVeloergUiSchema(): UiSchema {
           `adapter.${zephyrAdapterId}.message`,
           `adapter.${trignoAdapterId}.state`,
           `adapter.${trignoAdapterId}.message`,
-          'trigno.host',
-          'trigno.sensorSlot',
-          'trigno.mode',
-          'trigno.startIndex',
-          'trigno.serial',
-          'trigno.firmware',
-          'trigno.backwardsCompatibility',
-          'trigno.upsampling',
-          'trigno.emgRateHz',
-          'trigno.gyroRateHz',
+          ...makeVeloergTrignoStatusFlagKeys(),
           'power.current',
           'recording.local.state',
           'recording.local.filePath',
         ],
       },
-      {
-        kind: 'chart',
-        id: 'chart-trigno-emg',
-        title: 'Trigno EMG',
-        renderer: 'echarts',
-        height: 320,
-        timeWindowMs: 20_000,
-        showLegend: true,
-        yAxis: { label: 'V' },
-        series: [
-          {
-            type: 'line',
-            streamId: 'trigno.avanti',
-            label: 'EMG',
-            color: '#ff922b',
-            lineWidth: 2,
-          },
-        ],
-      },
-      {
-        kind: 'chart',
-        id: 'chart-trigno-gyro',
-        title: 'Trigno Gyroscope',
-        renderer: 'echarts',
-        height: 320,
-        timeWindowMs: 20_000,
-        showLegend: true,
-        yAxis: { label: 'deg/s' },
-        series: [
-          {
-            type: 'line',
-            streamId: 'trigno.avanti.gyro.x',
-            label: 'gyro.x',
-            color: '#f03e3e',
-            lineWidth: 2,
-          },
-          {
-            type: 'line',
-            streamId: 'trigno.avanti.gyro.y',
-            label: 'gyro.y',
-            color: '#2b8a3e',
-            lineWidth: 2,
-          },
-          {
-            type: 'line',
-            streamId: 'trigno.avanti.gyro.z',
-            label: 'gyro.z',
-            color: '#1c7ed6',
-            lineWidth: 2,
-          },
-        ],
-      },
+      ...makeVeloergTrignoChartWidgets(),
       {
         kind: 'chart',
         id: 'chart-moxy-smo2',
@@ -1800,8 +1912,10 @@ export function buildVeloergReplayUiSchema(): UiSchema {
         widgetIds: [
           'status-main',
           'controls-main',
-          'chart-trigno-emg',
-          'chart-trigno-gyro',
+          'chart-trigno-vl-emg',
+          'chart-trigno-vl-gyro',
+          'chart-trigno-rf-emg',
+          'chart-trigno-rf-gyro',
           'chart-moxy-smo2',
           'chart-moxy-thb',
           'chart-power',
@@ -1826,8 +1940,16 @@ export function buildVeloergReplayUiSchema(): UiSchema {
               kind: 'row',
               gap: 12,
               children: [
-                { kind: 'widget', widgetId: 'chart-trigno-emg', minWidth: 420 },
-                { kind: 'widget', widgetId: 'chart-trigno-gyro', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-vl-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-vl-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-trigno-rf-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-rf-gyro', minWidth: 420 },
               ],
             },
             {
@@ -1891,58 +2013,7 @@ export function buildVeloergReplayUiSchema(): UiSchema {
           'power.current',
         ],
       },
-      {
-        kind: 'chart',
-        id: 'chart-trigno-emg',
-        title: 'Trigno EMG',
-        renderer: 'echarts',
-        height: 320,
-        timeWindowMs: 20_000,
-        showLegend: true,
-        yAxis: { label: 'V' },
-        series: [
-          {
-            type: 'line',
-            streamId: 'trigno.avanti',
-            label: 'EMG',
-            color: '#ff922b',
-            lineWidth: 2,
-          },
-        ],
-      },
-      {
-        kind: 'chart',
-        id: 'chart-trigno-gyro',
-        title: 'Trigno Gyroscope',
-        renderer: 'echarts',
-        height: 320,
-        timeWindowMs: 20_000,
-        showLegend: true,
-        yAxis: { label: 'deg/s' },
-        series: [
-          {
-            type: 'line',
-            streamId: 'trigno.avanti.gyro.x',
-            label: 'gyro.x',
-            color: '#f03e3e',
-            lineWidth: 2,
-          },
-          {
-            type: 'line',
-            streamId: 'trigno.avanti.gyro.y',
-            label: 'gyro.y',
-            color: '#2b8a3e',
-            lineWidth: 2,
-          },
-          {
-            type: 'line',
-            streamId: 'trigno.avanti.gyro.z',
-            label: 'gyro.z',
-            color: '#1c7ed6',
-            lineWidth: 2,
-          },
-        ],
-      },
+      ...makeVeloergTrignoChartWidgets(),
       {
         kind: 'chart',
         id: 'chart-moxy-smo2',

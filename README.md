@@ -36,9 +36,9 @@ npm run dev
 - `npm run dev:pedaling-emg-test` — live-профиль для отдельного теста `Trigno EMG + Gyro` с записью raw-каналов в HDF5.
 - `npm run dev:pedaling-emg-replay` — replay-профиль для HDF5-файла с raw `Trigno EMG + Gyro`; файл выбирается через UI при `connect`.
 - `npm run dev:pedaling-emg-viewer` — viewer-профиль для интерактивного просмотра HDF5-файла с raw `Trigno EMG + Gyro`; файл выбирается через UI, данные загружаются целиком для панорамирования/зума графиков.
-- `npm run dev:veloerg` — composite dev-профиль `veloerg` для ANT+/Moxy и BLE/Zephyr.
-- `npm run dev:veloerg-replay` — replay-профиль для HDF5-файла из `veloerg`; файл выбирается через UI при `connect`.
-- `npm run dev:veloerg-viewer` — viewer-профиль для интерактивного просмотра HDF5-файла из `veloerg`; файл выбирается через UI, графики открываются в history-режиме.
+- `npm run dev:veloerg` — composite dev-профиль `veloerg` для ANT+/Moxy, BLE/Zephyr и парного `Trigno` (`VL + RF`) на одной базе.
+- `npm run dev:veloerg-replay` — replay-профиль для HDF5-файла из `veloerg`; файл выбирается через UI при `connect`, а профиль требует полный набор потоков `trigno.vl.avanti*` и `trigno.rf.avanti*`.
+- `npm run dev:veloerg-viewer` — viewer-профиль для интерактивного просмотра HDF5-файла из `veloerg`; файл выбирается через UI, графики открываются в history-режиме и требуют тот же полный парный Trigno-контракт.
 - `npm run dev:runtime` — runtime отдельно, по умолчанию в профиле `fake`.
 - `npm run dev:runtime:fake-hdf5-simulation` — standalone runtime для fake simulation из HDF5.
 - `npm run dev:runtime:pedaling-emg-test` — standalone runtime для отдельного live `EMG + Gyro` теста.
@@ -77,17 +77,20 @@ npm run dev
   - `zephyr-bioharness-3-adapter` по умолчанию идёт через real transport поверх `@abandonware/noble`;
   - `trigno-adapter` по умолчанию идёт через real TCP transport поверх `node:net`;
   - для `Trigno` профиль сейчас фиксирует `BACKWARDS COMPATIBILITY = OFF` и `UPSAMPLE = OFF`, чтобы live `EMG` и `Gyro` шли в нативной для SDK ports схеме;
-  - Moxy публикует `moxy.smo2` и `moxy.thb`, Zephyr даёт live `RR`, Trigno в `v1` публикует raw `EMG + Gyroscope`, а generic `label-generator` добавляет sparse-stream `power.label`;
+  - Trigno в этом профиле работает в paired mode: оператор задаёт `host`, `vlSensorSlot` и `rfSensorSlot` в UI, а один TCP-session публикует восемь raw-потоков `trigno.vl.avanti*` и `trigno.rf.avanti*`;
+  - Moxy публикует `moxy.smo2` и `moxy.thb`, Zephyr даёт live `RR`, парный Trigno даёт raw `EMG + Gyroscope`, а generic `label-generator` добавляет sparse-stream `power.label`;
   - `pedaling-emg-processor` сейчас намеренно отключён именно в этом профиле из-за live `mailbox_overflow`; для него остаются отдельные профили `pedaling-emg-test` и `pedaling-emg-replay`;
-  - `ui-gateway` поднимает composite-схему live-подключения Moxy, Zephyr и Trigno;
+  - `ui-gateway` поднимает composite-схему live-подключения Moxy, Zephyr и парного Trigno с отдельными графиками `VL` и `RF`;
   - fake transport остаётся доступен для локальной отладки.
 - `veloerg-replay`
   - `hdf5-simulation-adapter` читает HDF5 файл, выбранный через UI при `connect`;
-  - replay ограничен stream'ами `moxy.*`, `zephyr.*`, raw `trigno.*` и `power.label`, чтобы повторять контракт записи `veloerg`;
+  - replay ограничен stream'ами `moxy.*`, `zephyr.*`, `trigno.vl.avanti*`, `trigno.rf.avanti*` и `power.label`, чтобы повторять контракт записи `veloerg`;
+  - профиль требует наличие всех этих потоков и намеренно отвергает старые single-sensor `veloerg`-файлы с `trigno.avanti*`;
   - `ui-gateway` поднимает отдельную replay-схему без live connect/recording controls.
 - `veloerg-viewer`
   - `hdf5-viewer-adapter` читает HDF5 файл, выбранный через UI при `connect`;
   - viewer загружает историю целиком, а не воспроизводит её по таймеру;
+  - viewer использует тот же строгий набор stream'ов, что и `veloerg-replay`, и так же не поддерживает legacy single-sensor `veloerg` файлы;
   - `ui-gateway` поднимает схему, где те же графики работают в интерактивном history-режиме.
 - `pedaling-emg-test`
   - отдельный live-профиль только для `Trigno`;
@@ -116,9 +119,9 @@ SENSYNC2_HDF5_SIMULATION_FILE=/absolute/path/to/file.h5 npm run dev:fake-hdf5-si
 
 Для `pedaling-emg-replay` отдельный env не нужен: после запуска профиля файл выбирается в UI через кнопку подключения replay.
 
-Для `veloerg-replay` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку подключения replay.
+Для `veloerg-replay` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку подключения replay. Старые `veloerg`-файлы с `trigno.avanti*` этот профиль не открывает.
 
-Для `pedaling-emg-viewer` и `veloerg-viewer` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку открытия viewer.
+Для `pedaling-emg-viewer` и `veloerg-viewer` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку открытия viewer. Для `veloerg-viewer` действует тот же строгий парный Trigno-контракт, что и для replay.
 
 Для `veloerg` можно отдельно включить fake transport и проверить UX ветку "stick не найден":
 
@@ -132,7 +135,7 @@ SENSYNC2_ANT_PLUS_MODE=fake SENSYNC2_ANT_PLUS_STICK_PRESENT=0 npm run dev:veloer
 SENSYNC2_ZEPHYR_BIOHARNESS_MODE=fake npm run dev:veloerg
 ```
 
-Для Trigno host/slot задаются уже из modal form в UI, а не через launch profile.
+Для Trigno в `veloerg` `host`, `vlSensorSlot` и `rfSensorSlot` задаются уже из modal form в UI, а не через launch profile.
 
 ## Как устроена документация
 

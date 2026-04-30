@@ -30,10 +30,20 @@ export interface TrignoAdapterConfig {
   stopTimeoutMs?: number;
 }
 
-export interface TrignoConnectRequest {
+export type TrignoSensorRole = 'vl' | 'rf';
+
+export interface TrignoSingleConnectRequest {
   host: string;
   sensorSlot: number;
 }
+
+export interface TrignoPairedConnectRequest {
+  host: string;
+  vlSensorSlot: number;
+  rfSensorSlot: number;
+}
+
+export type TrignoConnectRequest = TrignoSingleConnectRequest | TrignoPairedConnectRequest;
 
 export interface TrignoCommandRequestPayload {
   adapterId: string;
@@ -47,11 +57,8 @@ export interface TrignoChannelSnapshot {
   gain: number;
 }
 
-export interface TrignoStatusSnapshot {
-  host: string;
+export interface TrignoSensorStatusSnapshot {
   sensorSlot: number;
-  banner: string;
-  protocolVersion: string | null;
   paired: boolean;
   mode: number;
   startIndex: number;
@@ -68,6 +75,25 @@ export interface TrignoStatusSnapshot {
   emg: TrignoChannelSnapshot;
   gyro: TrignoChannelSnapshot;
 }
+
+export interface TrignoStatusSnapshotBase {
+  host: string;
+  banner: string;
+  protocolVersion: string | null;
+  backwardsCompatibility: boolean;
+  upsampling: boolean;
+  frameInterval: number;
+  maxSamplesEmg: number;
+  maxSamplesAux: number;
+}
+
+export interface TrignoSingleSensorStatusSnapshot extends TrignoStatusSnapshotBase, TrignoSensorStatusSnapshot {}
+
+export interface TrignoPairedSensorStatusSnapshot extends TrignoStatusSnapshotBase {
+  sensors: Record<TrignoSensorRole, TrignoSensorStatusSnapshot>;
+}
+
+export type TrignoStatusSnapshot = TrignoSingleSensorStatusSnapshot | TrignoPairedSensorStatusSnapshot;
 
 export interface TrignoStatusReportedPayload {
   adapterId: string;
@@ -205,6 +231,22 @@ function isTrignoCommandRequestPayload(input: unknown): input is TrignoCommandRe
   return typeof input.adapterId === 'string' && isOptionalString(input.requestId);
 }
 
+function validateSensorSlot(rawValue: number | undefined, fieldName: string, fallback?: number): number {
+  const sensorSlot = rawValue === undefined ? fallback : Math.trunc(rawValue);
+  if (sensorSlot === undefined || !Number.isFinite(sensorSlot) || sensorSlot < 1 || sensorSlot > 16) {
+    throw new Error(`${fieldName} должен быть в диапазоне 1..16`);
+  }
+  return sensorSlot;
+}
+
+export function isPairedTrignoConnectRequest(input: TrignoConnectRequest): input is TrignoPairedConnectRequest {
+  return 'vlSensorSlot' in input && 'rfSensorSlot' in input;
+}
+
+export function isPairedTrignoStatusSnapshot(input: TrignoStatusSnapshot): input is TrignoPairedSensorStatusSnapshot {
+  return 'sensors' in input;
+}
+
 export function resolveTrignoAdapterConfig(rawConfig: TrignoAdapterConfig | undefined): Required<TrignoAdapterConfig> {
   const merged = { ...DefaultTrignoAdapterConfig, ...(rawConfig ?? {}) };
   return {
@@ -233,12 +275,29 @@ export function buildTrignoConnectRequest(formData: Record<string, unknown> | un
     throw new Error('Для подключения Trigno нужен host');
   }
 
-  const sensorSlotRaw = numberField(formData, 'sensorSlot');
-  const sensorSlot = sensorSlotRaw === undefined ? 1 : Math.trunc(sensorSlotRaw);
-  if (!Number.isFinite(sensorSlot) || sensorSlot < 1 || sensorSlot > 16) {
-    throw new Error('sensorSlot должен быть в диапазоне 1..16');
+  const vlSensorSlotRaw = numberField(formData, 'vlSensorSlot');
+  const rfSensorSlotRaw = numberField(formData, 'rfSensorSlot');
+  const hasPairedFields = vlSensorSlotRaw !== undefined || rfSensorSlotRaw !== undefined;
+
+  if (hasPairedFields) {
+    if (vlSensorSlotRaw === undefined || rfSensorSlotRaw === undefined) {
+      throw new Error('Для парного подключения Trigno нужны оба поля vlSensorSlot и rfSensorSlot');
+    }
+
+    const vlSensorSlot = validateSensorSlot(vlSensorSlotRaw, 'vlSensorSlot');
+    const rfSensorSlot = validateSensorSlot(rfSensorSlotRaw, 'rfSensorSlot');
+    if (vlSensorSlot === rfSensorSlot) {
+      throw new Error('VL и RF не могут ссылаться на один и тот же слот Trigno');
+    }
+
+    return {
+      host,
+      vlSensorSlot,
+      rfSensorSlot,
+    };
   }
 
+  const sensorSlot = validateSensorSlot(numberField(formData, 'sensorSlot'), 'sensorSlot', 1);
   return { host, sensorSlot };
 }
 
@@ -253,7 +312,7 @@ function equalsNumber(left: number, right: number, epsilon = 1e-6): boolean {
 }
 
 export function diffTrignoExpectedStartSnapshot(
-  snapshot: TrignoStatusSnapshot,
+  snapshot: TrignoSensorStatusSnapshot,
   expected: TrignoExpectedStartSnapshot = DefaultTrignoExpectedStartSnapshot,
 ): TrignoSnapshotMismatch[] {
   const mismatches: TrignoSnapshotMismatch[] = [];
@@ -270,7 +329,6 @@ export function diffTrignoExpectedStartSnapshot(
     }
   };
 
-  pushExact('paired', snapshot.paired, true);
   pushExact('mode', snapshot.mode, expected.mode);
   pushExact('channelCount', snapshot.channelCount, expected.channelCount);
   pushExact('emgChannelCount', snapshot.emgChannelCount, expected.emgChannelCount);

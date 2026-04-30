@@ -261,7 +261,7 @@ Derived flag для interval:
   - `muscle-oxygen`;
   - `train.red`;
   - оба варианта используют тот же raw decode и те же streamId `moxy.smo2` / `moxy.thb`, но UI показывает их как разные scan/connect пути;
-- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-графики `RR/HR/DFA-a1`, а Trigno пока остаётся только raw-источником `EMG + Gyroscope` без pedaling-derived слоёв.
+- Moxy даёт живые графики `SmO2` и `tHb`, Zephyr даёт live-графики `RR/HR/DFA-a1`, а Trigno в `veloerg` работает как парный raw-источник `VL + RF EMG/Gyroscope` без pedaling-derived слоёв.
 
 ### Страница
 
@@ -281,7 +281,8 @@ Derived flag для interval:
   - `summary-main`
   - показывает текущее время теста, HR, мощность, SmO2 и tHb
 - ниже идут отдельные `row`:
-  - `chart-trigno-emg | chart-trigno-gyro`
+  - `chart-trigno-vl-emg | chart-trigno-vl-gyro`
+  - `chart-trigno-rf-emg | chart-trigno-rf-gyro`
   - `chart-moxy-smo2 | chart-moxy-thb`
   - `chart-power`
   - `chart-zephyr-rr | chart-zephyr-hr`
@@ -306,7 +307,8 @@ Derived flag для interval:
   - submit формы отправляет `adapter.connect.request` для `adapterId = trigno`
   - форма содержит:
     - `host`
-    - `sensorSlot`
+    - `vlSensorSlot`
+    - `rfSensorSlot`
 - `disconnect-trigno`
   - видима только если `adapter.trigno.state ∈ { connected, paused, failed, disconnecting }`
   - отправляет `adapter.disconnect.request`
@@ -375,15 +377,22 @@ Derived flag для interval:
 - `adapter.trigno.state`
 - `adapter.trigno.message`
 - `trigno.host`
-- `trigno.sensorSlot`
-- `trigno.mode`
-- `trigno.startIndex`
-- `trigno.serial`
-- `trigno.firmware`
 - `trigno.backwardsCompatibility`
 - `trigno.upsampling`
-- `trigno.emgRateHz`
-- `trigno.gyroRateHz`
+- `trigno.vl.sensorSlot`
+- `trigno.vl.mode`
+- `trigno.vl.startIndex`
+- `trigno.vl.serial`
+- `trigno.vl.firmware`
+- `trigno.vl.emgRateHz`
+- `trigno.vl.gyroRateHz`
+- `trigno.rf.sensorSlot`
+- `trigno.rf.mode`
+- `trigno.rf.startIndex`
+- `trigno.rf.serial`
+- `trigno.rf.firmware`
+- `trigno.rf.emgRateHz`
+- `trigno.rf.gyroRateHz`
 - `adapter.ant-plus.state`
 - `adapter.ant-plus.scanning`
 - `adapter.ant-plus.scanMessage`
@@ -400,16 +409,27 @@ Derived flag для interval:
 
 ### Графики
 
-- `chart-trigno-emg`
+- `chart-trigno-vl-emg`
   - окно: `20_000 ms`
-  - поток: `trigno.avanti`
+  - поток: `trigno.vl.avanti`
   - ось Y: `V`
-- `chart-trigno-gyro`
+- `chart-trigno-vl-gyro`
   - окно: `20_000 ms`
   - потоки:
-    - `trigno.avanti.gyro.x`
-    - `trigno.avanti.gyro.y`
-    - `trigno.avanti.gyro.z`
+    - `trigno.vl.avanti.gyro.x`
+    - `trigno.vl.avanti.gyro.y`
+    - `trigno.vl.avanti.gyro.z`
+  - ось Y: `deg/s`
+- `chart-trigno-rf-emg`
+  - окно: `20_000 ms`
+  - поток: `trigno.rf.avanti`
+  - ось Y: `V`
+- `chart-trigno-rf-gyro`
+  - окно: `20_000 ms`
+  - потоки:
+    - `trigno.rf.avanti.gyro.x`
+    - `trigno.rf.avanti.gyro.y`
+    - `trigno.rf.avanti.gyro.z`
   - ось Y: `deg/s`
 - `chart-moxy-smo2`
   - окно: `20_000 ms`
@@ -448,7 +468,8 @@ Derived flag для interval:
 Назначение:
 
 - replay-профиль для HDF5-файлов, записанных из `veloerg`;
-- повторяет основной графический layout `veloerg`, но без live transport и без recorder control-блока.
+- повторяет основной графический layout `veloerg`, но без live transport и без recorder control-блока;
+- требует полный набор потоков `trigno.vl.avanti*` и `trigno.rf.avanti*`, поэтому старые single-sensor `veloerg`-файлы сюда не подходят.
 
 ### Страница
 
@@ -458,7 +479,8 @@ Derived flag для interval:
 Раскладка страницы:
 
 - `status-main | controls-main`
-- `chart-trigno-emg | chart-trigno-gyro`
+- `chart-trigno-vl-emg | chart-trigno-vl-gyro`
+- `chart-trigno-rf-emg | chart-trigno-rf-gyro`
 - `chart-moxy-smo2 | chart-moxy-thb`
 - `chart-power`
 - `chart-zephyr-rr | chart-zephyr-hr`
@@ -499,13 +521,20 @@ Derived flag для interval:
 
 ### Графики
 
-- `chart-trigno-emg`
-  - поток: `trigno.avanti`
-- `chart-trigno-gyro`
+- `chart-trigno-vl-emg`
+  - поток: `trigno.vl.avanti`
+- `chart-trigno-vl-gyro`
   - потоки:
-    - `trigno.avanti.gyro.x`
-    - `trigno.avanti.gyro.y`
-    - `trigno.avanti.gyro.z`
+    - `trigno.vl.avanti.gyro.x`
+    - `trigno.vl.avanti.gyro.y`
+    - `trigno.vl.avanti.gyro.z`
+- `chart-trigno-rf-emg`
+  - поток: `trigno.rf.avanti`
+- `chart-trigno-rf-gyro`
+  - потоки:
+    - `trigno.rf.avanti.gyro.x`
+    - `trigno.rf.avanti.gyro.y`
+    - `trigno.rf.avanti.gyro.z`
 - `chart-moxy-smo2`
   - поток: `moxy.smo2`
 - `chart-moxy-thb`
@@ -716,7 +745,8 @@ Modal form replay:
 Назначение:
 
 - viewer-профиль для HDF5-файлов, записанных из `veloerg`;
-- позволяет выбрать файл и сразу загрузить историю целиком для интерактивного pan/zoom графиков.
+- позволяет выбрать файл и сразу загрузить историю целиком для интерактивного pan/zoom графиков;
+- использует тот же строгий парный Trigno-контракт, что и `veloerg-replay`, и не поддерживает legacy single-sensor `veloerg` файлы.
 
 ### Страница
 
