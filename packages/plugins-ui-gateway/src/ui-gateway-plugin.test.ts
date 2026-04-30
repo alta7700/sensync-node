@@ -499,7 +499,6 @@ describe('ui-gateway-plugin', () => {
           kind: 'row',
           gap: 12,
           children: [
-            { kind: 'widget', widgetId: 'controls-lactate', minWidth: 320 },
             { kind: 'widget', widgetId: 'controls-power', minWidth: 320 },
           ],
         },
@@ -523,7 +522,6 @@ describe('ui-gateway-plugin', () => {
           kind: 'row',
           gap: 12,
           children: [
-            { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
             { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
           ],
         },
@@ -609,15 +607,6 @@ describe('ui-gateway-plugin', () => {
       'disconnect-moxy',
     ]);
 
-    const lactateControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
-      return widget.id === 'controls-lactate' && widget.kind === 'controls';
-    });
-    expect(lactateControlsWidget?.kind).toBe('controls');
-    if (!lactateControlsWidget || lactateControlsWidget.kind !== 'controls') {
-      throw new Error('Не найден controls-lactate');
-    }
-    expect(lactateControlsWidget.controls).toEqual([]);
-
     const powerControlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
       return widget.id === 'controls-power' && widget.kind === 'controls';
     });
@@ -651,6 +640,8 @@ describe('ui-gateway-plugin', () => {
       'stop-recording',
     ]);
 
+    expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('controls-lactate');
+    expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-lactate');
     expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-pedaling-confidence');
     expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-pedaling-cycle-period');
 
@@ -715,7 +706,6 @@ describe('ui-gateway-plugin', () => {
           kind: 'row',
           gap: 12,
           children: [
-            { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
             { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
           ],
         },
@@ -771,6 +761,7 @@ describe('ui-gateway-plugin', () => {
         'power.current',
       ]),
     });
+    expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-lactate');
   });
 
   it('материализует viewer controls и history-графики в veloerg-viewer schema', async () => {
@@ -816,6 +807,7 @@ describe('ui-gateway-plugin', () => {
       kind: 'chart',
       viewportMode: 'history',
     });
+    expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-lactate');
   });
 
   it('патчит Trigno status flags в UI', async () => {

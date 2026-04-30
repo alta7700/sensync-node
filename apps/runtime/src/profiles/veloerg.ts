@@ -92,11 +92,6 @@ export const veloergProfile: LaunchProfileDefinition = {
           modulePath: moduleFileUrl('packages/plugins-labels/src/label-generator-adapter.ts'),
           config: {
             labels: {
-              lactate: {
-                streamId: 'lactate.label',
-                sampleFormat: 'f32',
-                units: 'mmol/L',
-              },
               power: {
                 streamId: 'power.label',
                 sampleFormat: 'f32',

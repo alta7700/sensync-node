@@ -13,7 +13,6 @@ const VeloergReplayStreamIds = [
   'trigno.avanti.gyro.x',
   'trigno.avanti.gyro.y',
   'trigno.avanti.gyro.z',
-  'lactate.label',
   'power.label',
 ] as const;
 

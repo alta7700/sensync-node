@@ -28,8 +28,6 @@ import {
   formatTimelineRelativeTime,
   buildModalInitialValues,
   buildModalSubmitPayload,
-  parseCommaDecimal,
-  parseTimelineRelativeTime,
   resolveControlPayload,
 } from './ui-schema-runtime.ts';
 
@@ -254,71 +252,6 @@ function ControlsWidget(
   );
 }
 
-interface VeloergLactateControlProps {
-  widget: UiControlsWidget;
-  timeText: string;
-  valueText: string;
-  error: string | null;
-  disabled: boolean;
-  onTimeChange: (value: string) => void;
-  onValueChange: (value: string) => void;
-  onSubmit: () => void;
-}
-
-function VeloergLactateControl({
-  widget,
-  timeText,
-  valueText,
-  error,
-  disabled,
-  onTimeChange,
-  onValueChange,
-  onSubmit,
-}: VeloergLactateControlProps) {
-  return (
-    <section style={panelStyle}>
-      <h3 style={titleStyle}>{widget.title}</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(180px, 1fr) auto', gap: 12, alignItems: 'end' }}>
-        <label style={{ display: 'grid', gap: 6 }}>
-          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Время</span>
-          <input
-            type="text"
-            value={timeText}
-            onChange={(event) => onTimeChange(event.target.value)}
-            placeholder="2:45"
-            style={modalInputStyle}
-          />
-        </label>
-        <label style={{ display: 'grid', gap: 6 }}>
-          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Лактат</span>
-          <input
-            type="text"
-            value={valueText}
-            onChange={(event) => onValueChange(event.target.value)}
-            placeholder="0,0"
-            inputMode="decimal"
-            style={modalInputStyle}
-          />
-        </label>
-        <button type="button" onClick={onSubmit} style={modalPrimaryButtonStyle} disabled={disabled}>
-          Отправить
-        </button>
-      </div>
-      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
-        После отправки время сдвигается на 3 минуты, а значение сбрасывается в 0,0.
-      </div>
-      {disabled ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
-          Ждём завершения `timeline.reset`.
-        </div>
-      ) : null}
-      {error ? (
-        <div style={{ marginTop: 8, color: 'var(--bad)', fontSize: 13 }}>{error}</div>
-      ) : null}
-    </section>
-  );
-}
-
 interface VeloergPowerControlProps {
   widget: UiControlsWidget;
   mode: 'autopilot' | 'manual';
@@ -426,7 +359,6 @@ interface VeloergSummaryRowProps {
   widget: UiStatusWidget;
   uiNowMs: number;
   timelineAnchorWallMs: number;
-  lastLactateLineText: string;
   currentPowerText: string;
   currentHrText: string;
   currentSmo2Text: string;
@@ -437,7 +369,6 @@ function VeloergSummaryRow({
   widget,
   uiNowMs,
   timelineAnchorWallMs,
-  lastLactateLineText,
   currentPowerText,
   currentHrText,
   currentSmo2Text,
@@ -447,7 +378,6 @@ function VeloergSummaryRow({
   const items = [
     { label: 'Текущее время теста', value: currentTimeText },
     { label: 'Текущий hr', value: currentHrText },
-    { label: 'Последний лактат', value: lastLactateLineText },
     { label: 'Текущая мощность', value: currentPowerText },
     { label: 'Текущий smo2', value: currentSmo2Text },
     { label: 'Текущий thb', value: currentThbText },
@@ -456,7 +386,7 @@ function VeloergSummaryRow({
   return (
     <section style={panelStyle}>
       <h3 style={titleStyle}>{widget.title}</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 12 }}>
         {items.map((item) => (
           <div key={item.label} style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>{item.label}</div>
@@ -527,23 +457,16 @@ function VeloergConfirmDialog({
 interface VeloergUiState {
   uiNowMs: number;
   timelineAnchorWallMs: number;
-  lactateTimeText: string;
-  lactateValueText: string;
-  lactateError: string | null;
   powerMode: 'autopilot' | 'manual';
   powerAutopilotLocked: boolean;
   powerNextAutoRaiseAtMs: number | null;
   currentPowerValue: number | null;
   powerManualValueText: string;
   powerError: string | null;
-  powerDisableConfirmOpen: boolean;
-  lastLactateLineText: string;
+  powerDisabled: boolean;
   currentHrText: string;
   currentSmo2Text: string;
   currentThbText: string;
-  onLactateTimeChange: (value: string) => void;
-  onLactateValueChange: (value: string) => void;
-  onSubmitLactate: () => void;
   onPowerManualValueChange: (value: string) => void;
   onApplyManualValue: () => void;
   onPlus30: () => void;
@@ -1694,25 +1617,10 @@ function renderWidget(
         widget={widget}
         uiNowMs={veloergUi.uiNowMs}
         timelineAnchorWallMs={veloergUi.timelineAnchorWallMs}
-        lastLactateLineText={veloergUi.lastLactateLineText}
         currentPowerText={veloergUi.currentPowerValue === null ? '—' : `${Math.round(veloergUi.currentPowerValue)} W`}
         currentHrText={veloergUi.currentHrText}
         currentSmo2Text={veloergUi.currentSmo2Text}
         currentThbText={veloergUi.currentThbText}
-      />
-    );
-  }
-  if (widget.id === 'controls-lactate' && widget.kind === 'controls' && veloergUi) {
-    return (
-      <VeloergLactateControl
-        key={widget.id}
-        widget={widget}
-        timeText={veloergUi.lactateTimeText}
-        valueText={veloergUi.lactateValueText}
-        error={veloergUi.lactateError}
-        onTimeChange={veloergUi.onLactateTimeChange}
-        onValueChange={veloergUi.onLactateValueChange}
-        onSubmit={veloergUi.onSubmitLactate}
       />
     );
   }
@@ -1728,6 +1636,7 @@ function renderWidget(
         currentPowerValue={veloergUi.currentPowerValue}
         manualValueText={veloergUi.powerManualValueText}
         error={veloergUi.powerError}
+        disabled={veloergUi.powerDisabled}
         onManualValueChange={veloergUi.onPowerManualValueChange}
         onApplyManualValue={veloergUi.onApplyManualValue}
         onPlus30={veloergUi.onPlus30}
@@ -1845,7 +1754,6 @@ const modalPrimaryButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-const MAX_LACTATE_VALUE = 100;
 const MAX_POWER_VALUE = 1000;
 
 function formatValueLimitError(label: string, limit: number): string {
@@ -1857,9 +1765,6 @@ export function App() {
   const [modal, setModal] = useState<ModalState | null>(null);
   const [uiNowMs, setUiNowMs] = useState(() => Date.now());
   const [timelineAnchorWallMs, setTimelineAnchorWallMs] = useState(() => Date.now());
-  const [lactateTimeText, setLactateTimeText] = useState('2:45');
-  const [lactateValueText, setLactateValueText] = useState('0,0');
-  const [lactateError, setLactateError] = useState<string | null>(null);
   const [powerMode, setPowerMode] = useState<'autopilot' | 'manual'>('autopilot');
   const [powerAutopilotLocked, setPowerAutopilotLocked] = useState(false);
   const [powerAutopilotStepCount, setPowerAutopilotStepCount] = useState(0);
@@ -1900,9 +1805,6 @@ export function App() {
     }
 
     setTimelineAnchorWallMs(Date.now());
-    setLactateTimeText('2:45');
-    setLactateValueText('0,0');
-    setLactateError(null);
     setPowerMode('autopilot');
     setPowerAutopilotLocked(false);
     setPowerAutopilotStepCount(0);
@@ -1992,10 +1894,6 @@ export function App() {
   const currentHrValue = runtimeSingleton.getLatestValue('zephyr.hr');
   const currentSmo2Value = runtimeSingleton.getLatestValue('moxy.smo2');
   const currentThbValue = runtimeSingleton.getLatestValue('moxy.thb');
-  const lastLactateEntry = runtimeSingleton.getLatestEntries('lactate.label', 1)[0] ?? null;
-  const lastLactateLineText = lastLactateEntry === null || !snapshot.clock
-    ? '—'
-    : `${formatTimelineRelativeTime(Math.max(0, lastLactateEntry.timeMs - snapshot.clock.timelineStartSessionMs))} - ${formatCommaDecimal(lastLactateEntry.value, 1)}`;
   const currentHrText = currentHrValue === null ? '—' : String(Math.round(currentHrValue));
   const currentSmo2Text = currentSmo2Value === null ? '—' : formatCommaDecimal(currentSmo2Value, 1);
   const currentThbText = currentThbValue === null ? '—' : formatCommaDecimal(currentThbValue, 1);
@@ -2005,45 +1903,6 @@ export function App() {
       setPowerDisplayOverride(null);
     }
   }, [currentPowerValue, powerDisplayOverride]);
-
-  function resetLactateDraft(nextRelativeMs: number): void {
-    setLactateTimeText(formatTimelineRelativeTime(nextRelativeMs));
-    setLactateValueText('0,0');
-  }
-
-  async function submitLactateMark(): Promise<void> {
-    if (!snapshot.clock) {
-      setLactateError('Текущий timeline недоступен');
-      return;
-    }
-    const parsedTime = parseTimelineRelativeTime(lactateTimeText);
-    if (!parsedTime.ok) {
-      setLactateError(parsedTime.error);
-      return;
-    }
-    const parsedValue = parseCommaDecimal(lactateValueText);
-    if (!parsedValue.ok) {
-      setLactateError(parsedValue.error);
-      return;
-    }
-    if (parsedValue.value >= MAX_LACTATE_VALUE) {
-      setLactateError(formatValueLimitError('Лактат', MAX_LACTATE_VALUE));
-      return;
-    }
-
-    setLactateError(null);
-    try {
-      await runtimeSingleton.sendCommand(EventTypes.labelMarkRequest, 1, {
-        labelId: 'lactate',
-        value: parsedValue.value,
-        atTimeMs: snapshot.clock.timelineStartSessionMs + parsedTime.relativeMs,
-      });
-    } catch (error) {
-      setLactateError(error instanceof Error ? error.message : 'Не удалось отправить lactate');
-      return;
-    }
-    resetLactateDraft(parsedTime.relativeMs + 180_000);
-  }
 
   async function submitPowerMark(value: number, atRelativeMs?: number): Promise<void> {
     if (!snapshot.clock) {
@@ -2119,25 +1978,16 @@ export function App() {
   const veloergUi: VeloergUiState | undefined = snapshot.clock ? {
     uiNowMs,
     timelineAnchorWallMs,
-    lactateTimeText,
-    lactateValueText,
-    lactateError,
     powerMode,
     powerAutopilotLocked,
     powerNextAutoRaiseAtMs,
     currentPowerValue: visiblePowerValue,
     powerManualValueText,
     powerError,
-    powerDisableConfirmOpen,
-    lastLactateLineText,
+    powerDisabled: false,
     currentHrText,
     currentSmo2Text,
     currentThbText,
-    onLactateTimeChange: setLactateTimeText,
-    onLactateValueChange: setLactateValueText,
-    onSubmitLactate: () => {
-      void submitLactateMark();
-    },
     onPowerManualValueChange: setPowerManualValueText,
     onApplyManualValue: () => {
       void applyManualPowerValue();

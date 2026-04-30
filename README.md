@@ -77,13 +77,13 @@ npm run dev
   - `zephyr-bioharness-3-adapter` по умолчанию идёт через real transport поверх `@abandonware/noble`;
   - `trigno-adapter` по умолчанию идёт через real TCP transport поверх `node:net`;
   - для `Trigno` профиль сейчас фиксирует `BACKWARDS COMPATIBILITY = OFF` и `UPSAMPLE = OFF`, чтобы live `EMG` и `Gyro` шли в нативной для SDK ports схеме;
-  - Moxy публикует `moxy.smo2` и `moxy.thb`, Zephyr даёт live `RR`, Trigno в `v1` публикует raw `EMG + Gyroscope`, а generic `label-generator` добавляет sparse-stream'ы `lactate.label` и `power.label`;
+  - Moxy публикует `moxy.smo2` и `moxy.thb`, Zephyr даёт live `RR`, Trigno в `v1` публикует raw `EMG + Gyroscope`, а generic `label-generator` добавляет sparse-stream `power.label`;
   - `pedaling-emg-processor` сейчас намеренно отключён именно в этом профиле из-за live `mailbox_overflow`; для него остаются отдельные профили `pedaling-emg-test` и `pedaling-emg-replay`;
   - `ui-gateway` поднимает composite-схему live-подключения Moxy, Zephyr и Trigno;
   - fake transport остаётся доступен для локальной отладки.
 - `veloerg-replay`
   - `hdf5-simulation-adapter` читает HDF5 файл, выбранный через UI при `connect`;
-  - replay ограничен stream'ами `moxy.*`, `zephyr.*`, raw `trigno.*` и sparse `lactate/power`, чтобы повторять контракт записи `veloerg`;
+  - replay ограничен stream'ами `moxy.*`, `zephyr.*`, raw `trigno.*` и `power.label`, чтобы повторять контракт записи `veloerg`;
   - `ui-gateway` поднимает отдельную replay-схему без live connect/recording controls.
 - `veloerg-viewer`
   - `hdf5-viewer-adapter` читает HDF5 файл, выбранный через UI при `connect`;

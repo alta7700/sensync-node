@@ -26,10 +26,10 @@ UI gateway plugin.
 - В `veloerg` схема теперь composite:
   - отдельный control-блок Trigno с modal form `host + sensorSlot`;
   - явный layout с левой колонкой control-виджетов и отдельной правой панелью статуса;
-  - отдельные control-блоки для `lactate` и `power`;
+  - отдельный control-блок для `power`;
   - summary-строка между controls и графиками с текущим временем теста и живыми метриками;
   - raw-графики `EMG` и `Gyroscope` без pedaling-derived overlays;
-  - sparse-графики `Lactate` и ступенчатый `Power`;
+  - ступенчатый график `Power`;
   - рядом остаются Moxy (`SmO2`, `tHb`) и Zephyr (`RR`).
 - ANT+ блок уже разбит на профильный connect flow: `muscle-oxygen` и `train.red` используют один raw decode и те же streamId, но различаются на уровне scan/connect entry point и UI-подписи.
 - В `veloerg-replay` схема использует те же графики `veloerg`, но вместо live transport/recording controls даёт один replay-control блок для выбора HDF5, pause/resume и смены скорости.

@@ -29,4 +29,4 @@
 - Работает уже не со строковыми "псевдо-ивентами", а с exact union `RuntimeEvent`, который собирается из shared/plugin-specific event map.
 - Загружает plugin modules через `packages/plugin-sdk`.
 - Наружу отдаёт API класса `RuntimeHost`, который использует `apps/desktop`.
-- В `profiles/*` зафиксированы базовый профиль `fake`, переходная композиция `fake-hdf5-simulation` и composite-профиль `veloerg` для ANT+/Moxy, BLE/Zephyr, sparse `lactate/power`, TCP/Trigno и профильного UI с отдельными блоками lactate/power и summary-строкой.
+- В `profiles/*` зафиксированы базовый профиль `fake`, переходная композиция `fake-hdf5-simulation` и composite-профиль `veloerg` для ANT+/Moxy, BLE/Zephyr, `power.label`, TCP/Trigno и профильного UI с отдельным power-блоком и summary-строкой.

@@ -147,11 +147,6 @@ describe('launch profiles registry', () => {
     expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
     expect(labelGenerator?.config).toMatchObject({
       labels: {
-        lactate: {
-          streamId: 'lactate.label',
-          sampleFormat: 'f32',
-          units: 'mmol/L',
-        },
         power: {
           streamId: 'power.label',
           sampleFormat: 'f32',
@@ -159,6 +154,7 @@ describe('launch profiles registry', () => {
         },
       },
     });
+    expect((labelGenerator?.config as { labels?: Record<string, unknown> } | undefined)?.labels).not.toHaveProperty('lactate');
   });
 
   it('в veloerg-профиле включает recorder-driven timeline reset и live recorder config', () => {
@@ -167,6 +163,7 @@ describe('launch profiles registry', () => {
     const zephyr = profile.plugins.find((plugin) => plugin.id === 'zephyr-bioharness-3-adapter');
     const hrProcessor = profile.plugins.find((plugin) => plugin.id === 'hr-from-rr-processor');
     const dfaProcessor = profile.plugins.find((plugin) => plugin.id === 'dfa-a1-from-rr-processor');
+    const uiGateway = profile.plugins.find((plugin) => plugin.id === 'ui-gateway');
 
     expect(profile.timelineReset).toMatchObject({
       enabled: true,
@@ -204,6 +201,23 @@ describe('launch profiles registry', () => {
     expect(hrProcessor?.config).toMatchObject({ required: true });
     expect(dfaProcessor?.config).toMatchObject({ required: true });
     expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
+    const recordingWidget = (uiGateway?.config as {
+      schema?: {
+        widgets?: Array<{
+          id?: string;
+          kind?: string;
+          controls?: Array<{
+            id?: string;
+            variants?: Array<{ payload?: { channels?: Array<{ streamId: string }> } }>;
+          }>;
+        }>;
+      };
+    } | undefined)?.schema?.widgets?.find((widget) => widget.id === 'controls-recording' && widget.kind === 'controls');
+    const startVariant = recordingWidget?.controls
+      ?.find((control) => control.id === 'toggle-recording')
+      ?.variants?.find((variant) => Array.isArray(variant.payload?.channels));
+
+    expect(startVariant?.payload?.channels?.map((channel) => channel.streamId)).not.toContain('lactate.label');
   });
 
   it('в pedaling-emg-test профиле включает Trigno, pedaling processor и raw HDF5 recorder', () => {
@@ -290,7 +304,6 @@ describe('launch profiles registry', () => {
         'trigno.avanti.gyro.x',
         'trigno.avanti.gyro.y',
         'trigno.avanti.gyro.z',
-        'lactate.label',
         'power.label',
       ],
       batchMs: 50,
@@ -342,7 +355,6 @@ describe('launch profiles registry', () => {
         'trigno.avanti.gyro.x',
         'trigno.avanti.gyro.y',
         'trigno.avanti.gyro.z',
-        'lactate.label',
         'power.label',
       ],
       readChunkSamples: 4096,

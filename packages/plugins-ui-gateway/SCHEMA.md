@@ -275,15 +275,15 @@ Derived flag для interval:
   - справа находится `column` с grid controls:
     - `controls-trigno` на всю ширину
     - ниже `row`: `controls-main | controls-zephyr`
-    - ниже `row`: `controls-lactate | controls-power`
+    - ниже `row`: `controls-power`
     - ниже `controls-recording` на всю ширину
 - под controls размещается отдельная summary-строка:
   - `summary-main`
-  - показывает текущее время теста, HR, lactate, последний lactate, мощность, SmO2 и tHb
+  - показывает текущее время теста, HR, мощность, SmO2 и tHb
 - ниже идут отдельные `row`:
   - `chart-trigno-emg | chart-trigno-gyro`
   - `chart-moxy-smo2 | chart-moxy-thb`
-  - `chart-lactate | chart-power`
+  - `chart-power`
   - `chart-zephyr-rr | chart-zephyr-hr`
   - `chart-zephyr-dfa-a1`
   - `telemetry-main`
@@ -295,7 +295,6 @@ Derived flag для interval:
 - `controls-trigno`
 - `controls-main`
 - `controls-zephyr`
-- `controls-lactate`
 - `controls-power`
 - `controls-recording`
 - `summary-main`
@@ -336,21 +335,13 @@ Derived flag для interval:
   - видима только если `adapter.ant-plus.state ∈ { connected, failed, disconnecting }`
   - в `connected` отправляет `adapter.disconnect.request`
   - в `failed` тоже отправляет `adapter.disconnect.request`, чтобы сбросить состояние
-- `controls-lactate`
-  - рендерит постоянные inline-поля `time` и `value`
-  - при submit отправляет `label.mark.request`
-  - payload содержит:
-    - `labelId = lactate`
-    - `atTimeMs`, собранный из inline `timelineTimeInput` как абсолютный `session time`
-    - `value`
-  - после submit UI сдвигает время на 3 минуты и сбрасывает value в `0,0`
 - `controls-power`
   - в автопилоте показывает текущую мощность, время до следующего шага и кнопку отключения автопилота
   - автопилот стартует с `30 W`, поднимается до `60 W` в `1:00`, затем увеличивается на `+30` каждые `3` минуты
   - после отключения автопилота блок переключается в ручной режим с текущим значением, полем ввода, кнопкой `OK` и кнопкой `+30`
 - `summary-main`
   - находится между control-блоками и графиками
-  - показывает текущие значения текущего времени теста, HR, lactate, последнего lactate, мощности, SmO2 и tHb
+  - показывает текущие значения текущего времени теста, HR, мощности, SmO2 и tHb
 - `toggle-recording`
   - вынесена в отдельный виджет `controls-recording`
   - если `adapter.ant-plus.state = connected`, `adapter.zephyr-bioharness.state = connected`, `adapter.trigno.state = connected`
@@ -428,11 +419,6 @@ Derived flag для interval:
   - окно: `20_000 ms`
   - поток: `moxy.thb`
   - ось Y: `[8, 18] g/dL`
-- `chart-lactate`
-  - окно: `1_200_000 ms`
-  - поток: `lactate.label`
-  - тип серии: `scatter`
-  - ось Y: `[0, auto] mmol/L`
 - `chart-power`
   - окно: `1_200_000 ms`
   - поток: `power.label`
@@ -474,7 +460,7 @@ Derived flag для interval:
 - `status-main | controls-main`
 - `chart-trigno-emg | chart-trigno-gyro`
 - `chart-moxy-smo2 | chart-moxy-thb`
-- `chart-lactate | chart-power`
+- `chart-power`
 - `chart-zephyr-rr | chart-zephyr-hr`
 - `chart-zephyr-dfa-a1`
 - `telemetry-main`
@@ -524,9 +510,6 @@ Derived flag для interval:
   - поток: `moxy.smo2`
 - `chart-moxy-thb`
   - поток: `moxy.thb`
-- `chart-lactate`
-  - поток: `lactate.label`
-  - тип серии: `scatter`
 - `chart-power`
   - поток: `power.label`
   - тип серии: `line`

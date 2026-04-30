@@ -27,7 +27,6 @@ const VeloergRecordingChannels = [
   { streamId: 'trigno.avanti.gyro.x', minSamples: 50, maxBufferedMs: 1_000 },
   { streamId: 'trigno.avanti.gyro.y', minSamples: 50, maxBufferedMs: 1_000 },
   { streamId: 'trigno.avanti.gyro.z', minSamples: 50, maxBufferedMs: 1_000 },
-  { streamId: 'lactate.label', minSamples: 1, maxBufferedMs: 120_000 },
   { streamId: 'power.label', minSamples: 1, maxBufferedMs: 120_000 },
 ] as const;
 const PedalingEmgTestRecordingChannels = [
@@ -1052,7 +1051,6 @@ export function buildVeloergUiSchema(): UiSchema {
           'controls-trigno',
           'controls-main',
           'controls-zephyr',
-          'controls-lactate',
           'controls-power',
           'controls-recording',
           'summary-main',
@@ -1060,7 +1058,6 @@ export function buildVeloergUiSchema(): UiSchema {
           'chart-trigno-gyro',
           'chart-moxy-smo2',
           'chart-moxy-thb',
-          'chart-lactate',
           'chart-power',
           'chart-zephyr-rr',
           'chart-zephyr-hr',
@@ -1116,7 +1113,6 @@ export function buildVeloergUiSchema(): UiSchema {
               kind: 'row',
               gap: 12,
               children: [
-                { kind: 'widget', widgetId: 'controls-lactate', minWidth: 320 },
                 { kind: 'widget', widgetId: 'controls-power', minWidth: 320 },
               ],
             },
@@ -1140,7 +1136,6 @@ export function buildVeloergUiSchema(): UiSchema {
               kind: 'row',
               gap: 12,
               children: [
-                { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
                 { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
               ],
             },
@@ -1499,12 +1494,6 @@ export function buildVeloergUiSchema(): UiSchema {
       },
       {
         kind: 'controls',
-        id: 'controls-lactate',
-        title: 'Лактат',
-        controls: [],
-      },
-      {
-        kind: 'controls',
         id: 'controls-power',
         title: 'Мощность',
         controls: [],
@@ -1715,26 +1704,6 @@ export function buildVeloergUiSchema(): UiSchema {
       },
       {
         kind: 'chart',
-        id: 'chart-lactate',
-        title: 'Lactate',
-        renderer: 'echarts',
-        height: 320,
-        timeWindowMs: 1_200_000,
-        showLegend: true,
-        yAxis: { min: 0, label: 'mmol/L' },
-        series: [
-          {
-            type: 'scatter',
-            streamId: 'lactate.label',
-            label: 'Lactate',
-            color: '#da77f2',
-            size: 9,
-            marker: 'diamond',
-          },
-        ],
-      },
-      {
-        kind: 'chart',
         id: 'chart-power',
         title: 'Power',
         renderer: 'echarts',
@@ -1835,7 +1804,6 @@ export function buildVeloergReplayUiSchema(): UiSchema {
           'chart-trigno-gyro',
           'chart-moxy-smo2',
           'chart-moxy-thb',
-          'chart-lactate',
           'chart-power',
           'chart-zephyr-rr',
           'chart-zephyr-hr',
@@ -1874,7 +1842,6 @@ export function buildVeloergReplayUiSchema(): UiSchema {
               kind: 'row',
               gap: 12,
               children: [
-                { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
                 { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
               ],
             },
@@ -2011,26 +1978,6 @@ export function buildVeloergReplayUiSchema(): UiSchema {
             label: 'tHb',
             color: '#58a6ff',
             lineWidth: 3,
-          },
-        ],
-      },
-      {
-        kind: 'chart',
-        id: 'chart-lactate',
-        title: 'Lactate',
-        renderer: 'echarts',
-        height: 320,
-        timeWindowMs: 1_200_000,
-        showLegend: true,
-        yAxis: { min: 0, label: 'mmol/L' },
-        series: [
-          {
-            type: 'scatter',
-            streamId: 'lactate.label',
-            label: 'Lactate',
-            color: '#da77f2',
-            size: 9,
-            marker: 'diamond',
           },
         ],
       },
