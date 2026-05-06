@@ -48,6 +48,7 @@ const formOptionsBySourceId = new Map<string, UiFormOption[]>();
 const derivedFlagRulesByStreamId = new Map<string, CompiledDerivedFlagRule[]>();
 const simulationStatesByAdapterId = new Map<string, SimulationStateChangedPayload['state']>();
 const viewerStatesByAdapterId = new Map<string, ViewerStateChangedPayload['state']>();
+const viewerMetadataKeysByAdapterId = new Map<string, Set<string>>();
 
 interface CompiledDerivedDiscreteFlagRule {
   kind: 'latest-discrete-signal-value-map';
@@ -131,6 +132,27 @@ function isViewerDisconnectTransition(
   nextState: ViewerStateChangedPayload['state'],
 ): boolean {
   return previousState === 'connected' && (nextState === 'disconnected' || nextState === 'failed');
+}
+
+function viewerMetadataFlagKey(adapterId: string, metadataKey: string): string {
+  return `viewer.${adapterId}.metadata.${metadataKey}`;
+}
+
+function buildViewerMetadataFlagPatch(payload: ViewerStateChangedPayload): UiFlagPatch {
+  const previousKeys = viewerMetadataKeysByAdapterId.get(payload.adapterId) ?? new Set<string>();
+  const nextEntries = Object.entries(payload.metadata ?? {});
+  const nextKeys = new Set(nextEntries.map(([key]) => key));
+  const patch: UiFlagPatch = {};
+
+  for (const key of previousKeys) {
+    patch[viewerMetadataFlagKey(payload.adapterId, key)] = null;
+  }
+  for (const [key, value] of nextEntries) {
+    patch[viewerMetadataFlagKey(payload.adapterId, key)] = value;
+  }
+
+  viewerMetadataKeysByAdapterId.set(payload.adapterId, nextKeys);
+  return patch;
 }
 
 function latestNumericValue(event: SignalBatchEvent): number | null {
@@ -333,6 +355,7 @@ export default definePlugin({
     timelineStartSessionMs = ctx.timelineStartSessionMs();
     simulationStatesByAdapterId.clear();
     viewerStatesByAdapterId.clear();
+    viewerMetadataKeysByAdapterId.clear();
   },
   async onEvent(event, ctx) {
     if (event.type === EventTypes.uiClientConnected) {
@@ -501,12 +524,14 @@ export default definePlugin({
         }));
       }
 
+      const viewerMetadataPatch = buildViewerMetadataFlagPatch(payload);
       const { patch, version } = patchFlags({
         [`viewer.${payload.adapterId}.filePath`]: payload.filePath,
         [`viewer.${payload.adapterId}.recordingStartSessionMs`]: payload.recordingStartSessionMs ?? null,
         [`viewer.${payload.adapterId}.dataStartMs`]: payload.dataStartMs ?? null,
         [`viewer.${payload.adapterId}.dataEndMs`]: payload.dataEndMs ?? null,
         [`viewer.${payload.adapterId}.message`]: payload.message ?? null,
+        ...viewerMetadataPatch,
       });
       await ctx.emit(emitControl({ type: 'ui.flags.patch', patch, version }));
       return;

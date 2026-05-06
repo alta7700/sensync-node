@@ -58,7 +58,7 @@ function ensureSimulationSession(filePath: string): SimulationSessionState {
     normalizedFilePath,
     config.streamIds,
     config.readChunkSamples,
-    config.requireAllStreamIds,
+    { requireAllStreamIds: config.requireAllStreamIds },
   );
   session = nextSession;
   config.filePath = normalizedFilePath;
@@ -291,7 +291,7 @@ export default definePlugin({
         config.filePath,
         config.streamIds,
         config.readChunkSamples,
-        config.requireAllStreamIds,
+        { requireAllStreamIds: config.requireAllStreamIds },
       );
     } else {
       session = null;

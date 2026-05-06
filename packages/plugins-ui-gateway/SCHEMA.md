@@ -9,13 +9,14 @@ Concrete-схемы UI, которые materialize'ит `ui-gateway`.
 
 ## 1. Launch profiles
 
-Сейчас runtime profiles используют восемь concrete-схем:
+Сейчас runtime profiles используют девять concrete-схем:
 
 - `fake`
 - `fake-hdf5-simulation`
 - `veloerg`
 - `veloerg-replay`
 - `veloerg-viewer`
+- `veloerg-final-viewer`
 - `pedaling-emg-test`
 - `pedaling-emg-replay`
 - `pedaling-emg-viewer`
@@ -783,7 +784,117 @@ Modal form replay:
 - Набор графиков совпадает с `veloerg-replay`.
 - Все chart-виджеты используют `viewportMode = history`.
 
-## 9. Профиль `pedaling-emg-viewer`
+## 9. Профиль `veloerg-final-viewer`
+
+Назначение:
+
+- viewer-профиль для HDF5-файлов, записанных из `veloerg`, но с дополнительными `train.red` потоками;
+- позволяет выбрать файл и сразу загрузить историю целиком для интерактивного pan/zoom графиков;
+- использует тот же строгий парный `Trigno`-контракт, что и `veloerg-viewer`, но вместо старого `moxy.thb` требует `train.red.smo2`, `train.red.hbdiff`, `lactate` и пять `*.unfiltered` потоков;
+- читает file-level scalar metadata из `viewer.state.changed.metadata` и выводит их двумя отдельными status-виджетами: общие данные записи и блок `LT2`;
+- если в metadata есть `stop_time_sec`, на всех графиках рисуется вертикальная пунктирная линия, а подпись берётся из `stop_time`.
+- если в metadata есть `lt2_refined_time_sec`, на всех графиках рисуется вторая вертикальная пунктирная линия другого цвета с подписью `LT2`.
+
+### Страница
+
+- Одна страница: `main`.
+- Заголовок страницы: `Veloerg final viewer`.
+- Раскладка повторяет `veloerg-viewer`, но после основного status-блока добавляет status-блок metadata и отдельный status-блок `LT2`, после `SmO2` добавляет два новых графика `train.red filtered` и `train.red unfiltered`, а рядом с `Power` ставит новый график `Lactate`.
+
+### Controls
+
+- `toggle-veloerg-final-viewer`
+  - если `adapter.veloerg-final-viewer.state = disconnected`
+    - label: `Выбрать HDF5 и открыть viewer`
+    - команда: `adapter.connect.request`
+    - открывает modal form, которая собирает `formData.filePath`
+  - если `adapter.veloerg-final-viewer.state = connected`
+    - label: `Viewer загружен`
+    - disabled
+- `disconnect-veloerg-final-viewer`
+  - видима только если `adapter.veloerg-final-viewer.state ∈ { connected, disconnecting }`
+  - отправляет `adapter.disconnect.request`
+
+### Status
+
+- `adapter.veloerg-final-viewer.state`
+- `adapter.veloerg-final-viewer.message`
+- `viewer.veloerg-final-viewer.filePath`
+- `viewer.veloerg-final-viewer.dataStartMs`
+- `viewer.veloerg-final-viewer.dataEndMs`
+- `viewer.veloerg-final-viewer.message`
+- `power.current`
+
+Дополнительный status-виджет:
+
+- `status-metadata`
+  - `viewer.veloerg-final-viewer.metadata.subject_name`
+  - `viewer.veloerg-final-viewer.metadata.height`
+  - `viewer.veloerg-final-viewer.metadata.weight`
+  - `viewer.veloerg-final-viewer.metadata.age`
+  - `viewer.veloerg-final-viewer.metadata.sex`
+  - `viewer.veloerg-final-viewer.metadata.body_fat_mass`
+  - `viewer.veloerg-final-viewer.metadata.skeletal_muscle_mass`
+  - `viewer.veloerg-final-viewer.metadata.dominant_leg_lean_mass`
+  - `viewer.veloerg-final-viewer.metadata.dominant_leg_fat_mass`
+  - `viewer.veloerg-final-viewer.metadata.phase_angle`
+  - `viewer.veloerg-final-viewer.metadata.dominant_leg_circumference`
+  - `viewer.veloerg-final-viewer.metadata.stop_time`
+  - `viewer.veloerg-final-viewer.metadata.stop_time_sec`
+- `status-lt2`
+  - `viewer.veloerg-final-viewer.metadata.lt2_method`
+  - `viewer.veloerg-final-viewer.metadata.lt2_power_w`
+  - `viewer.veloerg-final-viewer.metadata.lt2_lactate_mmol`
+  - `viewer.veloerg-final-viewer.metadata.lt2_time_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_interval_start_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_interval_end_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_interval_start_power_w`
+  - `viewer.veloerg-final-viewer.metadata.lt2_interval_end_power_w`
+  - `viewer.veloerg-final-viewer.metadata.lt2_pchip_power_w`
+  - `viewer.veloerg-final-viewer.metadata.lt2_pchip_lactate_mmol`
+  - `viewer.veloerg-final-viewer.metadata.lt2_pchip_time_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_pchip_delta_power_w`
+  - `viewer.veloerg-final-viewer.metadata.lt2_pchip_delta_time_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_hrvt2_time_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_hhb_breakpoint_time_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_hhb_peak_time_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_refined_time_sec`
+  - `viewer.veloerg-final-viewer.metadata.lt2_refined_sources`
+
+### Графики
+
+- `chart-moxy-smo2`
+  - поток: `moxy.smo2`
+- `chart-train-red-filtered`
+  - потоки:
+    - `train.red.smo2`
+    - `train.red.hbdiff`
+- `chart-train-red-unfiltered`
+  - потоки:
+    - `train.red.smo2.unfiltered`
+    - `train.red.o2hb.unfiltered`
+    - `train.red.hhb.unfiltered`
+    - `train.red.thb.unfiltered`
+    - `train.red.hbdiff.unfiltered`
+- `chart-lactate`
+  - поток: `lactate`
+  - рисует dashed line + scatter точки из одного и того же sparse-stream'а
+- `chart-moxy-thb` отсутствует: legacy `moxy.thb` не входит в контракт этого viewer-профиля.
+- Все chart-виджеты используют `viewportMode = history`.
+- Все chart-виджеты также получают marker:
+  - `kind = vertical-flag`
+  - `flagKey = viewer.veloerg-final-viewer.metadata.stop_time_sec`
+  - `labelFlagKey = viewer.veloerg-final-viewer.metadata.stop_time`
+  - `valueMultiplier = 1000`
+  - `lineStyle = dashed`
+- Все chart-виджеты также получают второй marker:
+  - `kind = vertical-flag`
+  - `flagKey = viewer.veloerg-final-viewer.metadata.lt2_refined_time_sec`
+  - `label = LT2`
+  - `valueMultiplier = 1000`
+  - `lineStyle = dashed`
+
+## 10. Профиль `pedaling-emg-viewer`
 
 Назначение:
 
@@ -834,6 +945,7 @@ Modal form replay:
 - flags patch для recorder state;
 - flags patch для simulation state;
 - flags patch для viewer state;
+- flags patch для viewer metadata;
 - `ui.form.options.patch` для runtime-driven options локальных форм;
 - `ui.error` для recorder error, scan failure и adapter `failed`;
 - `ui.warning` для мягких проблем ingress/runtime-contract слоя и `command.rejected`;

@@ -1,6 +1,7 @@
 import {
   EventTypes,
   type UiControlAction,
+  type UiChartWidget,
   type UiControlWhen,
   type UiControlVariant,
   type UiDerivedFlagRule,
@@ -2138,15 +2139,12 @@ export function buildVeloergReplayUiSchema(): UiSchema {
   };
 }
 
-export function buildVeloergViewerUiSchema(): UiSchema {
-  const adapterId = 'veloerg-viewer';
-  const replaySchema = buildVeloergReplayUiSchema();
-
+function makeVeloergViewerUiSchema(adapterId: string, title: string, replaySchema: UiSchema): UiSchema {
   return {
     ...replaySchema,
     pages: replaySchema.pages.map((page) => ({
       ...page,
-      title: page.title === 'Veloerg replay' ? 'Veloerg viewer' : page.title,
+      title: page.title === 'Veloerg replay' ? title : page.title,
     })),
     widgets: replaySchema.widgets.map((widget) => {
       if (widget.id === 'controls-main') {
@@ -2179,6 +2177,342 @@ export function buildVeloergViewerUiSchema(): UiSchema {
       return widget;
     }),
   };
+}
+
+export function buildVeloergViewerUiSchema(): UiSchema {
+  return makeVeloergViewerUiSchema('veloerg-viewer', 'Veloerg viewer', buildVeloergReplayUiSchema());
+}
+
+export function buildVeloergFinalViewerUiSchema(): UiSchema {
+  const adapterId = 'veloerg-final-viewer';
+  const replaySchema = buildVeloergReplayUiSchema();
+  function withViewerMarkers(widget: UiChartWidget): UiChartWidget {
+    return {
+      ...widget,
+      markers: [...(widget.markers ?? []), stopTimeMarker, lt2Marker],
+    };
+  }
+  const stopTimeMarker = {
+    kind: 'vertical-flag',
+    flagKey: `viewer.${adapterId}.metadata.stop_time_sec`,
+    label: 'Стоп',
+    labelFlagKey: `viewer.${adapterId}.metadata.stop_time`,
+    color: '#ffd43b',
+    lineStyle: 'dashed',
+    valueMultiplier: 1000,
+  } as const;
+  const lt2Marker = {
+    kind: 'vertical-flag',
+    flagKey: `viewer.${adapterId}.metadata.lt2_refined_time_sec`,
+    label: 'LT2',
+    color: '#ff8787',
+    lineStyle: 'dashed',
+    valueMultiplier: 1000,
+  } as const;
+  const metadataFields = [
+    { flagKey: `viewer.${adapterId}.metadata.subject_name`, label: 'ФИ' },
+    { flagKey: `viewer.${adapterId}.metadata.height`, label: 'Рост' },
+    { flagKey: `viewer.${adapterId}.metadata.weight`, label: 'Вес' },
+    { flagKey: `viewer.${adapterId}.metadata.age`, label: 'Возраст' },
+    { flagKey: `viewer.${adapterId}.metadata.sex`, label: 'Пол' },
+    { flagKey: `viewer.${adapterId}.metadata.body_fat_mass`, label: 'Масса жира в теле' },
+    { flagKey: `viewer.${adapterId}.metadata.skeletal_muscle_mass`, label: 'Масса скелетной мускулатуры' },
+    { flagKey: `viewer.${adapterId}.metadata.dominant_leg_lean_mass`, label: 'Тощая масса ведущей ноги' },
+    { flagKey: `viewer.${adapterId}.metadata.dominant_leg_fat_mass`, label: 'Жировая масса ведущей ноги' },
+    { flagKey: `viewer.${adapterId}.metadata.phase_angle`, label: 'Фазовый угол' },
+    { flagKey: `viewer.${adapterId}.metadata.dominant_leg_circumference`, label: 'Обхват ведущей ноги' },
+    { flagKey: `viewer.${adapterId}.metadata.stop_time`, label: 'Время остановки' },
+    { flagKey: `viewer.${adapterId}.metadata.stop_time_sec`, label: 'Время остановки, с' },
+  ] as const;
+  const lt2Fields = [
+    { flagKey: `viewer.${adapterId}.metadata.lt2_method`, label: 'Метод LT2' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_power_w`, label: 'LT2, Вт' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_lactate_mmol`, label: 'LT2, ммоль/л' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_time_sec`, label: 'LT2, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_interval_start_sec`, label: 'Интервал LT2: старт, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_interval_end_sec`, label: 'Интервал LT2: конец, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_interval_start_power_w`, label: 'Интервал LT2: старт, Вт' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_interval_end_power_w`, label: 'Интервал LT2: конец, Вт' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_pchip_power_w`, label: 'PCHIP LT2, Вт' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_pchip_lactate_mmol`, label: 'PCHIP LT2, ммоль/л' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_pchip_time_sec`, label: 'PCHIP LT2, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_pchip_delta_power_w`, label: 'PCHIP Δ мощности, Вт' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_pchip_delta_time_sec`, label: 'PCHIP Δ времени, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_hrvt2_time_sec`, label: 'HRVT2, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_hhb_breakpoint_time_sec`, label: 'HHb breakpoint, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_hhb_peak_time_sec`, label: 'HHb peak, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_refined_time_sec`, label: 'LT2 refined, с' },
+    { flagKey: `viewer.${adapterId}.metadata.lt2_refined_sources`, label: 'Источники LT2 refined' },
+  ] as const;
+  const trainRedReplaySchema: UiSchema = {
+    ...replaySchema,
+    pages: replaySchema.pages.map((page) => {
+      if (page.id !== 'main') {
+        return page;
+      }
+      return {
+        ...page,
+        widgetIds: [
+          'status-main',
+          'controls-main',
+          'status-metadata',
+          'status-lt2',
+          'chart-trigno-vl-emg',
+          'chart-trigno-vl-gyro',
+          'chart-trigno-rf-emg',
+          'chart-trigno-rf-gyro',
+          'chart-moxy-smo2',
+          'chart-train-red-filtered',
+          'chart-train-red-unfiltered',
+          'chart-power',
+          'chart-lactate',
+          'chart-zephyr-rr',
+          'chart-zephyr-hr',
+          'chart-zephyr-dfa-a1',
+          'telemetry-main',
+        ],
+        layout: {
+          kind: 'column',
+          gap: 12,
+          children: [
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'status-main', minWidth: 320 },
+                { kind: 'widget', widgetId: 'controls-main', minWidth: 520 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'status-metadata', minWidth: 420, grow: 1 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'status-lt2', minWidth: 420, grow: 1 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-trigno-vl-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-vl-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-trigno-rf-emg', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-trigno-rf-gyro', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-moxy-smo2', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-train-red-filtered', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-train-red-unfiltered', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-power', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-lactate', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-zephyr-rr', minWidth: 420 },
+                { kind: 'widget', widgetId: 'chart-zephyr-hr', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'chart-zephyr-dfa-a1', minWidth: 420 },
+              ],
+            },
+            {
+              kind: 'row',
+              gap: 12,
+              children: [
+                { kind: 'widget', widgetId: 'telemetry-main' },
+              ],
+            },
+          ],
+        },
+      };
+    }),
+    widgets: (() => {
+      const widgets: UiSchema['widgets'] = [];
+      for (const widget of replaySchema.widgets) {
+        if (widget.id === 'status-main' && widget.kind === 'status') {
+          widgets.push(widget);
+          widgets.push({
+            kind: 'status',
+            id: 'status-metadata',
+            title: 'Метаданные записи',
+            flagKeys: metadataFields.map((field) => field.flagKey),
+            fields: [...metadataFields],
+          });
+          widgets.push({
+            kind: 'status',
+            id: 'status-lt2',
+            title: 'LT2',
+            flagKeys: lt2Fields.map((field) => field.flagKey),
+            fields: [...lt2Fields],
+          });
+          continue;
+        }
+        if (widget.id === 'chart-moxy-thb') {
+          continue;
+        }
+        if (widget.id === 'chart-power' && widget.kind === 'chart') {
+          const lactateChart: UiChartWidget = {
+            kind: 'chart',
+            id: 'chart-lactate',
+            title: 'Lactate',
+            renderer: 'echarts',
+            height: 320,
+            timeWindowMs: 1_200_000,
+            showLegend: true,
+            yAxis: { min: 0, label: 'mmol/L' },
+            series: [
+              {
+                type: 'line',
+                streamId: 'lactate',
+                label: 'Lactate trend',
+                color: '#74c0fc',
+                lineWidth: 2,
+                lineStyle: 'dashed',
+              },
+              {
+                type: 'scatter',
+                streamId: 'lactate',
+                label: 'Lactate',
+                color: '#74c0fc',
+                size: 9,
+                marker: 'diamond',
+              },
+            ],
+          };
+          widgets.push(withViewerMarkers(widget));
+          widgets.push(withViewerMarkers(lactateChart));
+          continue;
+        }
+        if (widget.id === 'chart-moxy-smo2' && widget.kind === 'chart') {
+          const filteredTrainRedChart: UiChartWidget = {
+            kind: 'chart',
+            id: 'chart-train-red-filtered',
+            title: 'train.red filtered',
+            renderer: 'echarts',
+            height: 320,
+            timeWindowMs: 20_000,
+            showLegend: true,
+            yAxis: { label: 'a.u.' },
+            series: [
+              {
+                type: 'line',
+                streamId: 'train.red.smo2',
+                label: 'SmO2',
+                color: '#2f9e44',
+                lineWidth: 3,
+              },
+              {
+                type: 'line',
+                streamId: 'train.red.hbdiff',
+                label: 'HbDiff',
+                color: '#e03131',
+                lineWidth: 3,
+              },
+            ],
+          };
+          const unfilteredTrainRedChart: UiChartWidget = {
+            kind: 'chart',
+            id: 'chart-train-red-unfiltered',
+            title: 'train.red unfiltered',
+            renderer: 'echarts',
+            height: 320,
+            timeWindowMs: 20_000,
+            showLegend: true,
+            yAxis: { label: 'a.u.' },
+            series: [
+              {
+                type: 'line',
+                streamId: 'train.red.smo2.unfiltered',
+                label: 'SmO2 raw',
+                color: '#2f9e44',
+                lineWidth: 2,
+              },
+              {
+                type: 'line',
+                streamId: 'train.red.o2hb.unfiltered',
+                label: 'O2Hb raw',
+                color: '#1c7ed6',
+                lineWidth: 2,
+              },
+              {
+                type: 'line',
+                streamId: 'train.red.hhb.unfiltered',
+                label: 'HHb raw',
+                color: '#d6336c',
+                lineWidth: 2,
+              },
+              {
+                type: 'line',
+                streamId: 'train.red.thb.unfiltered',
+                label: 'tHb raw',
+                color: '#f08c00',
+                lineWidth: 2,
+              },
+              {
+                type: 'line',
+                streamId: 'train.red.hbdiff.unfiltered',
+                label: 'HbDiff raw',
+                color: '#7b2cbf',
+                lineWidth: 2,
+              },
+            ],
+          };
+          widgets.push(withViewerMarkers(widget));
+          widgets.push(withViewerMarkers(filteredTrainRedChart));
+          widgets.push(withViewerMarkers(unfilteredTrainRedChart));
+          continue;
+        }
+        if (widget.kind === 'chart') {
+          widgets.push(withViewerMarkers(widget));
+          continue;
+        }
+        widgets.push(widget);
+      }
+      return widgets;
+    })(),
+  };
+
+  return makeVeloergViewerUiSchema(
+    adapterId,
+    'Veloerg final viewer',
+    trainRedReplaySchema,
+  );
 }
 
 export function buildPedalingEmgTestUiSchema(): UiSchema {

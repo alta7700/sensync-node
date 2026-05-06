@@ -49,6 +49,70 @@ async function createFixtureFile(): Promise<string> {
   return filePath;
 }
 
+async function createFixtureFileWithoutSampleFormatAttr(): Promise<string> {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'sensync2-hdf5-boundary-legacy-'));
+  const filePath = path.join(tempDir, 'fixture.h5');
+
+  await h5wasm.ready;
+  const file = new h5wasm.File(filePath, 'w', { track_order: true });
+  try {
+    const channels = file.create_group('channels', true);
+    const group = channels.create_group('train.red.smo2', true);
+    createAttribute(group, 'streamId', 'train.red.smo2');
+    createAttribute(group, 'frameKind', 'irregular-signal-batch');
+    createAttribute(group, 'units', '%');
+
+    group.create_dataset({
+      name: 'timestamps',
+      data: new Float64Array([100, 200, 300]),
+      shape: [3],
+      dtype: '<d',
+    });
+    group.create_dataset({
+      name: 'values',
+      data: new Float32Array([71.5, 72.25, 73]),
+      shape: [3],
+      dtype: '<f',
+    });
+  } finally {
+    file.close();
+  }
+
+  return filePath;
+}
+
+async function createFixtureFileWithoutFrameKindAttr(): Promise<string> {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'sensync2-hdf5-boundary-no-frame-kind-'));
+  const filePath = path.join(tempDir, 'fixture.h5');
+
+  await h5wasm.ready;
+  const file = new h5wasm.File(filePath, 'w', { track_order: true });
+  try {
+    const channels = file.create_group('channels', true);
+    const group = channels.create_group('train.red.smo2', true);
+    createAttribute(group, 'streamId', 'train.red.smo2');
+    createAttribute(group, 'sampleFormat', 'f32');
+    createAttribute(group, 'units', '%');
+
+    group.create_dataset({
+      name: 'timestamps',
+      data: new Float64Array([100, 200, 300]),
+      shape: [3],
+      dtype: '<d',
+    });
+    group.create_dataset({
+      name: 'values',
+      data: new Float32Array([71.5, 72.25, 73]),
+      shape: [3],
+      dtype: '<f',
+    });
+  } finally {
+    file.close();
+  }
+
+  return filePath;
+}
+
 describe('hdf5-simulation-boundary', () => {
   it('нормализует config и читает окно данных из файла', async () => {
     const filePath = await createFixtureFile();
@@ -134,6 +198,43 @@ describe('hdf5-simulation-boundary', () => {
     const session = loadHdf5SimulationSession(filePath, ['fake.a1'], 2);
     try {
       expect(session.recordingStartSessionMs).toBe(10);
+    } finally {
+      session.file.close();
+    }
+  });
+
+  it('выводит sampleFormat из dtype values dataset, если attr отсутствует', async () => {
+    const filePath = await createFixtureFileWithoutSampleFormatAttr();
+
+    const session = loadHdf5SimulationSession(filePath, ['train.red.smo2'], 2);
+    try {
+      expect(session.channels).toHaveLength(1);
+      expect(session.channels[0]?.sampleFormat).toBe('f32');
+
+      const event = readSimulationWindowForChannel(session.channels[0]!, 350);
+      expect(event?.payload.sampleFormat).toBe('f32');
+      expect(Array.from(event?.payload.values ?? [])).toEqual([71.5, 72.25, 73]);
+    } finally {
+      session.file.close();
+    }
+  });
+
+  it('для viewer может подставить irregular frameKind, а replay без attr остается строгим', async () => {
+    const filePath = await createFixtureFileWithoutFrameKindAttr();
+
+    expect(() => loadHdf5SimulationSession(filePath, ['train.red.smo2'], 2)).toThrow(
+      'отсутствует обязательный attr frameKind',
+    );
+
+    const session = loadHdf5SimulationSession(filePath, ['train.red.smo2'], 2, {
+      missingFrameKindFallback: 'irregular-signal-batch',
+    });
+    try {
+      expect(session.channels[0]?.frameKind).toBe('irregular-signal-batch');
+
+      const event = readSimulationWindowForChannel(session.channels[0]!, 350);
+      expect(event?.payload.frameKind).toBe('irregular-signal-batch');
+      expect(event?.payload.timestampsMs).toEqual(new Float64Array([100, 200, 300]));
     } finally {
       session.file.close();
     }

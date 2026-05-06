@@ -5,6 +5,7 @@ import {
   defineRuntimeEventInput,
   EventTypes,
   type FrameKind,
+  type RecordingMetadataScalar,
   type RuntimeEventInputOf,
   type SampleFormat,
 } from '@sensync2/core';
@@ -46,12 +47,18 @@ export interface SimulationSessionState {
   file: H5File;
   filePath: string;
   channels: ChannelReaderState[];
+  fileMetadata: Record<string, RecordingMetadataScalar>;
   missingStreamIds: string[];
   recordingStartSessionMs: number;
   dataStartMs: number;
   dataEndMs: number;
   currentWindowStartMs: number;
   cycleIndex: number;
+}
+
+export interface LoadHdf5SimulationSessionOptions {
+  requireAllStreamIds?: boolean;
+  missingFrameKindFallback?: FrameKind;
 }
 
 export const AllowedSimulationSpeeds = [0.25, 0.5, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 6, 8] as const;
@@ -65,6 +72,16 @@ export const DefaultHdf5SimulationConfig: Required<Hdf5SimulationAdapterConfig> 
   speed: 1,
   readChunkSamples: 4096,
 };
+
+const ReservedRecorderRootAttrKeys = new Set<string>([
+  'writer',
+  'sessionStartWallMs',
+  'recordingStartWallMs',
+  'recordingStartSessionMs',
+  'createdAt',
+  'filenameTemplate',
+  'recorderPluginId',
+] as const);
 
 export function normalizeHdf5SimulationFilePath(rawFilePath: string): string {
   const nextFilePath = rawFilePath.trim();
@@ -190,6 +207,25 @@ function readOptionalFileNumberAttribute(file: H5File, name: string): number | u
   return value;
 }
 
+function isRecordingMetadataScalar(value: unknown): value is RecordingMetadataScalar {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+}
+
+function readCustomFileMetadata(file: H5File): Record<string, RecordingMetadataScalar> {
+  const metadata: Record<string, RecordingMetadataScalar> = {};
+  for (const [name, attr] of Object.entries(file.attrs)) {
+    if (ReservedRecorderRootAttrKeys.has(name)) {
+      continue;
+    }
+    const value = attr.json_value;
+    if (!isRecordingMetadataScalar(value)) {
+      continue;
+    }
+    metadata[name] = value;
+  }
+  return metadata;
+}
+
 function readFrameKindAttribute(group: H5Group): FrameKind {
   const value = requireStringAttribute(group, 'frameKind');
   if (value === 'uniform-signal-batch' || value === 'irregular-signal-batch' || value === 'label-batch') {
@@ -198,12 +234,45 @@ function readFrameKindAttribute(group: H5Group): FrameKind {
   throw new Error(`Attr ${group.path}/frameKind содержит неподдерживаемое значение ${value}`);
 }
 
+function readChannelFrameKind(group: H5Group, missingFrameKindFallback?: FrameKind): FrameKind {
+  if (group.attrs.frameKind) {
+    return readFrameKindAttribute(group);
+  }
+  if (missingFrameKindFallback) {
+    return missingFrameKindFallback;
+  }
+  throw new Error(`В ${group.path} отсутствует обязательный attr frameKind`);
+}
+
 function readSampleFormatAttribute(group: H5Group): SampleFormat {
   const value = requireStringAttribute(group, 'sampleFormat');
   if (value === 'f32' || value === 'f64' || value === 'i16') {
     return value;
   }
   throw new Error(`Attr ${group.path}/sampleFormat содержит неподдерживаемое значение ${value}`);
+}
+
+function inferSampleFormatFromDataset(valuesDataset: H5Dataset): SampleFormat {
+  const { dtype } = valuesDataset;
+  if (dtype === '<f' || dtype === '>f') {
+    return 'f32';
+  }
+  if (dtype === '<d' || dtype === '>d') {
+    return 'f64';
+  }
+  if (dtype === '<h' || dtype === '>h') {
+    return 'i16';
+  }
+  throw new Error(
+    `В ${valuesDataset.path} отсутствует attr sampleFormat, а dtype ${String(dtype)} нельзя однозначно сопоставить с runtime sampleFormat`,
+  );
+}
+
+function readChannelSampleFormat(group: H5Group, valuesDataset: H5Dataset): SampleFormat {
+  if (group.attrs.sampleFormat) {
+    return readSampleFormatAttribute(group);
+  }
+  return inferSampleFormatFromDataset(valuesDataset);
 }
 
 function requireDataset(group: H5Group, name: string): H5Dataset {
@@ -462,8 +531,10 @@ export function loadHdf5SimulationSession(
   filePath: string,
   selectedStreamIds: readonly string[],
   readChunkSamples: number,
-  requireAllStreamIds = DefaultHdf5SimulationConfig.requireAllStreamIds,
+  options: LoadHdf5SimulationSessionOptions = {},
 ): SimulationSessionState {
+  const requireAllStreamIds = options.requireAllStreamIds ?? DefaultHdf5SimulationConfig.requireAllStreamIds;
+  const missingFrameKindFallback = options.missingFrameKindFallback;
   if (!existsSync(filePath)) {
     throw new Error(`HDF5 файл не найден: ${filePath}`);
   }
@@ -479,6 +550,7 @@ export function loadHdf5SimulationSession(
   }
 
   const channels: ChannelReaderState[] = [];
+  const fileMetadata = readCustomFileMetadata(file);
   const selectedSet = selectedStreamIds.length > 0 ? new Set(selectedStreamIds) : null;
   const missingStreamIds = selectedSet ? [...selectedStreamIds] : [];
   let globalStartMs = Number.POSITIVE_INFINITY;
@@ -496,12 +568,12 @@ export function loadHdf5SimulationSession(
       if (selectedSet && !selectedSet.has(streamId)) {
         continue;
       }
-      const sampleFormat = readSampleFormatAttribute(channelGroup);
-      const frameKind = readFrameKindAttribute(channelGroup);
+      const frameKind = readChannelFrameKind(channelGroup, missingFrameKindFallback);
       const units = readOptionalStringAttribute(channelGroup, 'units');
       const sampleRateHz = readOptionalNumberAttribute(channelGroup, 'sampleRateHz');
       const timestampsDataset = requireDataset(channelGroup, 'timestamps');
       const valuesDataset = requireDataset(channelGroup, 'values');
+      const sampleFormat = readChannelSampleFormat(channelGroup, valuesDataset);
       const sampleCount = requireOneDimensionalLength(timestampsDataset);
       const valuesCount = requireOneDimensionalLength(valuesDataset);
 
@@ -570,6 +642,7 @@ export function loadHdf5SimulationSession(
       file,
       filePath,
       channels,
+      fileMetadata,
       missingStreamIds,
       recordingStartSessionMs,
       dataStartMs: globalStartMs,

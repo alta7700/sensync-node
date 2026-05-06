@@ -108,6 +108,7 @@ export interface UiChartWidget {
   id: string;
   title: string;
   series: UiChartSeries[];
+  markers?: UiChartMarker[];
   height?: number;
   timeWindowMs?: number;
   showLegend?: boolean;
@@ -146,6 +147,16 @@ export interface UiChartScatterSeries extends UiChartSeriesBase {
   marker?: 'circle' | 'rect' | 'triangle' | 'diamond';
 }
 
+export interface UiChartVerticalFlagMarker {
+  kind: 'vertical-flag';
+  flagKey: string;
+  label?: string;
+  labelFlagKey?: string;
+  color?: string;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
+  valueMultiplier?: number;
+}
+
 /**
  * Интервальная серия поверх label-stream.
  * Предполагается, что `streamId` указывает на поток меток, а не обычный сигнал.
@@ -157,12 +168,19 @@ export interface UiChartIntervalSeries extends UiChartSeriesBase {
 }
 
 export type UiChartSeries = UiChartLineSeries | UiChartScatterSeries | UiChartIntervalSeries;
+export type UiChartMarker = UiChartVerticalFlagMarker;
+
+export interface UiStatusField {
+  flagKey: string;
+  label?: string;
+}
 
 export interface UiStatusWidget {
   kind: 'status';
   id: string;
   title: string;
   flagKeys: string[];
+  fields?: UiStatusField[];
 }
 
 export interface UiControlsWidget {

@@ -6,6 +6,7 @@ export {
   buildPedalingEmgViewerUiSchema,
   buildPedalingEmgTestUiSchema,
   buildVeloergReplayUiSchema,
+  buildVeloergFinalViewerUiSchema,
   buildVeloergViewerUiSchema,
   buildVeloergUiSchema,
 } from './profile-schemas.ts';

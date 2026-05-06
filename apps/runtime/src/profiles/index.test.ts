@@ -12,6 +12,7 @@ function uiGatewayConfig(
     | 'veloerg'
     | 'veloerg-replay'
     | 'veloerg-viewer'
+    | 'veloerg-final-viewer'
     | 'pedaling-emg-test'
     | 'pedaling-emg-replay'
     | 'pedaling-emg-viewer',
@@ -119,6 +120,11 @@ describe('launch profiles registry', () => {
   it('в veloerg-viewer профиле передает viewer schema в ui-gateway', () => {
     const config = uiGatewayConfig('veloerg-viewer');
     expect(config.schema.pages[0]?.title).toBe('Veloerg viewer');
+  });
+
+  it('в veloerg-final-viewer профиле передает отдельную viewer schema в ui-gateway', () => {
+    const config = uiGatewayConfig('veloerg-final-viewer');
+    expect(config.schema.pages[0]?.title).toBe('Veloerg final viewer');
   });
 
   it('в pedaling-emg-viewer профиле передает viewer schema в ui-gateway', () => {
@@ -369,6 +375,45 @@ describe('launch profiles registry', () => {
       requireAllStreamIds: true,
       readChunkSamples: 4096,
     });
+    expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
+    expect(profile.plugins.some((plugin) => plugin.id === 'hdf5-recorder')).toBe(false);
+  });
+
+  it('в veloerg-final-viewer профиле включает HDF5 viewer с train.red каналами и без legacy thb', () => {
+    const profile = buildLaunchProfile('veloerg-final-viewer');
+    const viewer = profile.plugins.find((plugin) => plugin.id === 'hdf5-viewer-adapter');
+
+    expect(profile.timelineReset).toBeUndefined();
+    expect(viewer?.config).toMatchObject({
+      adapterId: 'veloerg-final-viewer',
+      allowConnectFilePathOverride: true,
+      streamIds: [
+        'moxy.smo2',
+        'train.red.smo2',
+        'train.red.hbdiff',
+        'train.red.smo2.unfiltered',
+        'train.red.o2hb.unfiltered',
+        'train.red.hhb.unfiltered',
+        'train.red.thb.unfiltered',
+        'train.red.hbdiff.unfiltered',
+        'zephyr.rr',
+        'zephyr.hr',
+        'zephyr.dfa_a1',
+        'trigno.vl.avanti',
+        'trigno.vl.avanti.gyro.x',
+        'trigno.vl.avanti.gyro.y',
+        'trigno.vl.avanti.gyro.z',
+        'trigno.rf.avanti',
+        'trigno.rf.avanti.gyro.x',
+        'trigno.rf.avanti.gyro.y',
+        'trigno.rf.avanti.gyro.z',
+        'power.label',
+        'lactate',
+      ],
+      requireAllStreamIds: true,
+      readChunkSamples: 4096,
+    });
+    expect((viewer?.config as { streamIds?: string[] } | undefined)?.streamIds).not.toContain('moxy.thb');
     expect(profile.plugins.some((plugin) => plugin.id === 'pedaling-emg-processor')).toBe(false);
     expect(profile.plugins.some((plugin) => plugin.id === 'hdf5-recorder')).toBe(false);
   });

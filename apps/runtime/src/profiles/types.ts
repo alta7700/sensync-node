@@ -6,6 +6,7 @@ export const LaunchProfiles = [
   'veloerg',
   'veloerg-replay',
   'veloerg-viewer',
+  'veloerg-final-viewer',
   'pedaling-emg-test',
   'pedaling-emg-replay',
   'pedaling-emg-viewer',

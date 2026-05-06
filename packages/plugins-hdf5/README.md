@@ -23,6 +23,9 @@
 - `hdf5-simulation-adapter.ts` не переписывает timestamps из datasets ради replay UI; вместо этого он пробрасывает `recordingStartSessionMs` из root attrs в `simulation.state.changed`.
 - `hdf5-viewer-adapter.ts` использует тот же boundary, но вместо таймерного чтения загружает каждый выбранный stream целиком и публикует `viewer.state.changed` для UI history-режима; uniform-потоки в viewer отдаются с явным `timestampsMs`, чтобы UI не пересчитывал X по `sampleRateHz`.
 - File-boundary для симуляции вынесен в `src/hdf5-simulation-boundary.ts`, чтобы адаптер не смешивал runtime-state machine и разбор внешнего HDF5.
+- Этот boundary держит режим совместимости для старых файлов без `sampleFormat`: reader выводит формат из `values.dtype`, а наружу всё равно публикует нормальный `signal.batch`.
+- Для viewer boundary также может синтетически подставить `frameKind = irregular-signal-batch`, если в файле есть только `timestamps + values`; replay-path таким fallback не пользуется и остаётся строгим.
+- Viewer-path также пробрасывает наружу file-level scalar metadata из root attrs, чтобы UI мог показывать параметры записи без отдельного sidecar.
 - Внутренний тик симуляции зарегистрирован рядом в `src/event-contracts.ts`.
 - Оба плагина используют один и тот же HDF5 контракт, описанный отдельно.
 

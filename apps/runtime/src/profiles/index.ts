@@ -4,6 +4,7 @@ import { pedalingEmgReplayProfile } from './pedaling-emg-replay.ts';
 import { pedalingEmgViewerProfile } from './pedaling-emg-viewer.ts';
 import { pedalingEmgTestProfile } from './pedaling-emg-test.ts';
 import { veloergReplayProfile } from './veloerg-replay.ts';
+import { veloergFinalViewerProfile } from './veloerg-final-viewer.ts';
 import { veloergViewerProfile } from './veloerg-viewer.ts';
 import { veloergProfile } from './veloerg.ts';
 import { LaunchProfiles, type LaunchProfile, type LaunchProfileDefinition, type ResolvedLaunchProfile } from './types.ts';
@@ -16,6 +17,7 @@ const LaunchProfileRegistry: Record<LaunchProfile, LaunchProfileDefinition> = {
   veloerg: veloergProfile,
   'veloerg-replay': veloergReplayProfile,
   'veloerg-viewer': veloergViewerProfile,
+  'veloerg-final-viewer': veloergFinalViewerProfile,
   'pedaling-emg-test': pedalingEmgTestProfile,
   'pedaling-emg-replay': pedalingEmgReplayProfile,
   'pedaling-emg-viewer': pedalingEmgViewerProfile,

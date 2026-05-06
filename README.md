@@ -39,6 +39,7 @@ npm run dev
 - `npm run dev:veloerg` — composite dev-профиль `veloerg` для ANT+/Moxy, BLE/Zephyr и парного `Trigno` (`VL + RF`) на одной базе.
 - `npm run dev:veloerg-replay` — replay-профиль для HDF5-файла из `veloerg`; файл выбирается через UI при `connect`, а профиль требует полный набор потоков `trigno.vl.avanti*` и `trigno.rf.avanti*`.
 - `npm run dev:veloerg-viewer` — viewer-профиль для интерактивного просмотра HDF5-файла из `veloerg`; файл выбирается через UI, графики открываются в history-режиме и требуют тот же полный парный Trigno-контракт.
+- `npm run dev:veloerg-final-viewer` — viewer-вариант `veloerg` с дополнительными `train.red` каналами; файл выбирается через UI, старый `moxy.thb` не ожидается, а filtered/unfiltered `train.red` графики открываются в history-режиме.
 - `npm run dev:runtime` — runtime отдельно, по умолчанию в профиле `fake`.
 - `npm run dev:runtime:fake-hdf5-simulation` — standalone runtime для fake simulation из HDF5.
 - `npm run dev:runtime:pedaling-emg-test` — standalone runtime для отдельного live `EMG + Gyro` теста.
@@ -47,6 +48,7 @@ npm run dev
 - `npm run dev:runtime:veloerg` — standalone runtime для composite `veloerg` профиля.
 - `npm run dev:runtime:veloerg-replay` — standalone runtime для replay `veloerg` записи.
 - `npm run dev:runtime:veloerg-viewer` — standalone runtime для интерактивного просмотра `veloerg` записи.
+- `npm run dev:runtime:veloerg-final-viewer` — standalone runtime для интерактивного просмотра `veloerg` записи с `train.red` каналами.
 - `npm run build` — сборка всех workspace-пакетов.
 - `npm run lint` — единый ESLint-прогон по monorepo.
 - `npm run lint:fix` — автоисправления ESLint там, где они безопасны.
@@ -60,7 +62,7 @@ npm run dev
 
 ## Launch profiles
 
-Сейчас есть восемь штатных профиля запуска:
+Сейчас есть девять штатных профиля запуска:
 
 - `fake`
   - synthetic fake adapter с автостартом `fake-signal` после общего runtime-барьера `runtime.started`;
@@ -92,6 +94,11 @@ npm run dev
   - viewer загружает историю целиком, а не воспроизводит её по таймеру;
   - viewer использует тот же строгий набор stream'ов, что и `veloerg-replay`, и так же не поддерживает legacy single-sensor `veloerg` файлы;
   - `ui-gateway` поднимает схему, где те же графики работают в интерактивном history-режиме.
+- `veloerg-final-viewer`
+  - `hdf5-viewer-adapter` читает HDF5 файл, выбранный через UI при `connect`;
+  - viewer загружает историю целиком, а не воспроизводит её по таймеру;
+  - профиль требует тот же парный `Trigno` набор, но вместо `moxy.thb` ожидает `train.red.smo2`, `train.red.hbdiff` и пять `*.unfiltered` потоков;
+  - `ui-gateway` поднимает отдельную history-схему с двумя дополнительными `train.red` графиками.
 - `pedaling-emg-test`
   - отдельный live-профиль только для `Trigno`;
   - поднимает raw `EMG + Gyroscope`, `pedaling-emg-processor`, recorder и UI;
@@ -121,7 +128,7 @@ SENSYNC2_HDF5_SIMULATION_FILE=/absolute/path/to/file.h5 npm run dev:fake-hdf5-si
 
 Для `veloerg-replay` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку подключения replay. Старые `veloerg`-файлы с `trigno.avanti*` этот профиль не открывает.
 
-Для `pedaling-emg-viewer` и `veloerg-viewer` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку открытия viewer. Для `veloerg-viewer` действует тот же строгий парный Trigno-контракт, что и для replay.
+Для `pedaling-emg-viewer`, `veloerg-viewer` и `veloerg-final-viewer` отдельный env тоже не нужен: после запуска профиля файл выбирается в UI через кнопку открытия viewer. Для `veloerg-viewer` действует тот же строгий парный Trigno-контракт, что и для replay, а `veloerg-final-viewer` дополнительно требует полный набор `train.red` потоков и не ждёт старый `moxy.thb`.
 
 Для `veloerg` можно отдельно включить fake transport и проверить UX ветку "stick не найден":
 

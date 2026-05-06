@@ -13,6 +13,7 @@ import plugin from './ui-gateway-plugin.ts';
 import {
   buildFakeUiSchema,
   buildVeloergReplayUiSchema,
+  buildVeloergFinalViewerUiSchema,
   buildVeloergUiSchema,
   buildVeloergViewerUiSchema,
 } from './profile-schemas.ts';
@@ -392,6 +393,76 @@ describe('ui-gateway-plugin', () => {
         'viewer.veloerg-viewer.dataStartMs': 8_000,
         'viewer.veloerg-viewer.dataEndMs': 12_000,
         'viewer.veloerg-viewer.message': null,
+      },
+      version: expect.any(Number),
+    });
+  });
+
+  it('патчит viewer metadata flags и очищает ключи, которых больше нет в новом файле', async () => {
+    const { ctx, emitted } = createTestContext(buildVeloergFinalViewerUiSchema());
+    await plugin.onInit(ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.viewerStateChanged,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: {
+        adapterId: 'veloerg-final-viewer',
+        state: 'connected',
+        filePath: '/tmp/viewer-a.h5',
+        metadata: {
+          subject_name: 'Иванов И.И.',
+          stop_time_sec: 632,
+        },
+      },
+    })), ctx as never);
+
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.viewerStateChanged,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: {
+        adapterId: 'veloerg-final-viewer',
+        state: 'connected',
+        filePath: '/tmp/viewer-b.h5',
+        metadata: {
+          stop_time_sec: 701,
+        },
+      },
+    })), ctx as never);
+
+    const patches = emitted
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<RuntimeEventInput, { type: typeof EventTypes.uiControlOut }> => {
+        return event.type === EventTypes.uiControlOut && event.payload.message.type === 'ui.flags.patch';
+      })
+      .map((event) => event.payload.message);
+
+    expect(patches).toContainEqual({
+      type: 'ui.flags.patch',
+      patch: {
+        'viewer.veloerg-final-viewer.filePath': '/tmp/viewer-a.h5',
+        'viewer.veloerg-final-viewer.recordingStartSessionMs': null,
+        'viewer.veloerg-final-viewer.dataStartMs': null,
+        'viewer.veloerg-final-viewer.dataEndMs': null,
+        'viewer.veloerg-final-viewer.message': null,
+        'viewer.veloerg-final-viewer.metadata.subject_name': 'Иванов И.И.',
+        'viewer.veloerg-final-viewer.metadata.stop_time_sec': 632,
+      },
+      version: expect.any(Number),
+    });
+    expect(patches).toContainEqual({
+      type: 'ui.flags.patch',
+      patch: {
+        'viewer.veloerg-final-viewer.filePath': '/tmp/viewer-b.h5',
+        'viewer.veloerg-final-viewer.recordingStartSessionMs': null,
+        'viewer.veloerg-final-viewer.dataStartMs': null,
+        'viewer.veloerg-final-viewer.dataEndMs': null,
+        'viewer.veloerg-final-viewer.message': null,
+        'viewer.veloerg-final-viewer.metadata.subject_name': null,
+        'viewer.veloerg-final-viewer.metadata.stop_time_sec': 701,
       },
       version: expect.any(Number),
     });
@@ -834,6 +905,149 @@ describe('ui-gateway-plugin', () => {
       viewportMode: 'history',
     });
     expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-lactate');
+  });
+
+  it('материализует train.red viewer schema с новыми графиками и без legacy thb', async () => {
+    const { ctx, emitted } = createTestContext(buildVeloergFinalViewerUiSchema());
+    await plugin.onInit(ctx as never);
+    await plugin.onEvent(toRuntimeEvent(defineRuntimeEventInput({
+      type: EventTypes.uiClientConnected,
+      v: 1,
+      kind: 'fact',
+      priority: 'system',
+      payload: { clientId: 'client-1' },
+    })), ctx as never);
+
+    const message = extractControlMessage(emitted);
+    expect(message).not.toBeNull();
+    if (!message || message.type !== 'ui.init') {
+      throw new Error('Ожидалось ui.init сообщение');
+    }
+    const initMessage = message as UiInitMessage;
+
+    const controlsWidget = initMessage.schema.widgets.find((widget): widget is UiControlsWidget => {
+      return widget.id === 'controls-main' && widget.kind === 'controls';
+    });
+    expect(controlsWidget?.kind).toBe('controls');
+    if (!controlsWidget || controlsWidget.kind !== 'controls') {
+      throw new Error('Не найден controls-main');
+    }
+    expect(controlsWidget.controls.map((control) => control.id)).toContain('toggle-veloerg-final-viewer');
+
+    const statusWidget = initMessage.schema.widgets.find((widget) => widget.id === 'status-main');
+    expect(statusWidget).toMatchObject({
+      kind: 'status',
+      flagKeys: expect.arrayContaining([
+        'viewer.veloerg-final-viewer.filePath',
+        'viewer.veloerg-final-viewer.dataStartMs',
+        'viewer.veloerg-final-viewer.dataEndMs',
+        'power.current',
+      ]),
+    });
+    const metadataWidget = initMessage.schema.widgets.find((widget) => widget.id === 'status-metadata');
+    expect(metadataWidget).toMatchObject({
+      kind: 'status',
+      flagKeys: expect.arrayContaining([
+        'viewer.veloerg-final-viewer.metadata.subject_name',
+        'viewer.veloerg-final-viewer.metadata.stop_time',
+        'viewer.veloerg-final-viewer.metadata.stop_time_sec',
+      ]),
+      fields: expect.arrayContaining([
+        expect.objectContaining({
+          flagKey: 'viewer.veloerg-final-viewer.metadata.subject_name',
+          label: 'ФИ',
+        }),
+        expect.objectContaining({
+          flagKey: 'viewer.veloerg-final-viewer.metadata.stop_time_sec',
+          label: 'Время остановки, с',
+        }),
+      ]),
+    });
+    const lt2Widget = initMessage.schema.widgets.find((widget) => widget.id === 'status-lt2');
+    expect(lt2Widget).toMatchObject({
+      kind: 'status',
+      flagKeys: expect.arrayContaining([
+        'viewer.veloerg-final-viewer.metadata.lt2_method',
+        'viewer.veloerg-final-viewer.metadata.lt2_refined_time_sec',
+        'viewer.veloerg-final-viewer.metadata.lt2_refined_sources',
+      ]),
+      fields: expect.arrayContaining([
+        expect.objectContaining({
+          flagKey: 'viewer.veloerg-final-viewer.metadata.lt2_method',
+          label: 'Метод LT2',
+        }),
+        expect.objectContaining({
+          flagKey: 'viewer.veloerg-final-viewer.metadata.lt2_refined_time_sec',
+          label: 'LT2 refined, с',
+        }),
+      ]),
+    });
+
+    expect(initMessage.schema.pages[0]?.widgetIds).toContain('chart-train-red-filtered');
+    expect(initMessage.schema.pages[0]?.widgetIds).toContain('chart-train-red-unfiltered');
+    expect(initMessage.schema.pages[0]?.widgetIds).toContain('chart-lactate');
+    expect(initMessage.schema.pages[0]?.widgetIds).toContain('status-lt2');
+    expect(initMessage.schema.pages[0]?.widgetIds).not.toContain('chart-moxy-thb');
+
+    const filteredChart = initMessage.schema.widgets.find((widget) => widget.id === 'chart-train-red-filtered');
+    expect(filteredChart).toMatchObject({
+      kind: 'chart',
+      viewportMode: 'history',
+      markers: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'vertical-flag',
+          flagKey: 'viewer.veloerg-final-viewer.metadata.stop_time_sec',
+          labelFlagKey: 'viewer.veloerg-final-viewer.metadata.stop_time',
+          valueMultiplier: 1000,
+        }),
+        expect.objectContaining({
+          kind: 'vertical-flag',
+          flagKey: 'viewer.veloerg-final-viewer.metadata.lt2_refined_time_sec',
+          label: 'LT2',
+          color: '#ff8787',
+          valueMultiplier: 1000,
+        }),
+      ]),
+    });
+    expect((filteredChart as { series?: Array<{ streamId?: string }> } | undefined)?.series?.map((series) => series.streamId))
+      .toEqual(['train.red.smo2', 'train.red.hbdiff']);
+
+    const unfilteredChart = initMessage.schema.widgets.find((widget) => widget.id === 'chart-train-red-unfiltered');
+    expect(unfilteredChart).toMatchObject({
+      kind: 'chart',
+      viewportMode: 'history',
+    });
+    expect((unfilteredChart as { series?: Array<{ streamId?: string }> } | undefined)?.series?.map((series) => series.streamId))
+      .toEqual([
+        'train.red.smo2.unfiltered',
+        'train.red.o2hb.unfiltered',
+        'train.red.hhb.unfiltered',
+        'train.red.thb.unfiltered',
+        'train.red.hbdiff.unfiltered',
+      ]);
+
+    const lactateChart = initMessage.schema.widgets.find((widget) => widget.id === 'chart-lactate');
+    expect(lactateChart).toMatchObject({
+      kind: 'chart',
+      viewportMode: 'history',
+      yAxis: expect.objectContaining({ label: 'mmol/L' }),
+      markers: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'vertical-flag',
+          flagKey: 'viewer.veloerg-final-viewer.metadata.stop_time_sec',
+        }),
+        expect.objectContaining({
+          kind: 'vertical-flag',
+          flagKey: 'viewer.veloerg-final-viewer.metadata.lt2_refined_time_sec',
+          label: 'LT2',
+        }),
+      ]),
+    });
+    expect((lactateChart as { series?: Array<{ streamId?: string; type?: string }> } | undefined)?.series)
+      .toEqual([
+        expect.objectContaining({ streamId: 'lactate', type: 'line' }),
+        expect.objectContaining({ streamId: 'lactate', type: 'scatter' }),
+      ]);
   });
 
   it('патчит Trigno status flags в UI', async () => {

@@ -83,11 +83,16 @@ function ensureViewerSession(filePath: string): SimulationSessionState {
   }
 
   closeCurrentSession();
+  // Viewer читает поток целиком по explicit timestamps, поэтому для старых файлов
+  // без `frameKind` безопасно деградируем в irregular-семантику.
   const nextSession = loadHdf5SimulationSession(
     normalizedFilePath,
     config.streamIds,
     config.readChunkSamples,
-    config.requireAllStreamIds,
+    {
+      requireAllStreamIds: config.requireAllStreamIds,
+      missingFrameKindFallback: 'irregular-signal-batch',
+    },
   );
   session = nextSession;
   config.filePath = normalizedFilePath;
@@ -126,6 +131,7 @@ function makeViewerStateEvent(
     ...(session?.recordingStartSessionMs !== undefined ? { recordingStartSessionMs: session.recordingStartSessionMs } : {}),
     ...(session?.dataStartMs !== undefined ? { dataStartMs: session.dataStartMs } : {}),
     ...(session?.dataEndMs !== undefined ? { dataEndMs: session.dataEndMs } : {}),
+    ...(session && Object.keys(session.fileMetadata).length > 0 ? { metadata: session.fileMetadata } : {}),
   };
   if (message !== undefined) payload.message = message;
   if (requestId !== undefined) payload.requestId = requestId;
@@ -242,7 +248,10 @@ export default definePlugin({
         config.filePath,
         config.streamIds,
         config.readChunkSamples,
-        config.requireAllStreamIds,
+        {
+          requireAllStreamIds: config.requireAllStreamIds,
+          missingFrameKindFallback: 'irregular-signal-batch',
+        },
       );
     } else {
       session = null;

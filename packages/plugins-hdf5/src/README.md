@@ -22,6 +22,9 @@
 - Для viewer-пути `hdf5-simulation-boundary.ts` отдаёт uniform-потоки с явными `timestampsMs`, чтобы renderer не восстанавливал X из `sampleRateHz` и не подменял фактическое время.
 - `hdf5-simulation-boundary.ts` изолирует file-boundary: валидацию config, открытие HDF5, проверку структуры `/channels/*` и чтение dataset-ов.
 - `hdf5-simulation-boundary.ts` также читает root attr `recordingStartSessionMs` и fallback'ается к первому sample, если attr отсутствует или противоречит данным.
+- `hdf5-simulation-boundary.ts` для старых файлов также умеет выводить `sampleFormat` из `values.dtype`, если attr `sampleFormat` отсутствует.
+- Для viewer-пути тот же boundary может синтетически подставить `frameKind = irregular-signal-batch`, если в старом файле есть только `timestamps + values`; для replay этот attr по-прежнему обязателен.
+- Для viewer-пути boundary также вычитывает file-level scalar metadata из root attrs и отдает их наружу через `viewer.state.changed`.
 - `hdf5-simulation-boundary.test.ts` проверяет этот boundary отдельно от runtime-плагина.
 - `event-contracts.ts` описывает plugin-specific тик `hdf5.simulation.tick`.
 - `index.ts` экспортирует публичные точки входа пакета.

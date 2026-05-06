@@ -202,6 +202,7 @@ export interface ViewerStateChangedPayload {
   recordingStartSessionMs?: number;
   dataStartMs?: number;
   dataEndMs?: number;
+  metadata?: Record<string, RecordingMetadataScalar>;
   requestId?: string;
   message?: string;
 }

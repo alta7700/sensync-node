@@ -17,7 +17,7 @@
 - `session-clock.ts` — относительное время сессии.
 - `compute-worker-boundary.ts` — boundary dev/runtime-конфига для внешних Python compute-worker'ов; он резолвит команду запуска, но не тащит transport-код в launch profiles.
 - `profiles/index.ts` — registry launch profiles и thin API `resolve/build`.
-- `profiles/*.ts` — отдельные profile-модули, которые собирают plugin composition и готовую `UiSchema`, включая пары `replay/viewer` для HDF5 сценариев и строгие stream-контракты для `veloerg`.
+- `profiles/*.ts` — отдельные profile-модули, которые собирают plugin composition и готовую `UiSchema`, включая пары `replay/viewer` для HDF5 сценариев, отдельный `train.red` viewer-вариант и строгие stream-контракты для `veloerg`.
 - `profiles/shared.ts` — общие helper'ы для profile composition, например descriptor `ui-gateway`.
 - `launch-profile-boundary.ts` — boundary для `process.env` и file-path validation при сборке launch profiles.
 - `main.ts` — standalone-точка входа, которая выбирает профиль через `SENSYNC2_PROFILE` и строит `ResolvedLaunchProfile`.

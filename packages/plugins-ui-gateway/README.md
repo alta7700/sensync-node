@@ -22,6 +22,7 @@ UI gateway plugin.
 - Во время timeline reset `ui-gateway` выпускает `ui.timeline.reset`, пересобирает derived flags в initial defaults и не рвёт schema/stream registry.
 - Для HDF5 replay `ui-gateway` также умеет локально сдвигать UI timeline origin по `simulation.state.changed.recordingStartSessionMs`, не переписывая stream timestamps.
 - Для HDF5 viewer `ui-gateway` тоже умеет локально сбрасывать UI timeline/buffers по `viewer.state.changed`, чтобы новый файл целиком заменял предыдущую историю.
+- Viewer metadata из `viewer.state.changed.metadata` `ui-gateway` materialize'ит в обычные flags `viewer.<adapterId>.metadata.*`, чтобы schema могла использовать их без отдельного special-case в renderer.
 - Concrete `UiSchema` теперь строится вне плагина в runtime launch profile и передаётся в `ui-gateway` уже готовой.
 - В `veloerg` схема теперь composite:
   - отдельный control-блок Trigno с modal form `host + vlSensorSlot + rfSensorSlot`;
@@ -33,7 +34,8 @@ UI gateway plugin.
   - рядом остаются Moxy (`SmO2`, `tHb`) и Zephyr (`RR`).
 - ANT+ блок уже разбит на профильный connect flow: `muscle-oxygen` и `train.red` используют один raw decode и те же streamId, но различаются на уровне scan/connect entry point и UI-подписи.
 - В `veloerg-replay` схема использует те же графики `veloerg`, но вместо live transport/recording controls даёт один replay-control блок для выбора HDF5, pause/resume и смены скорости; старые single-sensor `veloerg`-файлы под эту схему больше не подходят.
-- В `veloerg-viewer` и `pedaling-emg-viewer` схема использует те же графики соответствующих replay/live профилей, но переводит их в history-режим для интерактивного pan/zoom без simulation cadence.
+- В `veloerg-viewer`, `veloerg-final-viewer` и `pedaling-emg-viewer` схема использует те же графики соответствующих replay/live профилей, но переводит их в history-режим для интерактивного pan/zoom без simulation cadence.
+- В `veloerg-final-viewer` старый `moxy.thb` намеренно отсутствует: вместо него схема показывает отдельный status-блок с metadata файла, отдельный status-блок `LT2`, filtered-график `train.red.smo2 + train.red.hbdiff`, второй график со всеми `train.red.*.unfiltered`, график `lactate` и две пунктирные vertical-линии на всех chart-виджетах: stop-line по `stop_time_sec` и `LT2`-line по `lt2_refined_time_sec`.
 - `ui.telemetry` теперь несёт не только runtime queue snapshot, но и latest plugin metrics, например качество ANT+ канала и BLE/Zephyr transport.
 
 ## Взаимодействие

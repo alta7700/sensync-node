@@ -195,7 +195,7 @@ Payload-типы описаны в [packages/core/src/events.ts](src/events.ts).
   - нужен для UI и отладки профиля симуляции.
 - `viewer.state.changed`
   - несёт `adapterId`, `state` и `filePath`;
-  - может дополнительно нести `recordingStartSessionMs`, `dataStartMs` и `dataEndMs`;
+  - может дополнительно нести `recordingStartSessionMs`, `dataStartMs`, `dataEndMs` и file-level scalar `metadata`;
   - нужен для UI history-viewer режима, где файл не проигрывается по таймеру, а загружается целиком.
 
 Ограничения `v1`:

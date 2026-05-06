@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as echarts from 'echarts/core';
 import type { ECharts } from 'echarts/core';
 import type { EChartsOption, SeriesOption } from 'echarts';
-import { GridComponent, LegendComponent, MarkAreaComponent, TooltipComponent } from 'echarts/components';
+import { GridComponent, LegendComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
 import { LineChart, ScatterChart } from 'echarts/charts';
 import { CanvasRenderer } from 'echarts/renderers';
 import { ClientRuntime, type ClientRuntimeNotification, type StreamWindowData } from '@sensync2/client-runtime';
@@ -31,7 +31,7 @@ import {
   resolveControlPayload,
 } from './ui-schema-runtime.ts';
 
-echarts.use([GridComponent, LegendComponent, MarkAreaComponent, TooltipComponent, LineChart, ScatterChart, CanvasRenderer]);
+echarts.use([GridComponent, LegendComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent, LineChart, ScatterChart, CanvasRenderer]);
 
 const runtimeSingleton = new ClientRuntime(new ElectronBridgeTransport());
 
@@ -476,17 +476,18 @@ interface VeloergUiState {
 }
 
 function StatusWidget({ widget, flags }: { widget: UiStatusWidget; flags: Record<string, unknown> }) {
+  const fields = widget.fields ?? widget.flagKeys.map((flagKey) => ({ flagKey, label: flagKey }));
   return (
     <section style={panelStyle}>
       <h3 style={titleStyle}>{widget.title}</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-        {widget.flagKeys.map((key) => {
-          const value = flags[key];
+        {fields.map((field) => {
+          const value = flags[field.flagKey];
           const text = typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value ?? '—');
           const color = text.includes('connected') || text === 'true' ? 'var(--ok)' : text.includes('failed') ? 'var(--bad)' : 'var(--muted)';
           return (
-            <div key={key} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, background: '#11161d' }}>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>{key}</div>
+            <div key={field.flagKey} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 8, background: '#11161d' }}>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>{field.label ?? field.flagKey}</div>
               <div style={{ fontWeight: 700, color }}>{text}</div>
             </div>
           );
@@ -1360,7 +1361,80 @@ function buildChartYRange(widget: UiChartWidget, windowsByStream: Map<string, St
   return { min: yMin, max: yMax };
 }
 
-function buildEchartsOption(widget: UiChartWidget, windowsByStream: Map<string, StreamWindowData>): EChartsOption {
+function buildChartVerticalMarkerSeries(
+  widget: UiChartWidget,
+  flags: Record<string, unknown>,
+): SeriesOption | null {
+  const markers = widget.markers ?? [];
+  const data = markers.flatMap((marker) => {
+    if (marker.kind !== 'vertical-flag') {
+      return [];
+    }
+    const rawValue = flags[marker.flagKey];
+    const numericValue = typeof rawValue === 'number'
+      ? rawValue
+      : typeof rawValue === 'string' && rawValue.trim().length > 0
+        ? Number(rawValue)
+        : Number.NaN;
+    if (!Number.isFinite(numericValue)) {
+      return [];
+    }
+
+    const labelValue = marker.labelFlagKey !== undefined
+      ? flags[marker.labelFlagKey]
+      : undefined;
+    const label = labelValue !== undefined && labelValue !== null
+      ? String(labelValue)
+      : marker.label;
+    return [{
+      name: label,
+      xAxis: numericValue * (marker.valueMultiplier ?? 1),
+      lineStyle: {
+        color: marker.color ?? '#ffd43b',
+        type: marker.lineStyle ?? 'dashed',
+        width: 2,
+      },
+      label: label
+        ? {
+          show: true,
+          formatter: label,
+          color: marker.color ?? '#ffd43b',
+          fontWeight: 700,
+        }
+        : {
+          show: false,
+        },
+    }];
+  });
+
+  if (data.length === 0) {
+    return null;
+  }
+
+  return {
+    id: `${widget.id}-vertical-markers`,
+    name: `${widget.title} markers`,
+    type: 'line',
+    data: [],
+    animation: false,
+    silent: true,
+    lineStyle: { opacity: 0 },
+    itemStyle: { opacity: 0 },
+    tooltip: { show: false },
+    markLine: {
+      symbol: ['none', 'none'],
+      silent: true,
+      animation: false,
+      data,
+    },
+  };
+}
+
+function buildEchartsOption(
+  widget: UiChartWidget,
+  windowsByStream: Map<string, StreamWindowData>,
+  flags: Record<string, unknown>,
+): EChartsOption {
   const { min: xMinMs, max: xMaxMs } = buildChartXRange(widget, windowsByStream);
   const { min: yMin, max: yMax } = buildChartYRange(widget, windowsByStream);
   const fallbackPalette = ['#58a6ff', '#3fb950', '#f85149', '#d29922', '#a371f7', '#ffa657', '#79c0ff'];
@@ -1452,6 +1526,10 @@ function buildEchartsOption(widget: UiChartWidget, windowsByStream: Map<string, 
     };
     return scatterSeries;
   });
+  const markerSeries = buildChartVerticalMarkerSeries(widget, flags);
+  if (markerSeries) {
+    seriesOptions.push(markerSeries);
+  }
 
   const option: EChartsOption = {
     animation: false,
@@ -1524,9 +1602,24 @@ function buildEchartsOption(widget: UiChartWidget, windowsByStream: Map<string, 
   return option;
 }
 
-function ChartWidgetEcharts({ widget }: { widget: UiChartWidget }) {
+function extractChartMarkerFlags(widget: UiChartWidget, flags: Record<string, unknown>): Record<string, unknown> {
+  const relevantKeys = new Set<string>();
+  for (const marker of widget.markers ?? []) {
+    if (marker.kind !== 'vertical-flag') {
+      continue;
+    }
+    relevantKeys.add(marker.flagKey);
+    if (marker.labelFlagKey) {
+      relevantKeys.add(marker.labelFlagKey);
+    }
+  }
+  return Object.fromEntries([...relevantKeys].map((key) => [key, flags[key]]));
+}
+
+function ChartWidgetEcharts({ widget, flags }: { widget: UiChartWidget; flags: Record<string, unknown> }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<ECharts | null>(null);
+  const markerFlags = useMemo(() => extractChartMarkerFlags(widget, flags), [widget, flags]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1558,7 +1651,7 @@ function ChartWidgetEcharts({ widget }: { widget: UiChartWidget }) {
       if (!chart) return;
       const timeWindowMs = widget.timeWindowMs ?? 10_000;
       const windowsByStream = buildChartWindows(widget, timeWindowMs);
-      const option = buildEchartsOption(widget, windowsByStream);
+      const option = buildEchartsOption(widget, windowsByStream, markerFlags);
       chart.setOption(option, {
         replaceMerge: ['series'],
       });
@@ -1583,7 +1676,7 @@ function ChartWidgetEcharts({ widget }: { widget: UiChartWidget }) {
       cancelAnimationFrame(raf);
       unsubStream();
     };
-  }, [widget]);
+  }, [widget, markerFlags]);
 
   return (
     <section style={panelStyle}>
@@ -1651,7 +1744,7 @@ function renderWidget(
   if (widget.kind === 'status') return <StatusWidget key={widget.id} widget={widget} flags={flags} />;
   if (widget.kind === 'chart') {
     if (widget.renderer === 'echarts') {
-      return <ChartWidgetEcharts key={widget.id} widget={widget} />;
+      return <ChartWidgetEcharts key={widget.id} widget={widget} flags={flags} />;
     }
     return <ChartWidgetCanvas key={widget.id} widget={widget} />;
   }

@@ -119,6 +119,7 @@
 
 - путь к файлу;
 - `formData.filePath` из `adapter.connect.request`, если profile включает delayed file selection;
+- file-level attrs, которые viewer может показывать как metadata;
 - наличие `/channels`;
 - attrs каналов;
 - dataset shape/type;
@@ -130,6 +131,7 @@
 - boundary открывает файл;
 - при delayed file selection boundary сначала нормализует `formData.filePath`, а уже потом открывает файл;
 - проверяет структуру нового HDF5-формата;
+- вычитывает допустимые scalar metadata из root attrs файла, не смешивая их с системными attr recorder'а;
 - строит session/channel reader state;
 - для replay читает окна данных и формирует внутренние `signal.batch`;
 - для viewer читает те же validated datasets целиком и отдает history snapshot без фонового timer-cadence.
@@ -137,6 +139,7 @@
 Что уже trusted:
 
 - `SimulationSessionState`;
+- file-level scalar metadata, прошедшие boundary-фильтрацию;
 - `signal.batch`, собранные из validated datasets.
 
 ### 4. ANT+ ingress

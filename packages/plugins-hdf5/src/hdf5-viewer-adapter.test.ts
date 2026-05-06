@@ -11,19 +11,35 @@ function createAttribute(target: InstanceType<typeof h5wasm.File> | InstanceType
   target.create_attribute(name, value);
 }
 
-async function createFixtureFile(streamId = 'trigno.avanti'): Promise<string> {
+async function createFixtureFile(
+  streamId = 'trigno.avanti',
+  options?: {
+    withSampleFormatAttr?: boolean;
+    withFrameKindAttr?: boolean;
+    rootMetadata?: Record<string, string | number | boolean>;
+  },
+): Promise<string> {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'sensync2-hdf5-viewer-adapter-'));
   const filePath = path.join(tempDir, 'fixture.h5');
+  const withSampleFormatAttr = options?.withSampleFormatAttr ?? true;
+  const withFrameKindAttr = options?.withFrameKindAttr ?? true;
 
   await h5wasm.ready;
   const file = new h5wasm.File(filePath, 'w', { track_order: true });
   try {
     createAttribute(file, 'recordingStartSessionMs', 1234);
+    for (const [name, value] of Object.entries(options?.rootMetadata ?? {})) {
+      createAttribute(file, name, value);
+    }
     const channels = file.create_group('channels', true);
     const group = channels.create_group(streamId, true);
     createAttribute(group, 'streamId', streamId);
-    createAttribute(group, 'sampleFormat', 'f32');
-    createAttribute(group, 'frameKind', 'uniform-signal-batch');
+    if (withSampleFormatAttr) {
+      createAttribute(group, 'sampleFormat', 'f32');
+    }
+    if (withFrameKindAttr) {
+      createAttribute(group, 'frameKind', 'uniform-signal-batch');
+    }
     createAttribute(group, 'sampleRateHz', 1000);
     createAttribute(group, 'units', 'V');
 
@@ -138,6 +154,128 @@ describe('hdf5-viewer-adapter', () => {
       expect(dataEvent.payload.dtMs).toBeUndefined();
       expect(dataEvent.payload.sampleRateHz).toBeUndefined();
     }
+  });
+
+  it('читает legacy viewer файл без attr sampleFormat', async () => {
+    const filePath = await createFixtureFile('train.red.smo2', { withSampleFormatAttr: false });
+    const { ctx, emitted } = createHarness({
+      adapterId: 'veloerg-viewer',
+      allowConnectFilePathOverride: true,
+      streamIds: ['train.red.smo2'],
+    });
+
+    await plugin.onInit(ctx);
+    await plugin.onEvent({
+      ...defineRuntimeEventInput({
+        type: EventTypes.adapterConnectRequest,
+        v: 1,
+        kind: 'command',
+        priority: 'control',
+        payload: {
+          adapterId: 'veloerg-viewer',
+          formData: {
+            filePath,
+          },
+        },
+      }),
+      seq: 1n,
+      timelineId: 'timeline-test',
+      tsMonoMs: 0,
+      sourcePluginId: 'external-ui',
+    }, ctx);
+
+    const dataEvent = emitted.find((event) => event.type === EventTypes.signalBatch);
+    expect(dataEvent).toMatchObject({
+      payload: {
+        streamId: 'train.red.smo2',
+        sampleFormat: 'f32',
+      },
+    });
+  });
+
+  it('пробрасывает file metadata из root attrs в viewer.state.changed', async () => {
+    const filePath = await createFixtureFile('train.red.smo2', {
+      rootMetadata: {
+        subject_name: 'Иванов И.И.',
+        stop_time: '00:10:32',
+        stop_time_sec: 632,
+      },
+    });
+    const { ctx, emitted } = createHarness({
+      adapterId: 'veloerg-viewer',
+      allowConnectFilePathOverride: true,
+      streamIds: ['train.red.smo2'],
+    });
+
+    await plugin.onInit(ctx);
+    await plugin.onEvent({
+      ...defineRuntimeEventInput({
+        type: EventTypes.adapterConnectRequest,
+        v: 1,
+        kind: 'command',
+        priority: 'control',
+        payload: {
+          adapterId: 'veloerg-viewer',
+          formData: {
+            filePath,
+          },
+        },
+      }),
+      seq: 1n,
+      timelineId: 'timeline-test',
+      tsMonoMs: 0,
+      sourcePluginId: 'external-ui',
+    }, ctx);
+
+    const viewerState = emitted
+      .filter((event) => event.type === EventTypes.viewerStateChanged)
+      .at(-1);
+    expect(viewerState).toMatchObject({
+      payload: {
+        metadata: {
+          subject_name: 'Иванов И.И.',
+          stop_time: '00:10:32',
+          stop_time_sec: 632,
+        },
+      },
+    });
+  });
+
+  it('читает legacy viewer файл без attr frameKind и деградирует его в irregular', async () => {
+    const filePath = await createFixtureFile('train.red.smo2', { withFrameKindAttr: false });
+    const { ctx, emitted } = createHarness({
+      adapterId: 'veloerg-viewer',
+      allowConnectFilePathOverride: true,
+      streamIds: ['train.red.smo2'],
+    });
+
+    await plugin.onInit(ctx);
+    await plugin.onEvent({
+      ...defineRuntimeEventInput({
+        type: EventTypes.adapterConnectRequest,
+        v: 1,
+        kind: 'command',
+        priority: 'control',
+        payload: {
+          adapterId: 'veloerg-viewer',
+          formData: {
+            filePath,
+          },
+        },
+      }),
+      seq: 1n,
+      timelineId: 'timeline-test',
+      tsMonoMs: 0,
+      sourcePluginId: 'external-ui',
+    }, ctx);
+
+    const dataEvent = emitted.find((event) => event.type === EventTypes.signalBatch);
+    expect(dataEvent).toMatchObject({
+      payload: {
+        streamId: 'train.red.smo2',
+        frameKind: 'irregular-signal-batch',
+      },
+    });
   });
 
   it('отклоняет partial viewer файл при requireAllStreamIds', async () => {
